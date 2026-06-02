@@ -3,9 +3,14 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+import yaml
 from pydantic import ValidationError
 
-from oh_my_field.models import EvidenceRecord
+from oh_my_field.models import CapabilityManifest, EvidenceRecord
+
+type YamlValue = (
+    str | int | float | bool | None | list["YamlValue"] | dict[str, "YamlValue"]
+)
 
 
 class StorageError(Exception):
@@ -41,6 +46,12 @@ class EvidenceParseError(StorageError):
 def write_evidence(record: EvidenceRecord, evidence_dir: Path) -> Path:
     target_path = evidence_dir / f"{record.id}.json"
     _write_text_exclusive(target_path, record.model_dump_json(indent=2) + "\n")
+    return target_path
+
+
+def write_manifest(manifest: CapabilityManifest, capabilities_dir: Path) -> Path:
+    target_path = capabilities_dir / manifest.name / "manifest.yaml"
+    _write_text_exclusive(target_path, _manifest_yaml(manifest))
     return target_path
 
 
@@ -86,3 +97,46 @@ def _write_text_exclusive(target_path: Path, content: str) -> None:
     finally:
         if temp_path.exists():
             temp_path.unlink()
+
+
+def _manifest_yaml(manifest: CapabilityManifest) -> str:
+    yaml_text: str = yaml.safe_dump(
+        _manifest_yaml_data(manifest),
+        sort_keys=False,
+        allow_unicode=True,
+    )
+    return yaml_text
+
+
+def _manifest_yaml_data(manifest: CapabilityManifest) -> dict[str, YamlValue]:
+    return {
+        "name": manifest.name,
+        "version": manifest.version,
+        "description": manifest.description,
+        "status": manifest.status,
+        "source_evidence_id": manifest.source_evidence_id,
+        "normalized_goal": manifest.normalized_goal,
+        "inputs": list(manifest.inputs),
+        "workflow": {
+            "graph": manifest.workflow.graph,
+            "nodes": list(manifest.workflow.nodes),
+        },
+        "harness": {
+            "status": manifest.harness.status,
+            "checks": list(manifest.harness.checks),
+            "failures": list(manifest.harness.failures),
+        },
+        "runtime": {
+            "name": manifest.runtime.name,
+            "model": manifest.runtime.model,
+        },
+        "promotion_criteria": {
+            "min_success_runs": manifest.promotion_criteria.min_success_runs,
+            "max_human_intervention_rate": (
+                manifest.promotion_criteria.max_human_intervention_rate
+            ),
+            "required_harness_pass_rate": (
+                manifest.promotion_criteria.required_harness_pass_rate
+            ),
+        },
+    }

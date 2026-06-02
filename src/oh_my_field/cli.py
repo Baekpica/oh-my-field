@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
+from pydantic import ValidationError
 
 from oh_my_field.capture import (
     CaptureError,
@@ -10,6 +11,7 @@ from oh_my_field.capture import (
     run_capture_workflow,
 )
 from oh_my_field.models import CapturedFileRole
+from oh_my_field.promote import PromoteError, PromoteRequest, run_promote_workflow
 from oh_my_field.storage import StorageError
 
 app = typer.Typer(
@@ -82,3 +84,36 @@ def _capture_file_inputs(
 
 
 app.command("capture")(_capture)
+
+
+def _promote(
+    evidence_id: Annotated[str, typer.Argument()],
+    name: Annotated[str, typer.Option("--name")],
+    description: Annotated[str, typer.Option("--description")],
+    version: Annotated[str, typer.Option("--version")] = "0.1.0",
+    evidence_dir: Annotated[Path, typer.Option("--evidence-dir")] = Path(
+        ".omf/evidence",
+    ),
+    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
+        "capabilities",
+    ),
+) -> None:
+    try:
+        summary = run_promote_workflow(
+            PromoteRequest(
+                evidence_id=evidence_id,
+                name=name,
+                description=description,
+                version=version,
+                evidence_dir=evidence_dir,
+                capabilities_dir=capabilities_dir,
+            ),
+        )
+    except (PromoteError, StorageError, ValidationError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(summary.model_dump_json())
+
+
+app.command("promote")(_promote)
