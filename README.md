@@ -87,6 +87,14 @@ uv run omf registry repo_issue_triage \
   --capabilities-dir /private/tmp/omf-capabilities-smoke \
   --eval-dir /private/tmp/omf-evals-smoke
 
+uv run omf reflect repo_issue_triage \
+  --eval-id <eval_id> \
+  --note "operator saw repeated issue" \
+  --evidence-dir /private/tmp/omf-evidence-smoke \
+  --capabilities-dir /private/tmp/omf-capabilities-smoke \
+  --eval-dir /private/tmp/omf-evals-smoke \
+  --reflection-dir /private/tmp/omf-reflections-smoke
+
 uv run omf run \
   --goal "triage repo issue" \
   --name repo_issue_triage_v2 \

@@ -366,3 +366,17 @@ class CapabilityRegistryEntry(StrictModel):
 class CapabilityRegistry(StrictModel):
     generated_at: datetime
     entries: tuple[CapabilityRegistryEntry, ...]
+
+
+class ReflectionReport(StrictModel):
+    id: str = Field(pattern=EVIDENCE_ID_PATTERN)
+    created_at: datetime
+    capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
+    source_evidence_id: str = Field(pattern=EVIDENCE_ID_PATTERN)
+    eval_id: str | None = Field(default=None, pattern=EVIDENCE_ID_PATTERN)
+    failure_categories: tuple[str, ...] = ()
+    retry_strategy: str = Field(min_length=1)
+    context_additions: tuple[str, ...] = ()
+    prompt_patches: tuple[str, ...] = ()
+    tool_call_revisions: tuple[str, ...] = ()
+    notes: tuple[str, ...] = ()

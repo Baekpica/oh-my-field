@@ -14,6 +14,7 @@ from oh_my_field.models import (
     EvidenceRecord,
     HumanReviewRecord,
     LearningExport,
+    ReflectionReport,
     ReplayRecord,
     WorkflowRunRecord,
 )
@@ -99,6 +100,15 @@ class EvalParseError(StorageError):
 
     def __str__(self) -> str:
         return f"could not parse eval file {self.path}: {self.reason}"
+
+
+@dataclass
+class EvalNotFoundError(StorageError):
+    eval_id: str
+    eval_dir: Path
+
+    def __str__(self) -> str:
+        return f"eval {self.eval_id!r} not found in {self.eval_dir}"
 
 
 @dataclass
@@ -223,6 +233,13 @@ def write_eval_result(result: EvalResult, eval_dir: Path) -> Path:
     return target_path
 
 
+def load_eval_result(eval_id: str, eval_dir: Path) -> EvalResult:
+    eval_path = eval_dir / f"{eval_id}.json"
+    if not eval_path.exists():
+        raise EvalNotFoundError(eval_id=eval_id, eval_dir=eval_dir)
+    return _load_eval_result_path(eval_path)
+
+
 def list_eval_results(eval_dir: Path) -> tuple[EvalResult, ...]:
     if not eval_dir.exists():
         return ()
@@ -256,6 +273,12 @@ def write_learning_export(export: LearningExport, learning_dir: Path) -> Path:
 def write_context_bundle(bundle: ContextBundle, context_dir: Path) -> Path:
     target_path = context_dir / f"{bundle.id}.json"
     _write_text_exclusive(target_path, bundle.model_dump_json(indent=2) + "\n")
+    return target_path
+
+
+def write_reflection_report(report: ReflectionReport, reflection_dir: Path) -> Path:
+    target_path = reflection_dir / f"{report.id}.json"
+    _write_text_exclusive(target_path, report.model_dump_json(indent=2) + "\n")
     return target_path
 
 

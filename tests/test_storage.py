@@ -16,6 +16,7 @@ from oh_my_field.models import (
     HumanReviewRecord,
     LearningExport,
     PromotionCriteria,
+    ReflectionReport,
     ReplayRecord,
     ReviewTargetType,
     RuntimeInfo,
@@ -31,6 +32,7 @@ from oh_my_field.storage import (
     ManifestParseError,
     list_eval_results,
     list_manifests,
+    load_eval_result,
     load_evidence,
     load_manifest,
     load_replay,
@@ -41,6 +43,7 @@ from oh_my_field.storage import (
     write_human_review,
     write_learning_export,
     write_manifest,
+    write_reflection_report,
     write_replay,
     write_workflow_run,
 )
@@ -200,6 +203,18 @@ def make_workflow_run(status: WorkflowRunStatus = "running") -> WorkflowRunRecor
     )
 
 
+def make_reflection_report() -> ReflectionReport:
+    return ReflectionReport(
+        id="20260602T010209Z-aabbccdd",
+        created_at=datetime(2026, 6, 2, 1, 2, 9, tzinfo=UTC),
+        capability_name="repo_issue",
+        source_evidence_id="20260602T010203Z-deadbeef",
+        eval_id="20260602T010204Z-feedface",
+        failure_categories=("rubric",),
+        retry_strategy="Retry after improving rubric evidence.",
+    )
+
+
 def test_write_evidence_persists_json_and_refuses_duplicate(tmp_path: Path) -> None:
     record = make_evidence_record()
 
@@ -285,6 +300,15 @@ def test_list_eval_results_reads_eval_registry_entries(tmp_path: Path) -> None:
     assert listed == (result,)
 
 
+def test_load_eval_result_reads_eval_by_id(tmp_path: Path) -> None:
+    result = make_eval_result()
+
+    write_eval_result(result, tmp_path)
+    loaded = load_eval_result(result.id, tmp_path)
+
+    assert loaded == result
+
+
 def test_write_human_review_persists_json_and_refuses_duplicate(
     tmp_path: Path,
 ) -> None:
@@ -322,6 +346,19 @@ def test_write_context_bundle_persists_json_and_refuses_duplicate(
     assert context_path.read_text(encoding="utf-8") == expected_json
     with pytest.raises(DuplicateWriteError):
         write_context_bundle(bundle, tmp_path)
+
+
+def test_write_reflection_report_persists_json_and_refuses_duplicate(
+    tmp_path: Path,
+) -> None:
+    report = make_reflection_report()
+
+    reflection_path = write_reflection_report(report, tmp_path)
+    expected_json = report.model_dump_json(indent=2) + "\n"
+
+    assert reflection_path.read_text(encoding="utf-8") == expected_json
+    with pytest.raises(DuplicateWriteError):
+        write_reflection_report(report, tmp_path)
 
 
 def test_write_workflow_run_updates_checkpoint_atomically(tmp_path: Path) -> None:

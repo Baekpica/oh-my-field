@@ -29,6 +29,7 @@ from oh_my_field.orchestrate import (
     run_resume_workflow,
 )
 from oh_my_field.promote import PromoteError, PromoteRequest, run_promote_workflow
+from oh_my_field.reflect import ReflectError, ReflectRequest, run_reflect_workflow
 from oh_my_field.registry import RegistryError, RegistryRequest, run_registry_workflow
 from oh_my_field.replay import ReplayError, ReplayRequest, run_replay_workflow
 from oh_my_field.review import ReviewError, ReviewRequest, run_review_workflow
@@ -771,3 +772,40 @@ def _registry(
 
 
 app.command("registry")(_registry)
+
+
+def _reflect(
+    capability_name: Annotated[str, typer.Argument()],
+    eval_id: Annotated[str | None, typer.Option("--eval-id")] = None,
+    note: Annotated[list[str] | None, typer.Option("--note")] = None,
+    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
+        "capabilities",
+    ),
+    evidence_dir: Annotated[Path, typer.Option("--evidence-dir")] = Path(
+        ".omf/evidence",
+    ),
+    eval_dir: Annotated[Path, typer.Option("--eval-dir")] = Path(".omf/evals"),
+    reflection_dir: Annotated[Path, typer.Option("--reflection-dir")] = Path(
+        ".omf/reflections",
+    ),
+) -> None:
+    try:
+        summary = run_reflect_workflow(
+            ReflectRequest(
+                capability_name=capability_name,
+                eval_id=eval_id,
+                capabilities_dir=capabilities_dir,
+                evidence_dir=evidence_dir,
+                eval_dir=eval_dir,
+                reflection_dir=reflection_dir,
+                notes=tuple(note or ()),
+            ),
+        )
+    except (ReflectError, StorageError, ValidationError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(summary.model_dump_json())
+
+
+app.command("reflect")(_reflect)
