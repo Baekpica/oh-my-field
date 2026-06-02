@@ -116,6 +116,42 @@ def test_replay_creates_replay_record_from_manifest_and_evidence(
     assert replay.runtime == evidence.runtime
 
 
+def test_replay_execute_reruns_stored_commands(tmp_path: Path) -> None:
+    evidence_dir = tmp_path / "evidence"
+    capabilities_dir = tmp_path / "capabilities"
+    replay_dir = tmp_path / "replays"
+    evidence = make_evidence_record().model_copy(
+        update={"generated_commands": ("printf replayed",)},
+    )
+    manifest = make_manifest()
+    write_evidence(evidence, evidence_dir)
+    write_manifest(manifest, capabilities_dir)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "replay",
+            manifest.name,
+            "--execute",
+            "--command-cwd",
+            str(tmp_path),
+            "--capabilities-dir",
+            str(capabilities_dir),
+            "--evidence-dir",
+            str(evidence_dir),
+            "--replay-dir",
+            str(replay_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = ReplayOutput.model_validate_json(result.stdout)
+    replay = load_replay(output.replay_id, replay_dir)
+    assert replay.command_executions[0].stdout == "replayed"
+    assert replay.harness.status == "pass"
+    assert "commands_replayed" in replay.harness.checks
+
+
 def test_replay_fails_for_missing_manifest(tmp_path: Path) -> None:
     result = CliRunner().invoke(
         app,

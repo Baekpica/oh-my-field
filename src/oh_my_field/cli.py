@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 import typer
 from pydantic import ValidationError
@@ -10,10 +10,26 @@ from oh_my_field.capture import (
     CaptureRequest,
     run_capture_workflow,
 )
+from oh_my_field.context import ContextError, ContextRequest, run_context_workflow
 from oh_my_field.eval import EvalError, EvalRequest, run_eval_workflow
-from oh_my_field.models import CapturedFileRole
+from oh_my_field.learn import LearnError, LearnRequest, run_learn_workflow
+from oh_my_field.models import (
+    CapturedFileRole,
+    HumanReviewAction,
+    ReviewTargetType,
+)
+from oh_my_field.orchestrate import (
+    OrchestrateError,
+    OrchestrateRequest,
+    ResumeRequest,
+    load_workflow_summary,
+    run_orchestrate_workflow,
+    run_resume_workflow,
+)
 from oh_my_field.promote import PromoteError, PromoteRequest, run_promote_workflow
+from oh_my_field.registry import RegistryError, RegistryRequest, run_registry_workflow
 from oh_my_field.replay import ReplayError, ReplayRequest, run_replay_workflow
+from oh_my_field.review import ReviewError, ReviewRequest, run_review_workflow
 from oh_my_field.storage import StorageError
 
 app = typer.Typer(
@@ -44,7 +60,34 @@ def _capture(
         typer.Option("--test-result"),
     ] = None,
     artifact: Annotated[list[Path] | None, typer.Option("--artifact")] = None,
+    command: Annotated[list[str] | None, typer.Option("--command")] = None,
+    command_cwd: Annotated[Path, typer.Option("--command-cwd")] = Path(),
+    command_timeout_seconds: Annotated[
+        int,
+        typer.Option("--command-timeout-seconds"),
+    ] = 60,
     feedback: Annotated[list[str] | None, typer.Option("--feedback")] = None,
+    user_intervention: Annotated[
+        list[str] | None,
+        typer.Option("--user-intervention"),
+    ] = None,
+    final_artifact: Annotated[
+        list[str] | None,
+        typer.Option("--final-artifact"),
+    ] = None,
+    improvement_note: Annotated[
+        list[str] | None,
+        typer.Option("--improvement-note"),
+    ] = None,
+    outcome: Annotated[
+        Literal["success", "failure", "unknown"],
+        typer.Option("--outcome"),
+    ] = "unknown",
+    runtime_tool: Annotated[
+        list[str] | None,
+        typer.Option("--runtime-tool"),
+    ] = None,
+    retries: Annotated[int, typer.Option("--retries")] = 0,
     field: Annotated[str, typer.Option("--field")] = "local",
     runtime: Annotated[str, typer.Option("--runtime")] = "codex",
     model: Annotated[str | None, typer.Option("--model")] = None,
@@ -57,6 +100,7 @@ def _capture(
         field=field,
         runtime=runtime,
         model=model,
+        runtime_tools=tuple(runtime_tool or ()),
         evidence_dir=evidence_dir,
         files=(
             *_capture_file_inputs("prompt", prompt),
@@ -67,11 +111,19 @@ def _capture(
             *_capture_file_inputs("test_result", test_result),
             *_capture_file_inputs("artifact", artifact),
         ),
+        commands=tuple(command or ()),
+        command_cwd=command_cwd,
+        command_timeout_seconds=command_timeout_seconds,
+        retries=retries,
         feedback=tuple(feedback or ()),
+        user_interventions=tuple(user_intervention or ()),
+        final_artifacts=tuple(final_artifact or ()),
+        improvement_notes=tuple(improvement_note or ()),
+        success_or_failure_label=outcome,
     )
     try:
         summary = run_capture_workflow(request)
-    except (CaptureError, StorageError) as exc:
+    except (CaptureError, StorageError, ValidationError) as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
 
@@ -132,6 +184,12 @@ def _replay(
     replay_dir: Annotated[Path, typer.Option("--replay-dir")] = Path(
         ".omf/replays",
     ),
+    execute: Annotated[bool, typer.Option("--execute")] = False,
+    command_cwd: Annotated[Path, typer.Option("--command-cwd")] = Path(),
+    command_timeout_seconds: Annotated[
+        int,
+        typer.Option("--command-timeout-seconds"),
+    ] = 60,
 ) -> None:
     try:
         summary = run_replay_workflow(
@@ -140,6 +198,9 @@ def _replay(
                 capabilities_dir=capabilities_dir,
                 evidence_dir=evidence_dir,
                 replay_dir=replay_dir,
+                execute_commands=execute,
+                command_cwd=command_cwd,
+                command_timeout_seconds=command_timeout_seconds,
             ),
         )
     except (ReplayError, StorageError, ValidationError) as exc:
@@ -167,6 +228,15 @@ def _eval(
     eval_dir: Annotated[Path, typer.Option("--eval-dir")] = Path(
         ".omf/evals",
     ),
+    harness_command: Annotated[
+        list[str] | None,
+        typer.Option("--harness-command"),
+    ] = None,
+    command_cwd: Annotated[Path, typer.Option("--command-cwd")] = Path(),
+    command_timeout_seconds: Annotated[
+        int,
+        typer.Option("--command-timeout-seconds"),
+    ] = 60,
 ) -> None:
     try:
         summary = run_eval_workflow(
@@ -177,6 +247,9 @@ def _eval(
                 evidence_dir=evidence_dir,
                 replay_dir=replay_dir,
                 eval_dir=eval_dir,
+                harness_commands=tuple(harness_command or ()),
+                command_cwd=command_cwd,
+                command_timeout_seconds=command_timeout_seconds,
             ),
         )
     except (EvalError, StorageError, ValidationError) as exc:
@@ -187,3 +260,422 @@ def _eval(
 
 
 app.command("eval")(_eval)
+
+
+def _approve(
+    target_type: Annotated[
+        Literal["evidence", "capability", "replay", "eval"],
+        typer.Argument(),
+    ],
+    target_id: Annotated[str, typer.Argument()],
+    reviewer: Annotated[str | None, typer.Option("--reviewer")] = None,
+    note: Annotated[list[str] | None, typer.Option("--note")] = None,
+    review_dir: Annotated[Path, typer.Option("--review-dir")] = Path(
+        ".omf/reviews",
+    ),
+) -> None:
+    _run_review_command(
+        target_type=target_type,
+        target_id=target_id,
+        action="approve",
+        reviewer=reviewer,
+        notes=tuple(note or ()),
+        revision_request=None,
+        review_dir=review_dir,
+    )
+
+
+app.command("approve")(_approve)
+
+
+def _reject(
+    target_type: Annotated[
+        Literal["evidence", "capability", "replay", "eval"],
+        typer.Argument(),
+    ],
+    target_id: Annotated[str, typer.Argument()],
+    reviewer: Annotated[str | None, typer.Option("--reviewer")] = None,
+    note: Annotated[list[str] | None, typer.Option("--note")] = None,
+    review_dir: Annotated[Path, typer.Option("--review-dir")] = Path(
+        ".omf/reviews",
+    ),
+) -> None:
+    _run_review_command(
+        target_type=target_type,
+        target_id=target_id,
+        action="reject",
+        reviewer=reviewer,
+        notes=tuple(note or ()),
+        revision_request=None,
+        review_dir=review_dir,
+    )
+
+
+app.command("reject")(_reject)
+
+
+def _revise(
+    target_type: Annotated[
+        Literal["evidence", "capability", "replay", "eval"],
+        typer.Argument(),
+    ],
+    target_id: Annotated[str, typer.Argument()],
+    revision: Annotated[str, typer.Option("--revision")],
+    reviewer: Annotated[str | None, typer.Option("--reviewer")] = None,
+    note: Annotated[list[str] | None, typer.Option("--note")] = None,
+    review_dir: Annotated[Path, typer.Option("--review-dir")] = Path(
+        ".omf/reviews",
+    ),
+) -> None:
+    _run_review_command(
+        target_type=target_type,
+        target_id=target_id,
+        action="revise",
+        reviewer=reviewer,
+        notes=tuple(note or ()),
+        revision_request=revision,
+        review_dir=review_dir,
+    )
+
+
+app.command("revise")(_revise)
+
+
+def _run_review_command(
+    *,
+    target_type: ReviewTargetType,
+    target_id: str,
+    action: HumanReviewAction,
+    reviewer: str | None,
+    notes: tuple[str, ...],
+    revision_request: str | None,
+    review_dir: Path,
+    added_context: tuple[str, ...] = (),
+    changed_goal: str | None = None,
+    changed_constraint: str | None = None,
+    regression_case: str | None = None,
+) -> None:
+    try:
+        summary = run_review_workflow(
+            ReviewRequest(
+                target_type=target_type,
+                target_id=target_id,
+                action=action,
+                reviewer=reviewer,
+                notes=notes,
+                revision_request=revision_request,
+                added_context=added_context,
+                changed_goal=changed_goal,
+                changed_constraint=changed_constraint,
+                regression_case=regression_case,
+                review_dir=review_dir,
+            ),
+        )
+    except (ReviewError, StorageError, ValidationError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(summary.model_dump_json())
+
+
+def _review(
+    target_type: Annotated[
+        Literal["evidence", "capability", "replay", "eval"],
+        typer.Argument(),
+    ],
+    target_id: Annotated[str, typer.Argument()],
+    action: Annotated[
+        Literal[
+            "approve",
+            "reject",
+            "revise",
+            "add_context",
+            "change_goal",
+            "change_constraint",
+            "mark_reusable",
+            "mark_unsafe",
+            "create_regression_case",
+        ],
+        typer.Argument(),
+    ],
+    reviewer: Annotated[str | None, typer.Option("--reviewer")] = None,
+    note: Annotated[list[str] | None, typer.Option("--note")] = None,
+    revision: Annotated[str | None, typer.Option("--revision")] = None,
+    added_context: Annotated[
+        list[str] | None,
+        typer.Option("--added-context"),
+    ] = None,
+    changed_goal: Annotated[str | None, typer.Option("--changed-goal")] = None,
+    changed_constraint: Annotated[
+        str | None,
+        typer.Option("--changed-constraint"),
+    ] = None,
+    regression_case: Annotated[
+        str | None,
+        typer.Option("--regression-case"),
+    ] = None,
+    review_dir: Annotated[Path, typer.Option("--review-dir")] = Path(
+        ".omf/reviews",
+    ),
+) -> None:
+    _run_review_command(
+        target_type=target_type,
+        target_id=target_id,
+        action=action,
+        reviewer=reviewer,
+        notes=tuple(note or ()),
+        revision_request=revision,
+        review_dir=review_dir,
+        added_context=tuple(added_context or ()),
+        changed_goal=changed_goal,
+        changed_constraint=changed_constraint,
+        regression_case=regression_case,
+    )
+
+
+app.command("review")(_review)
+
+
+def _learn(
+    capability_name: Annotated[str, typer.Argument()],
+    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
+        "capabilities",
+    ),
+    evidence_dir: Annotated[Path, typer.Option("--evidence-dir")] = Path(
+        ".omf/evidence",
+    ),
+    learning_dir: Annotated[Path, typer.Option("--learning-dir")] = Path(
+        ".omf/learning",
+    ),
+) -> None:
+    try:
+        summary = run_learn_workflow(
+            LearnRequest(
+                capability_name=capability_name,
+                capabilities_dir=capabilities_dir,
+                evidence_dir=evidence_dir,
+                learning_dir=learning_dir,
+            ),
+        )
+    except (LearnError, StorageError, ValidationError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(summary.model_dump_json())
+
+
+app.command("learn")(_learn)
+
+
+def _context(
+    capability_name: Annotated[str, typer.Argument()],
+    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
+        "capabilities",
+    ),
+    evidence_dir: Annotated[Path, typer.Option("--evidence-dir")] = Path(
+        ".omf/evidence",
+    ),
+    context_dir: Annotated[Path, typer.Option("--context-dir")] = Path(
+        ".omf/context",
+    ),
+    include_optional: Annotated[bool, typer.Option("--include-optional")] = False,
+    query: Annotated[str | None, typer.Option("--query")] = None,
+    max_chars: Annotated[int | None, typer.Option("--max-chars")] = None,
+) -> None:
+    try:
+        summary = run_context_workflow(
+            ContextRequest(
+                capability_name=capability_name,
+                capabilities_dir=capabilities_dir,
+                evidence_dir=evidence_dir,
+                context_dir=context_dir,
+                include_optional=include_optional,
+                query=query,
+                max_chars=max_chars,
+            ),
+        )
+    except (ContextError, StorageError, ValidationError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(summary.model_dump_json())
+
+
+app.command("context")(_context)
+
+
+def _run(
+    goal: Annotated[str, typer.Option("--goal")],
+    name: Annotated[str, typer.Option("--name")],
+    description: Annotated[str, typer.Option("--description")],
+    prompt: Annotated[list[Path] | None, typer.Option("--prompt")] = None,
+    context: Annotated[list[Path] | None, typer.Option("--context")] = None,
+    tool_call: Annotated[list[Path] | None, typer.Option("--tool-call")] = None,
+    command_output: Annotated[
+        list[Path] | None,
+        typer.Option("--command-output"),
+    ] = None,
+    diff: Annotated[list[Path] | None, typer.Option("--diff")] = None,
+    test_result: Annotated[
+        list[Path] | None,
+        typer.Option("--test-result"),
+    ] = None,
+    artifact: Annotated[list[Path] | None, typer.Option("--artifact")] = None,
+    command: Annotated[list[str] | None, typer.Option("--command")] = None,
+    harness_command: Annotated[
+        list[str] | None,
+        typer.Option("--harness-command"),
+    ] = None,
+    runtime_tool: Annotated[
+        list[str] | None,
+        typer.Option("--runtime-tool"),
+    ] = None,
+    command_cwd: Annotated[Path, typer.Option("--command-cwd")] = Path(),
+    command_timeout_seconds: Annotated[
+        int,
+        typer.Option("--command-timeout-seconds"),
+    ] = 60,
+    field: Annotated[str, typer.Option("--field")] = "local",
+    runtime: Annotated[str, typer.Option("--runtime")] = "codex",
+    model: Annotated[str | None, typer.Option("--model")] = None,
+    version: Annotated[str, typer.Option("--version")] = "0.1.0",
+    allow_failed_capture: Annotated[
+        bool,
+        typer.Option("--allow-failed-capture"),
+    ] = False,
+    skip_replay_execute: Annotated[
+        bool,
+        typer.Option("--skip-replay-execute"),
+    ] = False,
+    skip_optional_context: Annotated[
+        bool,
+        typer.Option("--skip-optional-context"),
+    ] = False,
+    evidence_dir: Annotated[Path, typer.Option("--evidence-dir")] = Path(
+        ".omf/evidence",
+    ),
+    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
+        "capabilities",
+    ),
+    replay_dir: Annotated[Path, typer.Option("--replay-dir")] = Path(
+        ".omf/replays",
+    ),
+    eval_dir: Annotated[Path, typer.Option("--eval-dir")] = Path(
+        ".omf/evals",
+    ),
+    context_dir: Annotated[Path, typer.Option("--context-dir")] = Path(
+        ".omf/context",
+    ),
+    learning_dir: Annotated[Path, typer.Option("--learning-dir")] = Path(
+        ".omf/learning",
+    ),
+    workflow_dir: Annotated[Path, typer.Option("--workflow-dir")] = Path(
+        ".omf/workflows",
+    ),
+) -> None:
+    request = OrchestrateRequest(
+        goal=goal,
+        capability_name=name,
+        description=description,
+        version=version,
+        field=field,
+        runtime=runtime,
+        model=model,
+        runtime_tools=tuple(runtime_tool or ()),
+        files=(
+            *_capture_file_inputs("prompt", prompt),
+            *_capture_file_inputs("context", context),
+            *_capture_file_inputs("tool_call", tool_call),
+            *_capture_file_inputs("command_output", command_output),
+            *_capture_file_inputs("diff", diff),
+            *_capture_file_inputs("test_result", test_result),
+            *_capture_file_inputs("artifact", artifact),
+        ),
+        commands=tuple(command or ()),
+        command_cwd=command_cwd,
+        command_timeout_seconds=command_timeout_seconds,
+        harness_commands=tuple(harness_command or ()),
+        execute_replay_commands=not skip_replay_execute,
+        include_optional_context=not skip_optional_context,
+        allow_failed_capture=allow_failed_capture,
+        evidence_dir=evidence_dir,
+        capabilities_dir=capabilities_dir,
+        replay_dir=replay_dir,
+        eval_dir=eval_dir,
+        context_dir=context_dir,
+        learning_dir=learning_dir,
+        workflow_dir=workflow_dir,
+    )
+    try:
+        summary = run_orchestrate_workflow(request)
+    except (OrchestrateError, StorageError, ValidationError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(summary.model_dump_json())
+
+
+app.command("run")(_run)
+
+
+def _resume(
+    run_id: Annotated[str, typer.Argument()],
+    workflow_dir: Annotated[Path, typer.Option("--workflow-dir")] = Path(
+        ".omf/workflows",
+    ),
+) -> None:
+    try:
+        summary = run_resume_workflow(
+            ResumeRequest(run_id=run_id, workflow_dir=workflow_dir),
+        )
+    except (OrchestrateError, StorageError, ValidationError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(summary.model_dump_json())
+
+
+app.command("resume")(_resume)
+
+
+def _status(
+    run_id: Annotated[str, typer.Argument()],
+    workflow_dir: Annotated[Path, typer.Option("--workflow-dir")] = Path(
+        ".omf/workflows",
+    ),
+) -> None:
+    try:
+        summary = load_workflow_summary(run_id, workflow_dir)
+    except StorageError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(summary.model_dump_json())
+
+
+app.command("status")(_status)
+
+
+def _registry(
+    capability_name: Annotated[str | None, typer.Argument()] = None,
+    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
+        "capabilities",
+    ),
+    eval_dir: Annotated[Path, typer.Option("--eval-dir")] = Path(".omf/evals"),
+) -> None:
+    try:
+        summary = run_registry_workflow(
+            RegistryRequest(
+                capability_name=capability_name,
+                capabilities_dir=capabilities_dir,
+                eval_dir=eval_dir,
+            ),
+        )
+    except (RegistryError, StorageError, ValidationError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(summary.model_dump_json())
+
+
+app.command("registry")(_registry)

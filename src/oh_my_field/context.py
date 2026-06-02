@@ -1,0 +1,294 @@
+import hashlib
+import secrets
+from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Final, TypedDict
+
+from langgraph.graph import END, START, StateGraph
+from langgraph.graph.state import CompiledStateGraph
+from pydantic import Field
+
+from oh_my_field.models import (
+    CAPABILITY_NAME_PATTERN,
+    CapabilityManifest,
+    CapturedTextFile,
+    ContextBundle,
+    EvidenceRecord,
+    StrictModel,
+)
+from oh_my_field.storage import load_evidence, load_manifest, write_context_bundle
+
+CONTEXT_NODES: Final = (
+    "load_manifest",
+    "load_source_evidence",
+    "select_context",
+    "validate_context",
+    "write_context",
+    "summarize",
+)
+SUMMARY_MAX_CHARS: Final = 120
+
+type Clock = Callable[[], datetime]
+type TokenFactory = Callable[[], str]
+
+
+class ContextError(Exception):
+    pass
+
+
+@dataclass
+class ContextStateError(ContextError):
+    key: str
+
+    def __str__(self) -> str:
+        return f"context workflow state missing {self.key!r}"
+
+
+@dataclass(frozen=True, slots=True)
+class ContextDependencies:
+    clock: Clock
+    token_factory: TokenFactory
+
+
+class ContextRequest(StrictModel):
+    capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
+    capabilities_dir: Path
+    evidence_dir: Path
+    context_dir: Path
+    include_optional: bool = False
+    query: str | None = None
+    max_chars: int | None = Field(default=None, ge=1)
+
+
+class ContextSummary(StrictModel):
+    context_id: str
+    context_path: str
+    capability_name: str
+    required_count: int
+    optional_count: int
+
+
+class ContextState(TypedDict, total=False):
+    request: ContextRequest
+    dependencies: ContextDependencies
+    manifest: CapabilityManifest
+    source_evidence: EvidenceRecord
+    bundle: ContextBundle
+    bundle_path: Path
+    summary: ContextSummary
+
+
+def run_context_workflow(
+    request: ContextRequest,
+    dependencies: ContextDependencies | None = None,
+) -> ContextSummary:
+    graph = _build_context_graph()
+    initial_state = ContextState(
+        request=request,
+        dependencies=dependencies or _default_dependencies(),
+    )
+    final_state = graph.invoke(initial_state)
+    return _state_summary(final_state)
+
+
+def _build_context_graph() -> CompiledStateGraph[
+    ContextState,
+    None,
+    ContextState,
+    ContextState,
+]:
+    builder: StateGraph[ContextState, None, ContextState, ContextState] = StateGraph(
+        ContextState,
+    )
+    builder.add_node("load_manifest", _load_manifest)
+    builder.add_node("load_source_evidence", _load_source_evidence)
+    builder.add_node("select_context", _select_context)
+    builder.add_node("validate_context", _validate_context)
+    builder.add_node("write_context", _write_context)
+    builder.add_node("summarize", _summarize)
+    builder.add_edge(START, "load_manifest")
+    builder.add_edge("load_manifest", "load_source_evidence")
+    builder.add_edge("load_source_evidence", "select_context")
+    builder.add_edge("select_context", "validate_context")
+    builder.add_edge("validate_context", "write_context")
+    builder.add_edge("write_context", "summarize")
+    builder.add_edge("summarize", END)
+    return builder.compile()
+
+
+def _default_dependencies() -> ContextDependencies:
+    return ContextDependencies(clock=_now_utc, token_factory=_token_suffix)
+
+
+def _now_utc() -> datetime:
+    return datetime.now(UTC)
+
+
+def _token_suffix() -> str:
+    return secrets.token_hex(4)
+
+
+def _load_manifest(state: ContextState) -> ContextState:
+    request = _state_request(state)
+    manifest = load_manifest(request.capability_name, request.capabilities_dir)
+    return ContextState(manifest=manifest)
+
+
+def _load_source_evidence(state: ContextState) -> ContextState:
+    request = _state_request(state)
+    manifest = _state_manifest(state)
+    evidence = load_evidence(manifest.source_evidence_id, request.evidence_dir)
+    return ContextState(source_evidence=evidence)
+
+
+def _select_context(state: ContextState) -> ContextState:
+    request = _state_request(state)
+    dependencies = _state_dependencies(state)
+    manifest = _state_manifest(state)
+    evidence = _state_source_evidence(state)
+    created_at = dependencies.clock().astimezone(UTC)
+    required_paths = set(manifest.context.required)
+    optional_paths = set(manifest.context.optional)
+    required_context = tuple(
+        file
+        for file in evidence.files
+        if file.path in required_paths or file.role == "context"
+    )
+    optional_context = ()
+    if request.include_optional:
+        optional_context = tuple(
+            file
+            for file in evidence.files
+            if file.path in optional_paths
+            and file not in required_context
+            and _matches_query(file, request.query)
+        )
+    selected_context = (*required_context, *optional_context)
+    max_chars = _max_chars(request, manifest)
+    bundle = ContextBundle(
+        id=f"{created_at:%Y%m%dT%H%M%SZ}-{dependencies.token_factory()}",
+        created_at=created_at,
+        capability_name=manifest.name,
+        source_evidence_id=evidence.id,
+        required_context=required_context,
+        optional_context=optional_context,
+        summaries=tuple(_summary_for_file(file) for file in selected_context),
+        compressed_context=tuple(
+            _compress_file(file, max_chars) for file in selected_context
+        ),
+        policy=manifest.context,
+    )
+    return ContextState(bundle=bundle)
+
+
+def _validate_context(state: ContextState) -> ContextState:
+    bundle = _state_bundle(state)
+    checked = ContextBundle.model_validate(bundle)
+    return ContextState(bundle=checked)
+
+
+def _write_context(state: ContextState) -> ContextState:
+    request = _state_request(state)
+    bundle = _state_bundle(state)
+    bundle_path = write_context_bundle(bundle, request.context_dir)
+    return ContextState(bundle_path=bundle_path)
+
+
+def _summarize(state: ContextState) -> ContextState:
+    bundle = _state_bundle(state)
+    bundle_path = _state_bundle_path(state)
+    summary = ContextSummary(
+        context_id=bundle.id,
+        context_path=str(bundle_path),
+        capability_name=bundle.capability_name,
+        required_count=len(bundle.required_context),
+        optional_count=len(bundle.optional_context),
+    )
+    return ContextState(summary=summary)
+
+
+def _matches_query(file: CapturedTextFile, query: str | None) -> bool:
+    if query is None:
+        return True
+    needle = query.casefold()
+    return needle in file.path.casefold() or needle in file.content.casefold()
+
+
+def _summary_for_file(file: CapturedTextFile) -> str:
+    text = " ".join(file.content.split())
+    if len(text) > SUMMARY_MAX_CHARS:
+        text = f"{text[: SUMMARY_MAX_CHARS - 3]}..."
+    return f"{file.path}: {text}"
+
+
+def _compress_file(file: CapturedTextFile, max_chars: int | None) -> CapturedTextFile:
+    if max_chars is None or len(file.content) <= max_chars:
+        return file
+    content = file.content[:max_chars]
+    raw_content = content.encode("utf-8")
+    return file.model_copy(
+        update={
+            "content": content,
+            "size_bytes": len(raw_content),
+            "sha256": hashlib.sha256(raw_content).hexdigest(),
+        },
+    )
+
+
+def _max_chars(request: ContextRequest, manifest: CapabilityManifest) -> int | None:
+    if request.max_chars is not None:
+        return request.max_chars
+    if manifest.context.maximum_token_budget is None:
+        return None
+    return manifest.context.maximum_token_budget * 4
+
+
+def _state_request(state: ContextState) -> ContextRequest:
+    request = state.get("request")
+    if request is None:
+        raise ContextStateError(key="request")
+    return request
+
+
+def _state_dependencies(state: ContextState) -> ContextDependencies:
+    dependencies = state.get("dependencies")
+    if dependencies is None:
+        raise ContextStateError(key="dependencies")
+    return dependencies
+
+
+def _state_manifest(state: ContextState) -> CapabilityManifest:
+    manifest = state.get("manifest")
+    if manifest is None:
+        raise ContextStateError(key="manifest")
+    return manifest
+
+
+def _state_source_evidence(state: ContextState) -> EvidenceRecord:
+    evidence = state.get("source_evidence")
+    if evidence is None:
+        raise ContextStateError(key="source_evidence")
+    return evidence
+
+
+def _state_bundle(state: ContextState) -> ContextBundle:
+    bundle = state.get("bundle")
+    if bundle is None:
+        raise ContextStateError(key="bundle")
+    return bundle
+
+
+def _state_bundle_path(state: ContextState) -> Path:
+    bundle_path = state.get("bundle_path")
+    if bundle_path is None:
+        raise ContextStateError(key="bundle_path")
+    return bundle_path
+
+
+def _state_summary(state: ContextState) -> ContextSummary:
+    summary = state.get("summary")
+    if summary is None:
+        raise ContextStateError(key="summary")
+    return summary

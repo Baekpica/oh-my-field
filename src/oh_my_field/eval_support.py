@@ -10,6 +10,7 @@ from pydantic import Field
 from oh_my_field.models import (
     CAPABILITY_NAME_PATTERN,
     EVIDENCE_ID_PATTERN,
+    CommandExecution,
     EvalCheck,
     EvalResult,
     EvidenceRecord,
@@ -58,6 +59,9 @@ class EvalRequest(StrictModel):
     evidence_dir: Path
     replay_dir: Path
     eval_dir: Path
+    harness_commands: tuple[str, ...] = ()
+    command_cwd: Path = Path()
+    command_timeout_seconds: int = Field(default=60, ge=1)
 
 
 class EvalSummary(StrictModel):
@@ -72,6 +76,7 @@ class EvalState(TypedDict, total=False):
     dependencies: EvalDependencies
     source_evidence: EvidenceRecord
     replay: ReplayRecord | None
+    command_executions: tuple[CommandExecution, ...]
     result: EvalResult
     result_path: Path
     summary: EvalSummary

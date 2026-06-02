@@ -9,10 +9,17 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from pydantic import Field
 
+from oh_my_field.execution import (
+    CommandExecutionError,
+    CommandExecutionRequest,
+    execute_shell_command,
+)
 from oh_my_field.models import (
     CAPABILITY_NAME_PATTERN,
     CapabilityManifest,
+    CommandExecution,
     EvidenceRecord,
+    HarnessResult,
     ReplayRecord,
     StrictModel,
     WorkflowManifest,
@@ -22,6 +29,7 @@ from oh_my_field.storage import load_evidence, load_manifest, write_replay
 REPLAY_NODES: Final = (
     "load_manifest",
     "load_source_evidence",
+    "execute_commands",
     "build_replay",
     "validate_replay",
     "write_replay",
@@ -67,6 +75,9 @@ class ReplayRequest(StrictModel):
     capabilities_dir: Path
     evidence_dir: Path
     replay_dir: Path
+    execute_commands: bool = False
+    command_cwd: Path = Path()
+    command_timeout_seconds: int = Field(default=60, ge=1)
 
 
 class ReplaySummary(StrictModel):
@@ -81,6 +92,7 @@ class ReplayState(TypedDict, total=False):
     dependencies: ReplayDependencies
     manifest: CapabilityManifest
     source_evidence: EvidenceRecord
+    command_executions: tuple[CommandExecution, ...]
     replay: ReplayRecord
     replay_path: Path
     summary: ReplaySummary
@@ -122,13 +134,15 @@ def _build_replay_graph() -> CompiledStateGraph[
     )
     builder.add_node("load_manifest", _load_manifest)
     builder.add_node("load_source_evidence", _load_source_evidence)
+    builder.add_node("execute_commands", _execute_commands)
     builder.add_node("build_replay", _build_replay)
     builder.add_node("validate_replay", _validate_replay)
     builder.add_node("write_replay", _write_replay)
     builder.add_node("summarize", _summarize)
     builder.add_edge(START, "load_manifest")
     builder.add_edge("load_manifest", "load_source_evidence")
-    builder.add_edge("load_source_evidence", "build_replay")
+    builder.add_edge("load_source_evidence", "execute_commands")
+    builder.add_edge("execute_commands", "build_replay")
     builder.add_edge("build_replay", "validate_replay")
     builder.add_edge("validate_replay", "write_replay")
     builder.add_edge("write_replay", "summarize")
@@ -154,11 +168,38 @@ def _load_source_evidence(state: ReplayState) -> ReplayState:
     return ReplayState(source_evidence=source_evidence)
 
 
+def _execute_commands(state: ReplayState) -> ReplayState:
+    request = _state_request(state)
+    source_evidence = _state_source_evidence(state)
+    if not request.execute_commands:
+        return ReplayState(command_executions=())
+    command_executions = tuple(
+        _execute_command(command, request)
+        for command in source_evidence.generated_commands
+    )
+    return ReplayState(command_executions=command_executions)
+
+
 def _build_replay(state: ReplayState) -> ReplayState:
     dependencies = _state_dependencies(state)
     manifest = _state_manifest(state)
     source_evidence = _state_source_evidence(state)
+    command_executions = _state_command_executions(state)
     created_at = dependencies.clock().astimezone(UTC)
+    command_failures = tuple(
+        execution.stderr or f"command exited with {execution.exit_code}"
+        for execution in command_executions
+        if execution.exit_code != 0
+    )
+    harness = source_evidence.harness
+    if command_executions:
+        harness = HarnessResult(
+            status="fail" if command_failures else "pass",
+            checks=(*source_evidence.harness.checks, "commands_replayed"),
+            failures=command_failures,
+            required_checks=source_evidence.harness.required_checks,
+            human_review_required=source_evidence.harness.human_review_required,
+        )
     replay = ReplayRecord(
         id=f"{created_at:%Y%m%dT%H%M%SZ}-{dependencies.token_factory()}",
         created_at=created_at,
@@ -166,8 +207,9 @@ def _build_replay(state: ReplayState) -> ReplayState:
         source_evidence_id=source_evidence.id,
         source_goal=source_evidence.goal,
         workflow=WorkflowManifest(graph="langgraph", nodes=REPLAY_NODES),
-        harness=source_evidence.harness,
+        harness=harness,
         runtime=source_evidence.runtime,
+        command_executions=command_executions,
     )
     return ReplayState(replay=replay)
 
@@ -197,6 +239,25 @@ def _summarize(state: ReplayState) -> ReplayState:
     return ReplayState(summary=summary)
 
 
+def _execute_command(command: str, request: ReplayRequest) -> CommandExecution:
+    try:
+        return execute_shell_command(
+            CommandExecutionRequest(
+                command=command,
+                cwd=request.command_cwd,
+                timeout_seconds=request.command_timeout_seconds,
+            ),
+        )
+    except CommandExecutionError as exc:
+        return CommandExecution(
+            command=command,
+            cwd=str(request.command_cwd),
+            exit_code=1,
+            stderr=str(exc),
+            duration_ms=0,
+        )
+
+
 def _state_request(state: ReplayState) -> ReplayRequest:
     request = state.get("request")
     if request is None:
@@ -223,6 +284,15 @@ def _state_source_evidence(state: ReplayState) -> EvidenceRecord:
     if source_evidence is None:
         raise ReplayStateError(key="source_evidence")
     return source_evidence
+
+
+def _state_command_executions(
+    state: ReplayState,
+) -> tuple[CommandExecution, ...]:
+    command_executions = state.get("command_executions")
+    if command_executions is None:
+        raise ReplayStateError(key="command_executions")
+    return command_executions
 
 
 def _state_replay(state: ReplayState) -> ReplayRecord:
