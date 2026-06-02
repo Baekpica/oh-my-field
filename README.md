@@ -143,8 +143,26 @@ uv run omf rollback <run_id> \
   --to-node execute_replay \
   --reason "rerun command with approval" \
   --workflow-dir /private/tmp/omf-run-workflows-smoke
+
+uv run omf dashboard \
+  --workflow-dir /private/tmp/omf-run-workflows-smoke \
+  --evidence-dir /private/tmp/omf-run-evidence-smoke \
+  --capabilities-dir /private/tmp/omf-run-capabilities-smoke \
+  --replay-dir /private/tmp/omf-run-replays-smoke \
+  --eval-dir /private/tmp/omf-run-evals-smoke \
+  --review-dir /private/tmp/omf-run-reviews-smoke
+
+uv run omf dashboard --once \
+  --workflow-dir /private/tmp/omf-run-workflows-smoke \
+  --evidence-dir /private/tmp/omf-run-evidence-smoke \
+  --capabilities-dir /private/tmp/omf-run-capabilities-smoke \
+  --replay-dir /private/tmp/omf-run-replays-smoke \
+  --eval-dir /private/tmp/omf-run-evals-smoke \
+  --review-dir /private/tmp/omf-run-reviews-smoke
 ```
 
 Commands classified as write, destructive, external, credential, production, or
 paid risk are recorded but not executed unless `--approve-command-risk` is set.
 Export is blocked unless `--approve-export` is set.
+The dashboard serves a local HTML UI and JSON API at `/api/snapshot`, polling
+workflow state, approval requests, reviews, evals, and capability history.
