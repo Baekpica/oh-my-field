@@ -6,9 +6,12 @@ from pydantic import ValidationError
 from oh_my_field.models import (
     CapabilityManifest,
     CapturedTextFile,
+    EvalCheck,
+    EvalResult,
     EvidenceRecord,
     HarnessResult,
     PromotionCriteria,
+    ReplayRecord,
     RuntimeInfo,
     WorkflowManifest,
 )
@@ -85,3 +88,40 @@ def test_capability_manifest_rejects_invalid_name() -> None:
                 required_harness_pass_rate=0.9,
             ),
         )
+
+
+def test_replay_and_eval_models_accept_valid_payloads() -> None:
+    workflow = WorkflowManifest(
+        graph="langgraph",
+        nodes=("load_evidence", "write_capability"),
+    )
+    harness = HarnessResult(
+        status="pass",
+        checks=("schema_valid",),
+        failures=(),
+    )
+    runtime = RuntimeInfo(name="codex", model="gpt-5.5")
+
+    replay = ReplayRecord(
+        id="20260602T010203Z-deadbeef",
+        created_at=datetime(2026, 6, 2, 1, 2, 3, tzinfo=UTC),
+        capability_name="repo_issue",
+        source_evidence_id="20260602T010203Z-deadbeef",
+        source_goal="triage repo issue",
+        workflow=workflow,
+        harness=harness,
+        runtime=runtime,
+    )
+    result = EvalResult(
+        id="20260602T010204Z-feedface",
+        created_at=datetime(2026, 6, 2, 1, 2, 4, tzinfo=UTC),
+        capability_name="repo_issue",
+        source_evidence_id="20260602T010203Z-deadbeef",
+        replay_id=replay.id,
+        status="pass",
+        checks=(EvalCheck(name="schema_valid", status="pass", message="ok"),),
+        failures=(),
+    )
+
+    assert replay.capability_name == "repo_issue"
+    assert result.checks[0].name == "schema_valid"

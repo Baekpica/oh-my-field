@@ -6,7 +6,12 @@ from pathlib import Path
 import yaml
 from pydantic import ValidationError
 
-from oh_my_field.models import CapabilityManifest, EvidenceRecord
+from oh_my_field.models import (
+    CapabilityManifest,
+    EvalResult,
+    EvidenceRecord,
+    ReplayRecord,
+)
 
 type YamlValue = (
     str | int | float | bool | None | list["YamlValue"] | dict[str, "YamlValue"]
@@ -43,6 +48,45 @@ class EvidenceParseError(StorageError):
         return f"could not parse evidence file {self.path}: {self.reason}"
 
 
+@dataclass
+class ManifestNotFoundError(StorageError):
+    capability_name: str
+    capabilities_dir: Path
+
+    def __str__(self) -> str:
+        return (
+            f"manifest for capability {self.capability_name!r} not found in "
+            f"{self.capabilities_dir}"
+        )
+
+
+@dataclass
+class ManifestParseError(StorageError):
+    path: Path
+    reason: str
+
+    def __str__(self) -> str:
+        return f"could not parse manifest file {self.path}: {self.reason}"
+
+
+@dataclass
+class ReplayNotFoundError(StorageError):
+    replay_id: str
+    replay_dir: Path
+
+    def __str__(self) -> str:
+        return f"replay {self.replay_id!r} not found in {self.replay_dir}"
+
+
+@dataclass
+class ReplayParseError(StorageError):
+    path: Path
+    reason: str
+
+    def __str__(self) -> str:
+        return f"could not parse replay file {self.path}: {self.reason}"
+
+
 def write_evidence(record: EvidenceRecord, evidence_dir: Path) -> Path:
     target_path = evidence_dir / f"{record.id}.json"
     _write_text_exclusive(target_path, record.model_dump_json(indent=2) + "\n")
@@ -53,6 +97,37 @@ def write_manifest(manifest: CapabilityManifest, capabilities_dir: Path) -> Path
     target_path = capabilities_dir / manifest.name / "manifest.yaml"
     _write_text_exclusive(target_path, _manifest_yaml(manifest))
     return target_path
+
+
+def load_manifest(capability_name: str, capabilities_dir: Path) -> CapabilityManifest:
+    manifest_path = capabilities_dir / capability_name / "manifest.yaml"
+    if not manifest_path.exists():
+        raise ManifestNotFoundError(
+            capability_name=capability_name,
+            capabilities_dir=capabilities_dir,
+        )
+    try:
+        raw_yaml = manifest_path.read_text(encoding="utf-8")
+    except FileNotFoundError as exc:
+        raise ManifestNotFoundError(
+            capability_name=capability_name,
+            capabilities_dir=capabilities_dir,
+        ) from exc
+    except UnicodeDecodeError as exc:
+        raise ManifestParseError(path=manifest_path, reason=str(exc)) from exc
+    try:
+        parsed_yaml = yaml.safe_load(raw_yaml)
+    except yaml.YAMLError as exc:
+        raise ManifestParseError(path=manifest_path, reason=str(exc)) from exc
+    if not isinstance(parsed_yaml, dict):
+        raise ManifestParseError(
+            path=manifest_path,
+            reason=f"expected mapping at top level, got {type(parsed_yaml).__name__}",
+        )
+    try:
+        return CapabilityManifest.model_validate(parsed_yaml)
+    except ValidationError as exc:
+        raise ManifestParseError(path=manifest_path, reason=str(exc)) from exc
 
 
 def load_evidence(evidence_id: str, evidence_dir: Path) -> EvidenceRecord:
@@ -72,6 +147,34 @@ def load_evidence(evidence_id: str, evidence_dir: Path) -> EvidenceRecord:
         return EvidenceRecord.model_validate_json(raw_json)
     except ValidationError as exc:
         raise EvidenceParseError(path=evidence_path, reason=str(exc)) from exc
+
+
+def write_replay(record: ReplayRecord, replay_dir: Path) -> Path:
+    target_path = replay_dir / f"{record.id}.json"
+    _write_text_exclusive(target_path, record.model_dump_json(indent=2) + "\n")
+    return target_path
+
+
+def load_replay(replay_id: str, replay_dir: Path) -> ReplayRecord:
+    replay_path = replay_dir / f"{replay_id}.json"
+    if not replay_path.exists():
+        raise ReplayNotFoundError(replay_id=replay_id, replay_dir=replay_dir)
+    try:
+        raw_json = replay_path.read_text(encoding="utf-8")
+    except FileNotFoundError as exc:
+        raise ReplayNotFoundError(replay_id=replay_id, replay_dir=replay_dir) from exc
+    except UnicodeDecodeError as exc:
+        raise ReplayParseError(path=replay_path, reason=str(exc)) from exc
+    try:
+        return ReplayRecord.model_validate_json(raw_json)
+    except ValidationError as exc:
+        raise ReplayParseError(path=replay_path, reason=str(exc)) from exc
+
+
+def write_eval_result(result: EvalResult, eval_dir: Path) -> Path:
+    target_path = eval_dir / f"{result.id}.json"
+    _write_text_exclusive(target_path, result.model_dump_json(indent=2) + "\n")
+    return target_path
 
 
 def _write_text_exclusive(target_path: Path, content: str) -> None:

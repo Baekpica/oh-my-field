@@ -17,6 +17,7 @@ type CapturedFileRole = Literal[
     "artifact",
 ]
 type HarnessStatus = Literal["pass", "fail"]
+type EvalStatus = Literal["pass", "fail"]
 type CapabilityStatus = Literal["candidate"]
 type WorkflowGraph = Literal["langgraph"]
 
@@ -78,3 +79,31 @@ class CapabilityManifest(StrictModel):
     harness: HarnessResult
     runtime: RuntimeInfo
     promotion_criteria: PromotionCriteria
+
+
+class ReplayRecord(StrictModel):
+    id: str = Field(pattern=EVIDENCE_ID_PATTERN)
+    created_at: datetime
+    capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
+    source_evidence_id: str = Field(pattern=EVIDENCE_ID_PATTERN)
+    source_goal: str = Field(min_length=1)
+    workflow: WorkflowManifest
+    harness: HarnessResult
+    runtime: RuntimeInfo
+
+
+class EvalCheck(StrictModel):
+    name: str = Field(min_length=1)
+    status: EvalStatus
+    message: str = Field(min_length=1)
+
+
+class EvalResult(StrictModel):
+    id: str = Field(pattern=EVIDENCE_ID_PATTERN)
+    created_at: datetime
+    capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
+    source_evidence_id: str = Field(pattern=EVIDENCE_ID_PATTERN)
+    replay_id: str | None = Field(default=None, pattern=EVIDENCE_ID_PATTERN)
+    status: EvalStatus
+    checks: tuple[EvalCheck, ...]
+    failures: tuple[str, ...] = ()
