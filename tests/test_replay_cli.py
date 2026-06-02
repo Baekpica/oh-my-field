@@ -152,6 +152,47 @@ def test_replay_execute_reruns_stored_commands(tmp_path: Path) -> None:
     assert "commands_replayed" in replay.harness.checks
 
 
+def test_replay_blocks_risky_stored_command_without_approval(tmp_path: Path) -> None:
+    evidence_dir = tmp_path / "evidence"
+    capabilities_dir = tmp_path / "capabilities"
+    replay_dir = tmp_path / "replays"
+    marker_path = tmp_path / "blocked-replay.txt"
+    evidence = make_evidence_record().model_copy(
+        update={"generated_commands": (f"touch {marker_path}",)},
+    )
+    manifest = make_manifest()
+    write_evidence(evidence, evidence_dir)
+    write_manifest(manifest, capabilities_dir)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "replay",
+            manifest.name,
+            "--execute",
+            "--command-cwd",
+            str(tmp_path),
+            "--capabilities-dir",
+            str(capabilities_dir),
+            "--evidence-dir",
+            str(evidence_dir),
+            "--replay-dir",
+            str(replay_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert not marker_path.exists()
+    output = ReplayOutput.model_validate_json(result.stdout)
+    replay = load_replay(output.replay_id, replay_dir)
+    execution = replay.command_executions[0]
+    assert output.harness_status == "fail"
+    assert execution.exit_code == 126
+    assert execution.risk_categories == ("write",)
+    assert execution.approval_required
+    assert not execution.approved
+
+
 def test_replay_fails_for_missing_manifest(tmp_path: Path) -> None:
     result = CliRunner().invoke(
         app,

@@ -14,6 +14,7 @@ from oh_my_field.eval_support import (
     build_harness_check,
     default_dependencies,
     state_dependencies,
+    state_manifest,
     state_manifest_source_evidence_id,
     state_request,
     state_result,
@@ -27,6 +28,7 @@ from oh_my_field.execution import (
     execute_shell_command,
 )
 from oh_my_field.models import (
+    CapabilityManifest,
     CommandExecution,
     EvalCheck,
     EvalChecklistItem,
@@ -92,6 +94,7 @@ def _load_manifest(state: EvalState) -> EvalState:
             manifest_name=manifest.name,
         )
     return EvalState(
+        manifest=manifest,
         manifest_source_evidence_id=manifest.source_evidence_id,
     )
 
@@ -115,8 +118,10 @@ def _load_replay(state: EvalState) -> EvalState:
 
 def _execute_harness(state: EvalState) -> EvalState:
     request = state_request(state)
+    manifest = state_manifest(state)
     command_executions = tuple(
-        _execute_command(command, request) for command in request.harness_commands
+        _execute_command(command, request, manifest)
+        for command in request.harness_commands
     )
     return EvalState(command_executions=command_executions)
 
@@ -217,13 +222,21 @@ def _summarize(state: EvalState) -> EvalState:
     return EvalState(summary=summary)
 
 
-def _execute_command(command: str, request: EvalRequest) -> CommandExecution:
+def _execute_command(
+    command: str,
+    request: EvalRequest,
+    manifest: CapabilityManifest,
+) -> CommandExecution:
     try:
         return execute_shell_command(
             CommandExecutionRequest(
                 command=command,
                 cwd=request.command_cwd,
                 timeout_seconds=request.command_timeout_seconds,
+                approve_risk=request.approve_command_risk,
+                approval_required_categories=(
+                    manifest.workflow_control.approval_required_actions
+                ),
             ),
         )
     except CommandExecutionError as exc:

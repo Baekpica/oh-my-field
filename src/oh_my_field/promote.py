@@ -7,6 +7,7 @@ from langgraph.graph.state import CompiledStateGraph
 from pydantic import Field
 
 from oh_my_field.models import (
+    COMMAND_RISK_CATEGORIES,
     CapabilityManifest,
     ContextPolicy,
     EvidencePolicy,
@@ -168,6 +169,10 @@ def _build_manifest(state: PromoteState) -> PromoteState:
             require_approval_before_write=True,
             require_approval_before_external_call=True,
             require_approval_before_destructive_action=True,
+            approval_required_actions=COMMAND_RISK_CATEGORIES,
+            safe_execution_mode=True,
+            network_policy="disabled",
+            rollback_policy="manual checkpoint restore",
             checkpoint_interval=1,
         ),
         promotion_criteria=PromotionCriteria(

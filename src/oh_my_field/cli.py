@@ -76,6 +76,10 @@ def _capture(
         int,
         typer.Option("--command-timeout-seconds"),
     ] = 60,
+    approve_command_risk: Annotated[
+        bool,
+        typer.Option("--approve-command-risk"),
+    ] = False,
     feedback: Annotated[list[str] | None, typer.Option("--feedback")] = None,
     user_intervention: Annotated[
         list[str] | None,
@@ -124,6 +128,7 @@ def _capture(
         commands=tuple(command or ()),
         command_cwd=command_cwd,
         command_timeout_seconds=command_timeout_seconds,
+        approve_command_risk=approve_command_risk,
         retries=retries,
         feedback=tuple(feedback or ()),
         user_interventions=tuple(user_intervention or ()),
@@ -200,6 +205,10 @@ def _replay(
         int,
         typer.Option("--command-timeout-seconds"),
     ] = 60,
+    approve_command_risk: Annotated[
+        bool,
+        typer.Option("--approve-command-risk"),
+    ] = False,
 ) -> None:
     try:
         summary = run_replay_workflow(
@@ -211,6 +220,7 @@ def _replay(
                 execute_commands=execute,
                 command_cwd=command_cwd,
                 command_timeout_seconds=command_timeout_seconds,
+                approve_command_risk=approve_command_risk,
             ),
         )
     except (ReplayError, StorageError, ValidationError) as exc:
@@ -259,6 +269,10 @@ def _eval(
         int,
         typer.Option("--command-timeout-seconds"),
     ] = 60,
+    approve_command_risk: Annotated[
+        bool,
+        typer.Option("--approve-command-risk"),
+    ] = False,
 ) -> None:
     try:
         summary = run_eval_workflow(
@@ -277,6 +291,7 @@ def _eval(
                 rubric_scores=_eval_rubric_scores(rubric_score),
                 command_cwd=command_cwd,
                 command_timeout_seconds=command_timeout_seconds,
+                approve_command_risk=approve_command_risk,
             ),
         )
     except (EvalError, StorageError, ValidationError, ValueError) as exc:
@@ -623,6 +638,10 @@ def _run(
         int,
         typer.Option("--command-timeout-seconds"),
     ] = 60,
+    approve_command_risk: Annotated[
+        bool,
+        typer.Option("--approve-command-risk"),
+    ] = False,
     field: Annotated[str, typer.Option("--field")] = "local",
     runtime: Annotated[str, typer.Option("--runtime")] = "codex",
     model: Annotated[str | None, typer.Option("--model")] = None,
@@ -682,6 +701,7 @@ def _run(
         commands=tuple(command or ()),
         command_cwd=command_cwd,
         command_timeout_seconds=command_timeout_seconds,
+        approve_command_risk=approve_command_risk,
         harness_commands=tuple(harness_command or ()),
         checklist_items=_eval_checklist_items(
             passes=checklist_pass,

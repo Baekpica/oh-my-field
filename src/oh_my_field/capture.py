@@ -84,6 +84,7 @@ class CaptureRequest(StrictModel):
     commands: tuple[str, ...] = ()
     command_cwd: Path = Path()
     command_timeout_seconds: int = Field(default=60, ge=1)
+    approve_command_risk: bool = False
     retries: int = Field(default=0, ge=0)
     feedback: tuple[str, ...] = ()
     user_interventions: tuple[str, ...] = ()
@@ -288,6 +289,7 @@ def _execute_command(command: str, request: CaptureRequest) -> CommandExecution:
                 command=command,
                 cwd=request.command_cwd,
                 timeout_seconds=request.command_timeout_seconds,
+                approve_risk=request.approve_command_risk,
             ),
         )
     except CommandExecutionError as exc:

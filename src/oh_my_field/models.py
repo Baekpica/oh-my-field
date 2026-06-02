@@ -21,6 +21,15 @@ type EvalStatus = Literal["pass", "fail"]
 type CapabilityStatus = Literal["candidate"]
 type WorkflowGraph = Literal["langgraph"]
 type SuccessLabel = Literal["success", "failure", "unknown"]
+type CommandRiskCategory = Literal[
+    "write",
+    "destructive",
+    "external_call",
+    "credential_access",
+    "production_write",
+    "paid_operation",
+]
+type NetworkPolicy = Literal["disabled", "internal_only", "allowed"]
 type ReviewTargetType = Literal["evidence", "capability", "replay", "eval"]
 type HumanReviewAction = Literal[
     "approve",
@@ -48,6 +57,15 @@ type HumanReviewStatus = Literal[
 type WorkflowRunStatus = Literal["running", "completed", "failed", "pending_review"]
 type WorkflowNodeStatus = Literal["pending", "pass", "fail", "skipped"]
 
+COMMAND_RISK_CATEGORIES: Final[tuple[CommandRiskCategory, ...]] = (
+    "write",
+    "destructive",
+    "external_call",
+    "credential_access",
+    "production_write",
+    "paid_operation",
+)
+
 
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -73,6 +91,9 @@ class CommandExecution(StrictModel):
     stdout: str = ""
     stderr: str = ""
     duration_ms: int = Field(ge=0)
+    risk_categories: tuple[CommandRiskCategory, ...] = ()
+    approval_required: bool = False
+    approved: bool = False
 
 
 class CostMetrics(StrictModel):
@@ -176,6 +197,13 @@ class WorkflowControl(StrictModel):
     require_approval_before_write: bool = True
     require_approval_before_external_call: bool = True
     require_approval_before_destructive_action: bool = True
+    approval_required_actions: tuple[CommandRiskCategory, ...] = (
+        COMMAND_RISK_CATEGORIES
+    )
+    safe_execution_mode: bool = True
+    credential_scope: str | None = None
+    network_policy: NetworkPolicy = "disabled"
+    rollback_policy: str | None = None
     checkpoint_interval: int | None = Field(default=None, ge=1)
     rollback_strategy: str | None = None
     resume_from_checkpoint: str | None = None
@@ -310,6 +338,7 @@ class WorkflowRunConfig(StrictModel):
     commands: tuple[str, ...] = ()
     command_cwd: str = Field(min_length=1)
     command_timeout_seconds: int = Field(ge=1)
+    approve_command_risk: bool = False
     harness_commands: tuple[str, ...] = ()
     checklist_items: tuple[EvalChecklistItem, ...] = ()
     rubric_scores: tuple[EvalRubricScore, ...] = ()

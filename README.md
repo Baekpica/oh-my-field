@@ -23,6 +23,12 @@ uv run omf capture \
   --outcome success \
   --evidence-dir /private/tmp/omf-evidence-smoke
 
+uv run omf capture \
+  --goal "approved file write" \
+  --command "touch /private/tmp/omf-approved-write" \
+  --approve-command-risk \
+  --evidence-dir /private/tmp/omf-evidence-smoke
+
 uv run omf promote <evidence_id> \
   --name repo_issue_triage \
   --description "GitHub issue triage capability" \
@@ -31,6 +37,7 @@ uv run omf promote <evidence_id> \
 
 uv run omf replay repo_issue_triage \
   --execute \
+  --approve-command-risk \
   --evidence-dir /private/tmp/omf-evidence-smoke \
   --capabilities-dir /private/tmp/omf-capabilities-smoke \
   --replay-dir /private/tmp/omf-replays-smoke
@@ -119,3 +126,6 @@ uv run omf status <run_id> \
 uv run omf resume <run_id> \
   --workflow-dir /private/tmp/omf-run-workflows-smoke
 ```
+
+Commands classified as write, destructive, external, credential, production, or
+paid risk are recorded but not executed unless `--approve-command-risk` is set.

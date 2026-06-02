@@ -236,6 +236,42 @@ def test_eval_runs_harness_commands_and_records_failures(
     assert "harness_command_1" in {check.name for check in eval_result.checks}
 
 
+def test_eval_blocks_risky_harness_command_without_approval(
+    tmp_path: Path,
+) -> None:
+    evidence_dir = tmp_path / "evidence"
+    capabilities_dir = tmp_path / "capabilities"
+    marker_path = tmp_path / "blocked-eval.txt"
+    evidence = make_evidence_record()
+    manifest = make_manifest()
+    write_evidence(evidence, evidence_dir)
+    write_manifest(manifest, capabilities_dir)
+
+    result = invoke_eval(
+        manifest.name,
+        "--harness-command",
+        f"touch {marker_path}",
+        "--command-cwd",
+        str(tmp_path),
+        tmp_path=tmp_path,
+        capabilities_dir=capabilities_dir,
+        evidence_dir=evidence_dir,
+    )
+
+    assert result.exit_code == 0
+    assert not marker_path.exists()
+    output = EvalOutput.model_validate_json(result.stdout)
+    eval_result = EvalResult.model_validate_json(
+        Path(output.eval_path).read_text(encoding="utf-8"),
+    )
+    execution = eval_result.command_executions[0]
+    assert output.status == "fail"
+    assert execution.exit_code == 126
+    assert execution.risk_categories == ("write",)
+    assert execution.approval_required
+    assert not execution.approved
+
+
 def test_eval_records_checklist_and_rubric_harness_results(
     tmp_path: Path,
 ) -> None:

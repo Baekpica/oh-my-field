@@ -144,3 +144,70 @@ def test_capture_preserves_failed_command_as_failed_evidence(
     assert output.harness_status == "fail"
     assert evidence.command_executions[0].exit_code == 7
     assert evidence.errors == ("failed\n",)
+
+
+def test_capture_blocks_write_command_without_explicit_approval(
+    tmp_path: Path,
+) -> None:
+    evidence_dir = tmp_path / "evidence"
+    marker_path = tmp_path / "blocked.txt"
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "capture",
+            "--goal",
+            "capture risky command",
+            "--command",
+            f"touch {marker_path}",
+            "--command-cwd",
+            str(tmp_path),
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert not marker_path.exists()
+    output = CaptureOutput.model_validate_json(result.stdout)
+    evidence = load_evidence(output.evidence_id, evidence_dir)
+    execution = evidence.command_executions[0]
+    assert output.harness_status == "fail"
+    assert execution.exit_code == 126
+    assert execution.risk_categories == ("write",)
+    assert execution.approval_required
+    assert not execution.approved
+
+
+def test_capture_executes_write_command_with_explicit_approval(
+    tmp_path: Path,
+) -> None:
+    evidence_dir = tmp_path / "evidence"
+    marker_path = tmp_path / "approved.txt"
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "capture",
+            "--goal",
+            "capture approved command",
+            "--command",
+            f"touch {marker_path}",
+            "--command-cwd",
+            str(tmp_path),
+            "--approve-command-risk",
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert marker_path.exists()
+    output = CaptureOutput.model_validate_json(result.stdout)
+    evidence = load_evidence(output.evidence_id, evidence_dir)
+    execution = evidence.command_executions[0]
+    assert output.harness_status == "pass"
+    assert execution.exit_code == 0
+    assert execution.risk_categories == ("write",)
+    assert execution.approval_required
+    assert execution.approved

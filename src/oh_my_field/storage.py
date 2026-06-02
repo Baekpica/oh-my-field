@@ -421,6 +421,13 @@ def _manifest_yaml_data(manifest: CapabilityManifest) -> dict[str, YamlValue]:
             "require_approval_before_destructive_action": (
                 manifest.workflow_control.require_approval_before_destructive_action
             ),
+            "approval_required_actions": list(
+                manifest.workflow_control.approval_required_actions,
+            ),
+            "safe_execution_mode": manifest.workflow_control.safe_execution_mode,
+            "credential_scope": manifest.workflow_control.credential_scope,
+            "network_policy": manifest.workflow_control.network_policy,
+            "rollback_policy": manifest.workflow_control.rollback_policy,
             "checkpoint_interval": manifest.workflow_control.checkpoint_interval,
             "rollback_strategy": manifest.workflow_control.rollback_strategy,
             "resume_from_checkpoint": manifest.workflow_control.resume_from_checkpoint,

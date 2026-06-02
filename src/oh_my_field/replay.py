@@ -78,6 +78,7 @@ class ReplayRequest(StrictModel):
     execute_commands: bool = False
     command_cwd: Path = Path()
     command_timeout_seconds: int = Field(default=60, ge=1)
+    approve_command_risk: bool = False
 
 
 class ReplaySummary(StrictModel):
@@ -173,8 +174,9 @@ def _execute_commands(state: ReplayState) -> ReplayState:
     source_evidence = _state_source_evidence(state)
     if not request.execute_commands:
         return ReplayState(command_executions=())
+    manifest = _state_manifest(state)
     command_executions = tuple(
-        _execute_command(command, request)
+        _execute_command(command, request, manifest)
         for command in source_evidence.generated_commands
     )
     return ReplayState(command_executions=command_executions)
@@ -239,13 +241,21 @@ def _summarize(state: ReplayState) -> ReplayState:
     return ReplayState(summary=summary)
 
 
-def _execute_command(command: str, request: ReplayRequest) -> CommandExecution:
+def _execute_command(
+    command: str,
+    request: ReplayRequest,
+    manifest: CapabilityManifest,
+) -> CommandExecution:
     try:
         return execute_shell_command(
             CommandExecutionRequest(
                 command=command,
                 cwd=request.command_cwd,
                 timeout_seconds=request.command_timeout_seconds,
+                approve_risk=request.approve_command_risk,
+                approval_required_categories=(
+                    manifest.workflow_control.approval_required_actions
+                ),
             ),
         )
     except CommandExecutionError as exc:
