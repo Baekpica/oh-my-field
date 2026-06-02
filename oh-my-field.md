@@ -2,7 +2,7 @@
 
 - oh-my-field는 에이전트가 수행한 일회성 작업을 조직과 개인의 반복 가능한 업무 자산으로 전환하는 Field-oriented Agent Capability Platform 지향
 - 사용자의 현장 업무 맥락, 암묵지, 시행착오, 검증 기준을 에이전트가 재사용 가능한 형태로 학습·축적·실행할 수 있도록 지원
-- 단순 프롬프트 관리 도구가 아닌, 프롬프트·컨텍스트·실행 환경·검증 하네스·증거 수집·모델 학습까지 수직적으로 연결하는 agent workflow operating layer 지향
+- 단순 프롬프트 관리 도구가 아닌, 프롬프트·컨텍스트·실행 환경·검증 하네스·증거 수집·학습 후보 export까지 현재 구현하고, 실제 모델 학습은 후속 검증 대상으로 분리하는 agent workflow operating layer 지향
 - 프론티어 모델, 로컬 모델, 폐쇄망 모델, 사내 특화 모델 등 런타임이 변경되어도 사용자의 업무 기준과 검증 가능한 실행 품질 유지
 - “AI가 한 번 잘한 일”을 “언제든 다시 잘할 수 있는 capability”로 만드는 것에 집중
 
@@ -24,7 +24,9 @@
 
 - 에이전트가 업무를 수행하는 과정에서 생성·수집되는 판단 근거
 - 예: 실행 로그, 커맨드 히스토리, 코드 diff, 테스트 결과, 사용자 피드백, 실패 케이스, 재시도 이력, 산출물 품질 평가 등
-- 향후 capability 개선, 프롬프트 최적화, 하네스 보강, 모델 fine-tuning 또는 preference 학습의 근거로 활용
+- 향후 capability 개선, 프롬프트 최적화, 하네스 보강, eval set 구성, fine-tuning 후보 검토의 근거로 활용
+- 매우 중요: 실제로 실행·검증된 evidence가 없는 수치, 비용, 성능, 리소스 사용량, 개선 효과는 결과물이나 문서에 쓰지 않는다.
+- fixture, mock, 추정치, 보기 좋은 숫자를 실제 동작 결과처럼 제시하는 기능은 출시 대상이 아니라 폐기 또는 하네스 수정 대상이다.
 
 ## Harness
 
@@ -110,6 +112,12 @@
 - 명령어 실행, 결과 파싱, 이상 징후 판단, 보고서 생성까지 단계화
 - human approval이 필요한 지점과 자동 실행 가능한 지점 분리
 
+## Computing Resource Workflow Agent화
+
+- 현재 실행 환경에서 감지한 OS, Python, 논리 CPU 코어, 메모리, `nvidia-smi` availability를 evidence로 저장
+- GPU 사용량이나 비용 evidence가 없으면 리포트에서 해당 사용량을 주장하지 않도록 validator로 차단
+- 입력 계약, local execution evidence, validator, output report를 묶어 보고서를 재생성 가능하게 구성
+
 ## Domain Report Generation
 
 - 반복적으로 작성되는 업무 보고서, 리서치 요약, 회의록, 운영 리포트를 capability로 구성
@@ -155,8 +163,9 @@
 
 ## 7. Learn
 
-- 누적 evidence를 기반으로 prompt optimization, context packing, retrieval policy 개선
-- 필요 시 fine-tuning dataset, preference dataset, eval set으로 전환
+- 현재 구현된 범위는 검증된 omf artifact를 `omf learn`으로 local JSONL learning candidate set과 manifest로 export하는 것
+- prompt optimization, context packing, retrieval policy 개선, eval set 구성, fine-tuning dataset 후보 검토는 export된 evidence를 근거로 별도 검증해야 함
+- 실제 model training, preference 학습, prompt patch 자동 적용은 아직 출시 기능으로 주장하지 않음
 
 # LangGraph-based Workflow Design
 
@@ -204,30 +213,95 @@
 
 ### Learning Export Node
 
-- evidence를 eval set, prompt improvement data, fine-tuning candidate로 변환
+- 검증된 evidence/replay/eval/review/regression artifact를 JSONL learning candidate로 export
+- 현재 MVP 범위에서는 local JSONL export까지만 출시 기능이며, 실제 model training/fine-tuning은 구현된 기능으로 주장하지 않음
 
 # Command Interface
 
-## /capture
+## `omf capture`
 
-- 현재 agent 작업 세션의 로그, 프롬프트, 결과, 사용자 수정사항을 evidence로 저장
-- 실패한 작업도 저장 가능
+- 실제 shell command를 local shell invocation으로 실행하고 exit code, stdout, stderr, runtime, artifact SHA-256을 evidence JSON으로 저장
+- redirection 같은 shell syntax는 실제 실행 결과로 검증하며, 실행에 사용한 shell args도 command result에 기록
+- `--check`로 지정한 harness command도 같은 방식으로 실제 실행하고, 하나라도 실패하면 evidence를 fail로 기록
+- Git repository 안에서 실행하면 repository root, HEAD, branch, changed files, diff SHA-256을 evidence로 저장
+- 실패한 작업도 evidence로 저장하지만, 실패 evidence는 capability로 승격할 수 없음
 - 향후 capability 후보로 승격하기 위한 raw material 확보
 
-## /promote
+## `omf promote`
 
-- 특정 작업 세션 또는 workflow를 capability로 승격
-- manifest, harness, context policy, execution policy, failure recovery rule 생성
+- `omf capture`로 생성된 passing evidence만 capability manifest로 승격
+- evidence에 기록된 command, cwd, artifact hash, harness command를 manifest에 고정
+- source evidence SHA-256을 함께 저장해 원본 evidence 변조를 `omf inspect`에서 잡을 수 있게 함
 
-## /replay
+## `omf replay`
 
-- 기존 capability 또는 workflow를 동일/유사 입력에 대해 재실행
-- 모델·런타임 변경 시 재현성 비교 가능
+- capability manifest의 command를 실제 재실행
+- 실행 전에 capability manifest의 source evidence SHA-256과 promoted contract가 `omf inspect` 기준으로 유효해야 함
+- exit code, artifact hash, harness command 통과 여부를 promote 당시 계약과 비교
+- replay evidence path/SHA-256과 capability manifest path/SHA-256을 replay artifact에 저장
+- `omf inspect`가 replay evidence와 manifest를 다시 읽어 checks, timing, status를 재계산해야 유효한 replay artifact로 인정
 
-## /eval
+## `omf eval`
 
-- capability의 성능, 안정성, 비용, 재현성, 사용자 개입률 평가
-- 여러 모델 또는 runtime 간 비교 지원
+- capability replay를 지정 횟수만큼 실제 실행
+- eval 입력 manifest는 먼저 `omf inspect` 기준의 capability 검증을 통과해야 하며, invalid manifest는 replay/eval artifact를 만들기 전에 실패
+- pass count, pass rate, replay result 경로, 실제 command/harness timing summary를 eval artifact로 저장
+- `omf inspect`가 embedded replay result들을 재검증하고 pass count/rate/status/timing을 재계산해야 유효한 eval artifact로 인정
+- 비용은 별도 billing evidence가 없으면 측정값처럼 기록하지 않음
+
+## `omf list`
+
+- 로컬 store의 evidence, capability manifest, replay, eval, review, regression, learning JSON artifact를 실제 파일 기준으로 조회
+- 각 entry는 `omf inspect` 검증을 통과해야 하며 status와 validated flag를 포함
+- 깨진 JSON, schema mismatch, hash mismatch, 잘못된 store bucket이 있으면 list는 실패
+- 존재하지 않는 registry 항목을 꾸며내지 않고, `.omf` 아래에 있는 검증된 파일만 인덱싱
+
+## `omf inspect`
+
+- evidence, capability, replay, eval, review, regression, learning JSON artifact를 schema별로 검증하고 요약 출력
+- evidence artifact는 command/harness status를 재계산하고 기록된 artifact 파일의 존재, SHA-256, size를 재검증
+- capability artifact는 source evidence 파일 존재, SHA-256, passing status, promoted command/artifact/check 계약 일치를 재검증
+- replay artifact는 manifest/evidence 파일 존재, SHA-256, command/artifact/check/timing/status 일치를 재검증
+- eval artifact는 embedded replay result, pass count/rate/status/timing 일치를 재검증
+- review artifact는 reviewed artifact 파일 존재, SHA-256, type/status 일치를 재검증
+- regression artifact는 source artifact와 capability manifest 파일 존재, SHA-256, type/status, capability name, embedded replay status 일치를 재검증
+- learning artifact는 manifest만 보지 않고 JSONL 파일 존재, SHA-256, row schema, row count, manifest item 일치 여부까지 재검증
+- schema가 지원되지 않거나 깨진 JSON이면 실패
+
+## `omf review`
+
+- 검증 가능한 omf JSON artifact에 대해 reviewer, decision, note를 실제 review JSON artifact로 저장
+- reviewed artifact의 경로, SHA-256, artifact type, status를 함께 저장해 어떤 산출물에 대한 판단인지 추적
+- `omf inspect`가 reviewed artifact hash와 type/status를 다시 확인해야 유효한 review artifact로 인정
+- 지원 decision은 approve, reject, revise, add_context, change_goal, change_constraint, mark_reusable, mark_unsafe, create_regression_case로 제한
+- 실제 approval gate나 workflow 중단/재개 orchestration은 아직 출시 기능으로 주장하지 않음
+
+## `omf regress`
+
+- capability manifest와 source omf artifact를 받아 regression case JSON artifact를 생성
+- source artifact와 capability manifest가 먼저 `omf inspect` 검증을 통과해야 하며, invalid manifest는 regression/replay artifact를 만들기 전에 실패
+- source artifact와 manifest의 경로, SHA-256, type/status, reason을 함께 저장
+- case 생성 시 capability replay를 실제 실행하고 replay result를 regression artifact에 포함
+- `omf inspect`가 source artifact와 capability manifest hash를 다시 확인해야 유효한 regression artifact로 인정
+- 단순 label이나 샘플 eval set이 아니라, 생성 시점에 재실행된 결과를 근거로 함
+
+## `omf learn`
+
+- 검증 가능한 omf JSON artifact를 받아 local JSONL learning candidate set과 manifest를 생성
+- source artifact의 경로, SHA-256, type, status를 item마다 저장
+- manifest에는 JSONL 경로, JSONL SHA-256, item count, purpose를 저장
+- `omf inspect`가 JSONL 파일을 다시 읽어 hash와 row 내용을 검증할 수 있어야 learning export로 인정
+- 지원 purpose는 prompt_improvement, eval_set, fine_tuning_candidate로 제한
+- 실제 model training, dataset upload, fine-tuning job 실행은 아직 출시 기능으로 주장하지 않음
+
+## `omf search`
+
+- 로컬 store의 evidence, capability, replay, eval, review, regression, learning JSON artifact 파일을 실제로 읽고 text query로 검색
+- 검색 결과로 반환되는 artifact는 `omf inspect` 검증을 통과해야 하며 status와 validated flag를 포함
+- matching artifact가 깨진 JSON, schema mismatch, hash mismatch, 잘못된 store bucket에 있으면 검색은 실패
+- `--kind`로 artifact 종류를 제한할 수 있으며, 지원하지 않는 종류는 실패
+- 검색 결과는 일치한 파일 경로, artifact 종류, status, validated flag, score, snippet을 포함
+- 아직 embedding 기반 semantic retrieval이나 외부 registry 검색을 구현한 것으로 주장하지 않음
 
 # Capability Manifest
 
@@ -328,6 +402,9 @@ promotion_criteria:
 - prompt 개선
 - context selection policy 개선
 - 실패 케이스 기반 regression eval 생성
+- 현재 구현된 regression case는 `omf regress`가 source artifact와 capability manifest를 해시로 묶고 replay를 실제 실행한 JSON artifact다.
+- regression case의 inspect는 source artifact와 capability manifest hash link를 다시 검증한다.
+- 현재 구현된 learning export는 `omf learn`이 검증된 source artifact를 해시로 묶고 JSONL candidate set과 manifest SHA-256을 저장한 JSON artifact다.
 - 모델별 성능 비교
 - 작은 모델용 few-shot example 생성
 - fine-tuning 또는 preference dataset 후보 생성
@@ -355,6 +432,7 @@ promotion_criteria:
 ### regression eval
 
 - 과거 실패 케이스가 재발하지 않는지 확인
+- 현재 구현된 범위는 `omf regress`가 regression case 생성 시 capability replay를 즉시 실행하고 결과를 artifact에 저장하는 것
 
 ### human approval
 
@@ -443,6 +521,7 @@ promotion_criteria:
 
 - omf는 human intervention을 실패가 아니라 학습 가능한 signal로 간주
 - 사용자가 개입한 지점은 capability의 부족한 부분을 드러내는 중요한 evidence로 저장
+- 현재 구현된 범위는 `omf review`로 검증된 omf JSON artifact에 대한 reviewer decision과 note를 review artifact로 저장하는 것
 
 ## human review 유형
 
@@ -468,7 +547,7 @@ promotion_criteria:
 
 ## CLI / Agent Interface
 
-- /capture, /promote, /replay, /eval 등 명령 제공
+- `omf capture`, `omf promote`, `omf replay`, `omf eval`, `omf list`, `omf inspect`, `omf review`, `omf regress`, `omf learn`, `omf search` 명령 제공
 - 기존 coding agent 또는 chat agent와 함께 사용할 수 있는 얇은 command layer 제공
 
 ## Workflow Orchestrator
@@ -503,8 +582,11 @@ promotion_criteria:
 
 ## Learning Pipeline
 
-- evidence를 prompt patch, eval set, few-shot example, fine-tuning dataset으로 변환
-- 모델 학습 또는 runtime policy 개선에 활용
+- 현재 구현된 범위는 검증된 omf JSON artifact를 local JSONL learning candidate와 manifest로 export하는 것
+- export manifest는 source artifact path/SHA-256/type/status, JSONL path/SHA-256, item count를 기록
+- learning export는 `omf inspect`에서 JSONL hash, row schema, row count, manifest item 일치가 통과해야 유효
+- prompt patch, eval set, few-shot example, fine-tuning dataset으로의 실제 적용은 후속 pipeline에서 별도 검증해야 함
+- 모델 학습, dataset upload, runtime policy 자동 반영은 아직 출시 기능으로 주장하지 않음
 
 # Data Flow
 
@@ -562,13 +644,22 @@ promotion_criteria:
 
 ## 필수 기능
 
-- /capture: agent 작업 세션 수집
-- /promote: 성공 workflow의 capability manifest 생성
-- /replay: 기존 capability 재실행
+- `omf capture`: agent 작업 command를 실제 실행하고 evidence JSON 저장
+- `omf promote`: 성공 evidence의 capability manifest 생성 및 source evidence SHA-256 저장
+- `omf replay`: 기존 capability command 재실행, artifact hash 검증, manifest/evidence SHA-256 저장
+- `omf eval`: replay 반복 실행, embedded replay 검증 가능한 pass rate artifact 생성
+- `omf eval`: replay별 실제 command/harness duration을 집계한 timing summary 생성
+- `omf list`: 로컬 store artifact 조회
+- `omf inspect`: omf JSON artifact schema 검증, capability/replay/eval/review/regression hash link 검증, learning JSONL hash 검증 및 요약
+- `omf review`: 검증된 omf JSON artifact에 대한 reviewer decision 저장
+- `omf regress`: source artifact와 capability manifest를 묶고 replay를 실행한 regression case 저장
+- `omf learn`: 검증된 omf artifact를 local JSONL learning candidate set으로 export하고 manifest/hash 저장
+- `omf search`: 로컬 store JSON artifact에 대한 inspect-validated text-based 검색
+- shell/git/test 기반 harness 실행은 `omf capture --check`와 replay 시 check 재실행으로 구현
+- Git 기반 작업 이력은 `omf capture`가 수집하는 root, HEAD, branch, changed files, diff hash로 구현
 - evidence store 기본 구현
 - capability registry 기본 구현
-- shell/git/test 기반 harness 실행
-- LangGraph 기반 node workflow prototype
+- LangGraph 기반 node workflow prototype은 아직 출시 기능이 아니라 후속 구현 대상
 
 # Product Positioning
 
@@ -676,6 +767,7 @@ promotion_criteria:
 
 - omf는 모든 정보를 context에 무작정 넣는 방식을 지양
 - capability별 context policy를 통해 필요한 정보만 선별적으로 주입
+- 현재 구현된 초기 retrieval은 `omf search`이며, 로컬 `.omf` store의 JSON artifact를 실제 파일에서 읽고 `omf inspect` 검증을 통과한 matching artifact만 text query 결과로 반환한다.
 - context engine은 다음 기능을 제공해야 함
   - 파일/문서 검색
   - 이전 workflow evidence 검색
@@ -689,6 +781,7 @@ promotion_criteria:
 
 - 초기에는 text-based retrieval을 우선 지원
 - 이후 embedding 기반 semantic retrieval, structured metadata filter, multimodal retrieval 등으로 확장 가능
+- 현재 MVP에서 검증된 범위는 local store JSON artifact의 text-based search까지이며, semantic retrieval은 후속 구현 대상
 - 중요한 것은 retrieval 자체가 아니라, capability 실행에 필요한 context를 재현 가능하게 구성하는 것
 
 # Harness Engine
@@ -765,13 +858,18 @@ promotion_criteria:
 - 초기 제품은 CLI-first
 - CLI는 사람과 agent가 모두 호출하기 쉬운 command surface 제공
 - 주요 명령은 다음을 중심으로 구성
-  - /capture
-  - /promote
-  - /replay
-  - /eval
-  - /inspect
-  - /rollback
-  - /export
+  - `omf capture`
+  - `omf promote`
+  - `omf replay`
+  - `omf eval`
+  - `omf list`
+  - `omf inspect`
+  - `omf review`
+  - `omf regress`
+  - `omf learn`
+  - `omf search`
+
+구현되지 않은 명령은 문서에서 출시 기능처럼 표기하지 않는다. `rollback`, `export`는 실제 command, evidence schema, 검증 테스트가 생긴 뒤에만 문서화한다.
 
 - 이후 web dashboard 또는 desktop workbench를 통해 다음 기능 제공 가능
   - capability registry 조회
@@ -785,7 +883,9 @@ promotion_criteria:
 # Observability
 
 - 모든 workflow run은 session 단위로 추적
-- node별 input, output, tool call, error, retry, latency, cost, artifact, user intervention 기록
+- 현재 CLI evidence는 command input/output, exit code, artifact hash, Git 상태, harness result를 기록
+- 현재 `omf replay`와 `omf eval`은 실제 command/harness duration 기반 timing을 기록
+- cost, user intervention, node별 graph telemetry는 별도 evidence schema와 검증 테스트가 생긴 뒤에만 출시 기능으로 문서화
 - 실패한 작업도 성공 작업과 동일하게 evidence로 저장
 - long-running workflow에서는 다음 상태를 확인 가능해야 함
   - current goal

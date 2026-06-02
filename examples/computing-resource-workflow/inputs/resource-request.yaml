@@ -1,0 +1,6 @@
+request_id: local-omf-validation-2026-06-02
+team: agent-platform
+requester: codex-local
+workload_name: computing-resource-workflow-report-generation
+command: "uv run python scripts/validate_computing_resource_example.py examples/computing-resource-workflow --write-report"
+output_report: "examples/computing-resource-workflow/outputs/resource-usage-report.md"

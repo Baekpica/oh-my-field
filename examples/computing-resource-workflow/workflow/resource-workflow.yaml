@@ -1,0 +1,16 @@
+steps:
+  - id: request
+    name: Define local validation request
+    owner: requester
+  - id: approval
+    name: Reject unsupported resource claims
+    owner: ops-manager
+  - id: allocation
+    name: Capture local CPU and memory evidence
+    owner: platform-engineer
+  - id: execution
+    name: Regenerate report from evidence
+    owner: job-runner
+  - id: report
+    name: Validate evidence-backed report
+    owner: analyst

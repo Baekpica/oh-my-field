@@ -1,0 +1,50 @@
+[project]
+name = "oh-my-field"
+version = "0.1.0"
+description = "Field-fit agent capability examples and validation harnesses."
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+  "pydantic>=2.11,<3",
+  "PyYAML>=6.0,<7",
+  "typer>=0.17,<1",
+]
+
+[project.scripts]
+omf = "omf.cli:main"
+
+[tool.uv]
+package = true
+
+[dependency-groups]
+dev = [
+  "basedpyright>=1.31.0,<2",
+  "pytest>=9.0,<10",
+  "ruff>=0.12,<1",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = ["COM812", "D100", "D101", "D102", "D103", "D104", "D105", "D106", "D203", "D213"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/omf/cli.py" = ["PLR0913"]
+"scripts/*.py" = ["FBT001", "FBT002", "INP001"]
+"tests/*.py" = ["INP001", "PLR0915", "PLR2004", "S101", "S603"]
+
+[tool.basedpyright]
+typeCheckingMode = "all"
+pythonVersion = "3.13"
+venvPath = "."
+venv = ".venv"
+stubPath = "typings"
+exclude = [
+  ".venv",
+  ".pytest_cache",
+  ".ruff_cache",
+]
+reportMissingTypeStubs = false

@@ -1,0 +1,51 @@
+{
+  "status": "pass",
+  "job_id": "local-current-environment",
+  "command": "uv run python scripts/validate_computing_resource_example.py examples/computing-resource-workflow --write-report",
+  "platform_system": "Darwin",
+  "platform_release": "25.6.0",
+  "machine": "arm64",
+  "python_version": "3.14.4",
+  "cpu_logical_cores": 10,
+  "memory_bytes": 34359738368,
+  "nvidia_smi_available": false,
+  "gpu_usage_claimed": false,
+  "cost_claimed": false,
+  "workflow_trace": [
+    {
+      "id": "request",
+      "name": "Define local validation request",
+      "owner": "requester",
+      "status": "pass",
+      "detail": "validated request local-omf-validation-2026-06-02 for workload computing-resource-workflow-report-generation"
+    },
+    {
+      "id": "approval",
+      "name": "Reject unsupported resource claims",
+      "owner": "ops-manager",
+      "status": "pass",
+      "detail": "rejected unsupported GPU usage and billing claims because no separate evidence artifact is present"
+    },
+    {
+      "id": "allocation",
+      "name": "Capture local CPU and memory evidence",
+      "owner": "platform-engineer",
+      "status": "pass",
+      "detail": "captured local runtime Darwin 25.6.0 arm64, Python 3.14.4, logical CPU cores 10, memory 32.0 GiB, nvidia-smi 사용 불가"
+    },
+    {
+      "id": "execution",
+      "name": "Regenerate report from evidence",
+      "owner": "job-runner",
+      "status": "pass",
+      "detail": "rendered report from local evidence to examples/computing-resource-workflow/outputs/resource-usage-report.md"
+    },
+    {
+      "id": "report",
+      "name": "Validate evidence-backed report",
+      "owner": "analyst",
+      "status": "pass",
+      "detail": "bound report validation to regenerated evidence-backed output"
+    }
+  ]
+}
