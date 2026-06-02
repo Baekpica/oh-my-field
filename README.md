@@ -25,4 +25,16 @@ uv run omf promote <evidence_id> \
   --description "GitHub issue triage capability" \
   --evidence-dir /private/tmp/omf-evidence-smoke \
   --capabilities-dir /private/tmp/omf-capabilities-smoke
+
+uv run omf replay repo_issue_triage \
+  --evidence-dir /private/tmp/omf-evidence-smoke \
+  --capabilities-dir /private/tmp/omf-capabilities-smoke \
+  --replay-dir /private/tmp/omf-replays-smoke
+
+uv run omf eval repo_issue_triage \
+  --replay-id <replay_id> \
+  --evidence-dir /private/tmp/omf-evidence-smoke \
+  --capabilities-dir /private/tmp/omf-capabilities-smoke \
+  --replay-dir /private/tmp/omf-replays-smoke \
+  --eval-dir /private/tmp/omf-evals-smoke
 ```
