@@ -12,6 +12,7 @@ from oh_my_field.capture import (
 )
 from oh_my_field.models import CapturedFileRole
 from oh_my_field.promote import PromoteError, PromoteRequest, run_promote_workflow
+from oh_my_field.replay import ReplayError, ReplayRequest, run_replay_workflow
 from oh_my_field.storage import StorageError
 
 app = typer.Typer(
@@ -117,3 +118,34 @@ def _promote(
 
 
 app.command("promote")(_promote)
+
+
+def _replay(
+    capability_name: Annotated[str, typer.Argument()],
+    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
+        "capabilities",
+    ),
+    evidence_dir: Annotated[Path, typer.Option("--evidence-dir")] = Path(
+        ".omf/evidence",
+    ),
+    replay_dir: Annotated[Path, typer.Option("--replay-dir")] = Path(
+        ".omf/replays",
+    ),
+) -> None:
+    try:
+        summary = run_replay_workflow(
+            ReplayRequest(
+                capability_name=capability_name,
+                capabilities_dir=capabilities_dir,
+                evidence_dir=evidence_dir,
+                replay_dir=replay_dir,
+            ),
+        )
+    except (ReplayError, StorageError, ValidationError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(summary.model_dump_json())
+
+
+app.command("replay")(_replay)
