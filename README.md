@@ -102,6 +102,19 @@ uv run omf reflect repo_issue_triage \
   --eval-dir /private/tmp/omf-evals-smoke \
   --reflection-dir /private/tmp/omf-reflections-smoke
 
+uv run omf inspect capability repo_issue_triage \
+  --capabilities-dir /private/tmp/omf-capabilities-smoke
+
+uv run omf export repo_issue_triage \
+  --approve-export \
+  --evidence-dir /private/tmp/omf-evidence-smoke \
+  --capabilities-dir /private/tmp/omf-capabilities-smoke \
+  --eval-dir /private/tmp/omf-evals-smoke \
+  --context-dir /private/tmp/omf-context-smoke \
+  --learning-dir /private/tmp/omf-learning-smoke \
+  --reflection-dir /private/tmp/omf-reflections-smoke \
+  --export-dir /private/tmp/omf-exports-smoke
+
 uv run omf run \
   --goal "triage repo issue" \
   --name repo_issue_triage_v2 \
@@ -125,7 +138,13 @@ uv run omf status <run_id> \
 
 uv run omf resume <run_id> \
   --workflow-dir /private/tmp/omf-run-workflows-smoke
+
+uv run omf rollback <run_id> \
+  --to-node execute_replay \
+  --reason "rerun command with approval" \
+  --workflow-dir /private/tmp/omf-run-workflows-smoke
 ```
 
 Commands classified as write, destructive, external, credential, production, or
 paid risk are recorded but not executed unless `--approve-command-risk` is set.
+Export is blocked unless `--approve-export` is set.

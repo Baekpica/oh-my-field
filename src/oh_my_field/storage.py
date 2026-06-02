@@ -5,9 +5,10 @@ from datetime import datetime
 from pathlib import Path
 
 import yaml
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from oh_my_field.models import (
+    CapabilityExportBundle,
     CapabilityManifest,
     ContextBundle,
     EvalResult,
@@ -127,6 +128,32 @@ class WorkflowRunParseError(StorageError):
 
     def __str__(self) -> str:
         return f"could not parse workflow run file {self.path}: {self.reason}"
+
+
+@dataclass
+class ArtifactNotFoundError(StorageError):
+    artifact_type: str
+    artifact_id: str
+    artifact_dir: Path
+
+    def __str__(self) -> str:
+        return (
+            f"{self.artifact_type} {self.artifact_id!r} not found in "
+            f"{self.artifact_dir}"
+        )
+
+
+@dataclass
+class ArtifactParseError(StorageError):
+    artifact_type: str
+    path: Path
+    reason: str
+
+    def __str__(self) -> str:
+        return (
+            f"could not parse {self.artifact_type} file {self.path}: "
+            f"{self.reason}"
+        )
 
 
 def write_evidence(record: EvidenceRecord, evidence_dir: Path) -> Path:
@@ -276,9 +303,63 @@ def write_context_bundle(bundle: ContextBundle, context_dir: Path) -> Path:
     return target_path
 
 
+def load_context_bundle(context_id: str, context_dir: Path) -> ContextBundle:
+    context_path = _artifact_path(context_id, context_dir)
+    return _load_artifact(
+        "context",
+        context_id,
+        context_dir,
+        context_path,
+        ContextBundle,
+    )
+
+
+def list_context_bundles(context_dir: Path) -> tuple[ContextBundle, ...]:
+    return _list_artifacts("context", context_dir, ContextBundle)
+
+
 def write_reflection_report(report: ReflectionReport, reflection_dir: Path) -> Path:
     target_path = reflection_dir / f"{report.id}.json"
     _write_text_exclusive(target_path, report.model_dump_json(indent=2) + "\n")
+    return target_path
+
+
+def load_learning_export(learning_id: str, learning_dir: Path) -> LearningExport:
+    learning_path = _artifact_path(learning_id, learning_dir)
+    return _load_artifact(
+        "learning",
+        learning_id,
+        learning_dir,
+        learning_path,
+        LearningExport,
+    )
+
+
+def list_learning_exports(learning_dir: Path) -> tuple[LearningExport, ...]:
+    return _list_artifacts("learning", learning_dir, LearningExport)
+
+
+def load_reflection_report(
+    reflection_id: str,
+    reflection_dir: Path,
+) -> ReflectionReport:
+    reflection_path = _artifact_path(reflection_id, reflection_dir)
+    return _load_artifact(
+        "reflection",
+        reflection_id,
+        reflection_dir,
+        reflection_path,
+        ReflectionReport,
+    )
+
+
+def list_reflection_reports(reflection_dir: Path) -> tuple[ReflectionReport, ...]:
+    return _list_artifacts("reflection", reflection_dir, ReflectionReport)
+
+
+def write_export_bundle(bundle: CapabilityExportBundle, export_dir: Path) -> Path:
+    target_path = export_dir / bundle.capability_name / f"{bundle.id}.json"
+    _write_text_exclusive(target_path, bundle.model_dump_json(indent=2) + "\n")
     return target_path
 
 
@@ -305,6 +386,62 @@ def load_workflow_run(run_id: str, workflow_dir: Path) -> WorkflowRunRecord:
         return WorkflowRunRecord.model_validate_json(raw_json)
     except ValidationError as exc:
         raise WorkflowRunParseError(path=run_path, reason=str(exc)) from exc
+
+
+def _artifact_path(artifact_id: str, artifact_dir: Path) -> Path:
+    return artifact_dir / f"{artifact_id}.json"
+
+
+def _load_artifact[ModelT: BaseModel](
+    artifact_type: str,
+    artifact_id: str,
+    artifact_dir: Path,
+    artifact_path: Path,
+    model: type[ModelT],
+) -> ModelT:
+    if not artifact_path.exists():
+        raise ArtifactNotFoundError(
+            artifact_type=artifact_type,
+            artifact_id=artifact_id,
+            artifact_dir=artifact_dir,
+        )
+    return _load_artifact_path(artifact_type, artifact_path, model)
+
+
+def _list_artifacts[ModelT: BaseModel](
+    artifact_type: str,
+    artifact_dir: Path,
+    model: type[ModelT],
+) -> tuple[ModelT, ...]:
+    if not artifact_dir.exists():
+        return ()
+    return tuple(
+        _load_artifact_path(artifact_type, path, model)
+        for path in sorted(artifact_dir.glob("*.json"))
+    )
+
+
+def _load_artifact_path[ModelT: BaseModel](
+    artifact_type: str,
+    artifact_path: Path,
+    model: type[ModelT],
+) -> ModelT:
+    try:
+        raw_json = artifact_path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        raise ArtifactParseError(
+            artifact_type=artifact_type,
+            path=artifact_path,
+            reason=str(exc),
+        ) from exc
+    try:
+        return model.model_validate_json(raw_json)
+    except ValidationError as exc:
+        raise ArtifactParseError(
+            artifact_type=artifact_type,
+            path=artifact_path,
+            reason=str(exc),
+        ) from exc
 
 
 def _write_text_exclusive(target_path: Path, content: str) -> None:

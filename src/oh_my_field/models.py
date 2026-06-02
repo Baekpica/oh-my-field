@@ -409,3 +409,15 @@ class ReflectionReport(StrictModel):
     prompt_patches: tuple[str, ...] = ()
     tool_call_revisions: tuple[str, ...] = ()
     notes: tuple[str, ...] = ()
+
+
+class CapabilityExportBundle(StrictModel):
+    id: str = Field(pattern=EVIDENCE_ID_PATTERN)
+    created_at: datetime
+    capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
+    manifest: CapabilityManifest
+    source_evidence: EvidenceRecord
+    eval_results: tuple[EvalResult, ...] = ()
+    context_bundles: tuple[ContextBundle, ...] = ()
+    learning_exports: tuple[LearningExport, ...] = ()
+    reflection_reports: tuple[ReflectionReport, ...] = ()

@@ -12,6 +12,8 @@ from oh_my_field.capture import (
 )
 from oh_my_field.context import ContextError, ContextRequest, run_context_workflow
 from oh_my_field.eval import EvalError, EvalRequest, run_eval_workflow
+from oh_my_field.export import ExportError, ExportRequest, run_export_workflow
+from oh_my_field.inspection import InspectRequest, inspect_artifact
 from oh_my_field.learn import LearnError, LearnRequest, run_learn_workflow
 from oh_my_field.models import (
     CapturedFileRole,
@@ -33,6 +35,7 @@ from oh_my_field.reflect import ReflectError, ReflectRequest, run_reflect_workfl
 from oh_my_field.registry import RegistryError, RegistryRequest, run_registry_workflow
 from oh_my_field.replay import ReplayError, ReplayRequest, run_replay_workflow
 from oh_my_field.review import ReviewError, ReviewRequest, run_review_workflow
+from oh_my_field.rollback import RollbackError, RollbackRequest, rollback_workflow
 from oh_my_field.storage import StorageError
 
 app = typer.Typer(
@@ -829,3 +832,153 @@ def _reflect(
 
 
 app.command("reflect")(_reflect)
+
+
+def _inspect(
+    target_type: Annotated[
+        Literal[
+            "evidence",
+            "capability",
+            "replay",
+            "eval",
+            "workflow",
+            "context",
+            "learning",
+            "reflection",
+        ],
+        typer.Argument(),
+    ],
+    target_id: Annotated[str, typer.Argument()],
+    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
+        "capabilities",
+    ),
+    evidence_dir: Annotated[Path, typer.Option("--evidence-dir")] = Path(
+        ".omf/evidence",
+    ),
+    replay_dir: Annotated[Path, typer.Option("--replay-dir")] = Path(
+        ".omf/replays",
+    ),
+    eval_dir: Annotated[Path, typer.Option("--eval-dir")] = Path(".omf/evals"),
+    workflow_dir: Annotated[Path, typer.Option("--workflow-dir")] = Path(
+        ".omf/workflows",
+    ),
+    context_dir: Annotated[Path, typer.Option("--context-dir")] = Path(
+        ".omf/context",
+    ),
+    learning_dir: Annotated[Path, typer.Option("--learning-dir")] = Path(
+        ".omf/learning",
+    ),
+    reflection_dir: Annotated[Path, typer.Option("--reflection-dir")] = Path(
+        ".omf/reflections",
+    ),
+) -> None:
+    try:
+        summary = inspect_artifact(
+            InspectRequest(
+                target_type=target_type,
+                target_id=target_id,
+                capabilities_dir=capabilities_dir,
+                evidence_dir=evidence_dir,
+                replay_dir=replay_dir,
+                eval_dir=eval_dir,
+                workflow_dir=workflow_dir,
+                context_dir=context_dir,
+                learning_dir=learning_dir,
+                reflection_dir=reflection_dir,
+            ),
+        )
+    except (StorageError, ValidationError, ValueError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(summary.model_dump_json())
+
+
+app.command("inspect")(_inspect)
+
+
+def _export(
+    capability_name: Annotated[str, typer.Argument()],
+    approve_export: Annotated[
+        bool,
+        typer.Option("--approve-export"),
+    ] = False,
+    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
+        "capabilities",
+    ),
+    evidence_dir: Annotated[Path, typer.Option("--evidence-dir")] = Path(
+        ".omf/evidence",
+    ),
+    eval_dir: Annotated[Path, typer.Option("--eval-dir")] = Path(".omf/evals"),
+    context_dir: Annotated[Path, typer.Option("--context-dir")] = Path(
+        ".omf/context",
+    ),
+    learning_dir: Annotated[Path, typer.Option("--learning-dir")] = Path(
+        ".omf/learning",
+    ),
+    reflection_dir: Annotated[Path, typer.Option("--reflection-dir")] = Path(
+        ".omf/reflections",
+    ),
+    export_dir: Annotated[Path, typer.Option("--export-dir")] = Path(
+        ".omf/exports",
+    ),
+) -> None:
+    try:
+        summary = run_export_workflow(
+            ExportRequest(
+                capability_name=capability_name,
+                approve_export=approve_export,
+                capabilities_dir=capabilities_dir,
+                evidence_dir=evidence_dir,
+                eval_dir=eval_dir,
+                context_dir=context_dir,
+                learning_dir=learning_dir,
+                reflection_dir=reflection_dir,
+                export_dir=export_dir,
+            ),
+        )
+    except (ExportError, StorageError, ValidationError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(summary.model_dump_json())
+
+
+app.command("export")(_export)
+
+
+def _rollback(
+    run_id: Annotated[str, typer.Argument()],
+    to_node: Annotated[
+        Literal[
+            "observe_capture",
+            "structure_promote",
+            "context_pack",
+            "execute_replay",
+            "evaluate_harness",
+            "learn_export",
+        ],
+        typer.Option("--to-node"),
+    ],
+    reason: Annotated[str, typer.Option("--reason")] = "manual rollback",
+    workflow_dir: Annotated[Path, typer.Option("--workflow-dir")] = Path(
+        ".omf/workflows",
+    ),
+) -> None:
+    try:
+        summary = rollback_workflow(
+            RollbackRequest(
+                run_id=run_id,
+                to_node=to_node,
+                reason=reason,
+                workflow_dir=workflow_dir,
+            ),
+        )
+    except (RollbackError, StorageError, ValidationError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(summary.model_dump_json())
+
+
+app.command("rollback")(_rollback)
