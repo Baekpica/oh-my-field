@@ -79,7 +79,6 @@ def _load_manifest(state: EvalState) -> EvalState:
             manifest_name=manifest.name,
         )
     return EvalState(
-        manifest_name=manifest.name,
         manifest_source_evidence_id=manifest.source_evidence_id,
     )
 

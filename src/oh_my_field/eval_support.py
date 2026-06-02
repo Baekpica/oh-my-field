@@ -3,7 +3,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Final, TypedDict
+from typing import TypedDict
 
 from pydantic import Field
 
@@ -15,16 +15,6 @@ from oh_my_field.models import (
     EvidenceRecord,
     ReplayRecord,
     StrictModel,
-)
-
-EVAL_NODES: Final = (
-    "load_manifest",
-    "load_source_evidence",
-    "load_replay",
-    "build_eval",
-    "validate_eval",
-    "write_eval",
-    "summarize",
 )
 
 type Clock = Callable[[], datetime]
@@ -85,7 +75,6 @@ class EvalState(TypedDict, total=False):
     result: EvalResult
     result_path: Path
     summary: EvalSummary
-    manifest_name: str
     manifest_source_evidence_id: str
 
 
