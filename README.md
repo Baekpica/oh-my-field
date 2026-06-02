@@ -13,6 +13,16 @@ uv run pyright
 ## CLI
 
 ```bash
-omf capture --goal "triage repo issue" --prompt prompt.md
-omf promote <evidence_id> --name repo_issue_triage --description "GitHub issue triage capability"
+uv run omf capture \
+  --goal "triage repo issue" \
+  --prompt tests/fixtures/prompt.md \
+  --command-output tests/fixtures/output.txt \
+  --test-result tests/fixtures/pytest.txt \
+  --evidence-dir /private/tmp/omf-evidence-smoke
+
+uv run omf promote <evidence_id> \
+  --name repo_issue_triage \
+  --description "GitHub issue triage capability" \
+  --evidence-dir /private/tmp/omf-evidence-smoke \
+  --capabilities-dir /private/tmp/omf-capabilities-smoke
 ```
