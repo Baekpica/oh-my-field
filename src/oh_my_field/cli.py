@@ -10,6 +10,7 @@ from oh_my_field.capture import (
     CaptureRequest,
     run_capture_workflow,
 )
+from oh_my_field.eval import EvalError, EvalRequest, run_eval_workflow
 from oh_my_field.models import CapturedFileRole
 from oh_my_field.promote import PromoteError, PromoteRequest, run_promote_workflow
 from oh_my_field.replay import ReplayError, ReplayRequest, run_replay_workflow
@@ -149,3 +150,40 @@ def _replay(
 
 
 app.command("replay")(_replay)
+
+
+def _eval(
+    capability_name: Annotated[str, typer.Argument()],
+    replay_id: Annotated[str | None, typer.Option("--replay-id")] = None,
+    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
+        "capabilities",
+    ),
+    evidence_dir: Annotated[Path, typer.Option("--evidence-dir")] = Path(
+        ".omf/evidence",
+    ),
+    replay_dir: Annotated[Path, typer.Option("--replay-dir")] = Path(
+        ".omf/replays",
+    ),
+    eval_dir: Annotated[Path, typer.Option("--eval-dir")] = Path(
+        ".omf/evals",
+    ),
+) -> None:
+    try:
+        summary = run_eval_workflow(
+            EvalRequest(
+                capability_name=capability_name,
+                replay_id=replay_id,
+                capabilities_dir=capabilities_dir,
+                evidence_dir=evidence_dir,
+                replay_dir=replay_dir,
+                eval_dir=eval_dir,
+            ),
+        )
+    except (EvalError, StorageError, ValidationError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(summary.model_dump_json())
+
+
+app.command("eval")(_eval)
