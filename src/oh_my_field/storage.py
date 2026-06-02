@@ -12,7 +12,7 @@ class StorageError(Exception):
     pass
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass
 class DuplicateWriteError(StorageError):
     path: Path
 
@@ -20,7 +20,7 @@ class DuplicateWriteError(StorageError):
         return f"refusing to overwrite existing file: {self.path}"
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass
 class EvidenceNotFoundError(StorageError):
     evidence_id: str
     evidence_dir: Path
@@ -29,7 +29,7 @@ class EvidenceNotFoundError(StorageError):
         return f"evidence {self.evidence_id!r} not found in {self.evidence_dir}"
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass
 class EvidenceParseError(StorageError):
     path: Path
     reason: str

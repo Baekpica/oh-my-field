@@ -34,6 +34,7 @@ pythonVersion = "3.12"
 pythonPlatform = "All"
 include = ["src", "tests"]
 exclude = ["**/__pycache__", "**/.venv", "**/build", "**/dist"]
+stubPath = "typings"
 reportMissingParameterType = "error"
 reportMissingTypeArgument = "error"
 reportUnknownMemberType = "error"
@@ -77,6 +78,7 @@ unfixable = []
     "S101",
     "SLF001",
 ]
+"src/oh_my_field/cli.py" = ["PLR0913"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
