@@ -14,6 +14,7 @@ from oh_my_field.eval_support import (
     build_harness_check,
     default_dependencies,
     state_dependencies,
+    state_manifest,
     state_manifest_source_evidence_id,
     state_request,
     state_result,
@@ -21,7 +22,19 @@ from oh_my_field.eval_support import (
     state_source_evidence,
     state_summary,
 )
-from oh_my_field.models import EvalCheck, EvalResult
+from oh_my_field.execution import (
+    CommandExecutionError,
+    CommandExecutionRequest,
+    execute_shell_command,
+)
+from oh_my_field.models import (
+    CapabilityManifest,
+    CommandExecution,
+    EvalCheck,
+    EvalChecklistItem,
+    EvalResult,
+    EvalRubricScore,
+)
 from oh_my_field.storage import (
     load_evidence,
     load_manifest,
@@ -55,6 +68,7 @@ def _build_eval_graph() -> CompiledStateGraph[
     builder.add_node("load_manifest", _load_manifest)
     builder.add_node("load_source_evidence", _load_source_evidence)
     builder.add_node("load_replay", _load_replay)
+    builder.add_node("execute_harness", _execute_harness)
     builder.add_node("build_eval", _build_eval)
     builder.add_node("validate_eval", _validate_eval)
     builder.add_node("write_eval", _write_eval)
@@ -62,7 +76,8 @@ def _build_eval_graph() -> CompiledStateGraph[
     builder.add_edge(START, "load_manifest")
     builder.add_edge("load_manifest", "load_source_evidence")
     builder.add_edge("load_source_evidence", "load_replay")
-    builder.add_edge("load_replay", "build_eval")
+    builder.add_edge("load_replay", "execute_harness")
+    builder.add_edge("execute_harness", "build_eval")
     builder.add_edge("build_eval", "validate_eval")
     builder.add_edge("validate_eval", "write_eval")
     builder.add_edge("write_eval", "summarize")
@@ -79,6 +94,7 @@ def _load_manifest(state: EvalState) -> EvalState:
             manifest_name=manifest.name,
         )
     return EvalState(
+        manifest=manifest,
         manifest_source_evidence_id=manifest.source_evidence_id,
     )
 
@@ -98,6 +114,16 @@ def _load_replay(state: EvalState) -> EvalState:
         return EvalState(replay=None)
     replay = load_replay(request.replay_id, request.replay_dir)
     return EvalState(replay=replay)
+
+
+def _execute_harness(state: EvalState) -> EvalState:
+    request = state_request(state)
+    manifest = state_manifest(state)
+    command_executions = tuple(
+        _execute_command(command, request, manifest)
+        for command in request.harness_commands
+    )
+    return EvalState(command_executions=command_executions)
 
 
 def _build_eval(state: EvalState) -> EvalState:
@@ -149,6 +175,10 @@ def _build_eval(state: EvalState) -> EvalState:
                 ),
             ),
         )
+    command_executions = _state_command_executions(state)
+    checks.extend(_harness_command_checks(command_executions))
+    checks.extend(_checklist_checks(request.checklist_items))
+    checks.extend(_rubric_checks(request.rubric_scores))
     created_at = dependencies.clock().astimezone(UTC)
     failures = tuple(check.message for check in checks if check.status == "fail")
     result = EvalResult(
@@ -160,6 +190,9 @@ def _build_eval(state: EvalState) -> EvalState:
         status="fail" if failures else "pass",
         checks=tuple(checks),
         failures=failures,
+        command_executions=command_executions,
+        checklist_items=request.checklist_items,
+        rubric_scores=request.rubric_scores,
     )
     return EvalState(result=result)
 
@@ -187,3 +220,96 @@ def _summarize(state: EvalState) -> EvalState:
         status=result.status,
     )
     return EvalState(summary=summary)
+
+
+def _execute_command(
+    command: str,
+    request: EvalRequest,
+    manifest: CapabilityManifest,
+) -> CommandExecution:
+    try:
+        return execute_shell_command(
+            CommandExecutionRequest(
+                command=command,
+                cwd=request.command_cwd,
+                timeout_seconds=request.command_timeout_seconds,
+                approve_risk=request.approve_command_risk,
+                approval_required_categories=(
+                    manifest.workflow_control.approval_required_actions
+                ),
+            ),
+        )
+    except CommandExecutionError as exc:
+        return CommandExecution(
+            command=command,
+            cwd=str(request.command_cwd),
+            exit_code=1,
+            stderr=str(exc),
+            duration_ms=0,
+        )
+
+
+def _harness_command_checks(
+    command_executions: tuple[CommandExecution, ...],
+) -> tuple[EvalCheck, ...]:
+    return tuple(
+        EvalCheck(
+            name=f"harness_command_{index}",
+            status="pass" if execution.exit_code == 0 else "fail",
+            message=_harness_command_message(execution),
+        )
+        for index, execution in enumerate(command_executions, start=1)
+    )
+
+
+def _harness_command_message(execution: CommandExecution) -> str:
+    if execution.exit_code == 0:
+        return f"harness command passed: {execution.command!r}"
+    detail = execution.stderr or execution.stdout or f"exit code {execution.exit_code}"
+    return f"harness command failed: {execution.command!r}: {detail}"
+
+
+def _checklist_checks(
+    checklist_items: tuple[EvalChecklistItem, ...],
+) -> tuple[EvalCheck, ...]:
+    return tuple(
+        EvalCheck(
+            name=f"checklist_{index}_{_check_name(item.name)}",
+            status=item.status,
+            message=item.message,
+        )
+        for index, item in enumerate(checklist_items, start=1)
+    )
+
+
+def _rubric_checks(
+    rubric_scores: tuple[EvalRubricScore, ...],
+) -> tuple[EvalCheck, ...]:
+    return tuple(
+        EvalCheck(
+            name=f"rubric_{index}_{_check_name(score.name)}",
+            status=score.status,
+            message=(
+                f"{score.name}: {score.score:g}/{score.max_score:g} "
+                f"(threshold {score.pass_threshold:g}) - {score.message}"
+            ),
+        )
+        for index, score in enumerate(rubric_scores, start=1)
+    )
+
+
+def _check_name(value: str) -> str:
+    normalized = "".join(
+        character if character.isalnum() else "_"
+        for character in value.casefold()
+    ).strip("_")
+    return normalized or "item"
+
+
+def _state_command_executions(
+    state: EvalState,
+) -> tuple[CommandExecution, ...]:
+    command_executions = state.get("command_executions")
+    if command_executions is None:
+        return ()
+    return command_executions

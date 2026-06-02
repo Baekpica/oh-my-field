@@ -11,7 +11,7 @@ from oh_my_field.models import (
     HarnessResult,
     RuntimeInfo,
 )
-from oh_my_field.storage import write_evidence
+from oh_my_field.storage import load_manifest, write_evidence
 
 
 class PromoteOutput(BaseModel):
@@ -78,6 +78,33 @@ def test_promote_creates_capability_manifest_from_evidence(tmp_path: Path) -> No
     assert manifest_path == capabilities_dir / "repo_issue_triage" / "manifest.yaml"
     assert "name: repo_issue_triage" in manifest_text
     assert f"source_evidence_id: {evidence.id}" in manifest_text
+    manifest = load_manifest("repo_issue_triage", capabilities_dir)
+    assert manifest.workflow.nodes == (
+        "parse_goal",
+        "collect_context",
+        "plan_execution",
+        "execute_tools",
+        "run_harness",
+        "collect_evidence",
+        "human_review",
+        "package_learning",
+    )
+    assert manifest.harness.human_review_required
+    assert manifest.evidence.store
+    assert manifest.workflow_control.approval_required_actions == (
+        "write",
+        "destructive",
+        "external_call",
+        "credential_access",
+        "production_write",
+        "paid_operation",
+    )
+    assert manifest.workflow_control.safe_execution_mode
+    assert manifest.workflow_control.network_policy == "disabled"
+    assert manifest.workflow_control.require_approval_before_destructive_action
+    assert "approval_required_actions:" in manifest_text
+    assert "safe_execution_mode: true" in manifest_text
+    assert "network_policy: disabled" in manifest_text
 
 
 def test_promote_refuses_duplicate_capability_name(tmp_path: Path) -> None:

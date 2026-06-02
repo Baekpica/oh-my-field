@@ -1,0 +1,263 @@
+import shlex
+import subprocess
+import time
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Final
+
+from oh_my_field.models import (
+    COMMAND_RISK_CATEGORIES,
+    CommandExecution,
+    CommandRiskCategory,
+)
+
+WRITE_COMMANDS: Final = frozenset(
+    {
+        "chmod",
+        "chown",
+        "cp",
+        "install",
+        "mkdir",
+        "mv",
+        "patch",
+        "tee",
+        "touch",
+    },
+)
+DESTRUCTIVE_COMMANDS: Final = frozenset(
+    {"dd", "mkfs", "rm", "rmdir", "shred", "truncate"}
+)
+EXTERNAL_COMMANDS: Final = frozenset(
+    {
+        "curl",
+        "gh",
+        "git",
+        "hf",
+        "npm",
+        "pip",
+        "pnpm",
+        "poetry",
+        "ssh",
+        "uv",
+        "uvx",
+        "wget",
+        "yarn",
+    },
+)
+CREDENTIAL_COMMANDS: Final = frozenset(
+    {"aws", "az", "gcloud", "op", "pass", "printenv", "security"}
+)
+PRODUCTION_COMMANDS: Final = frozenset(
+    {"aws", "docker", "helm", "kubectl", "terraform"}
+)
+PAID_COMMANDS: Final = frozenset({"aws", "gcloud", "openai", "stripe"})
+
+
+class CommandExecutionError(Exception):
+    pass
+
+
+@dataclass(frozen=True, slots=True)
+class CommandExecutionRequest:
+    command: str
+    cwd: Path
+    timeout_seconds: int
+    approve_risk: bool = False
+    approval_required_categories: tuple[CommandRiskCategory, ...] = (
+        COMMAND_RISK_CATEGORIES
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class CommandRiskAssessment:
+    categories: tuple[CommandRiskCategory, ...]
+    approval_required: bool
+
+
+def execute_shell_command(request: CommandExecutionRequest) -> CommandExecution:
+    started = time.perf_counter()
+    risk = assess_command_risk(
+        request.command,
+        approval_required_categories=request.approval_required_categories,
+    )
+    if risk.approval_required and not request.approve_risk:
+        return _blocked_execution(request, risk)
+    try:
+        completed = subprocess.run(  # noqa: S602
+            request.command,
+            cwd=request.cwd,
+            shell=True,
+            text=True,
+            capture_output=True,
+            timeout=request.timeout_seconds,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        duration_ms = _elapsed_ms(started)
+        return CommandExecution(
+            command=request.command,
+            cwd=str(request.cwd),
+            exit_code=124,
+            stdout=_optional_text(exc.stdout),
+            stderr=_optional_text(exc.stderr)
+            or f"command timed out after {request.timeout_seconds} seconds",
+            duration_ms=duration_ms,
+            risk_categories=risk.categories,
+            approval_required=risk.approval_required,
+            approved=request.approve_risk and risk.approval_required,
+        )
+    except OSError as exc:
+        raise CommandExecutionError(str(exc)) from exc
+
+    return CommandExecution(
+        command=request.command,
+        cwd=str(request.cwd),
+        exit_code=completed.returncode,
+        stdout=completed.stdout,
+        stderr=completed.stderr,
+        duration_ms=_elapsed_ms(started),
+        risk_categories=risk.categories,
+        approval_required=risk.approval_required,
+        approved=request.approve_risk and risk.approval_required,
+    )
+
+
+def assess_command_risk(
+    command: str,
+    *,
+    approval_required_categories: tuple[CommandRiskCategory, ...] = (
+        COMMAND_RISK_CATEGORIES
+    ),
+) -> CommandRiskAssessment:
+    tokens = _shell_tokens(command)
+    categories: list[CommandRiskCategory] = []
+    first_token = tokens[0] if tokens else ""
+    command_text = command.casefold()
+
+    if first_token in WRITE_COMMANDS or _has_write_pattern(command_text, tokens):
+        categories.append("write")
+    if first_token in DESTRUCTIVE_COMMANDS or _has_destructive_pattern(tokens):
+        categories.append("destructive")
+    if first_token in EXTERNAL_COMMANDS or _has_external_pattern(command_text, tokens):
+        categories.append("external_call")
+    if (
+        first_token in CREDENTIAL_COMMANDS
+        or _has_credential_pattern(command_text, tokens)
+    ):
+        categories.append("credential_access")
+    if first_token in PRODUCTION_COMMANDS and _has_production_pattern(tokens):
+        categories.append("production_write")
+    if first_token in PAID_COMMANDS and _has_paid_pattern(tokens):
+        categories.append("paid_operation")
+
+    unique_categories = tuple(dict.fromkeys(categories))
+    required = set(approval_required_categories)
+    return CommandRiskAssessment(
+        categories=unique_categories,
+        approval_required=any(category in required for category in unique_categories),
+    )
+
+
+def _blocked_execution(
+    request: CommandExecutionRequest,
+    risk: CommandRiskAssessment,
+) -> CommandExecution:
+    categories = ", ".join(risk.categories)
+    return CommandExecution(
+        command=request.command,
+        cwd=str(request.cwd),
+        exit_code=126,
+        stderr=f"command requires approval for risk categories: {categories}",
+        duration_ms=0,
+        risk_categories=risk.categories,
+        approval_required=True,
+        approved=False,
+    )
+
+
+def _shell_tokens(command: str) -> tuple[str, ...]:
+    try:
+        return tuple(token.casefold() for token in shlex.split(command))
+    except ValueError:
+        return tuple(command.casefold().split())
+
+
+def _has_write_pattern(command_text: str, tokens: tuple[str, ...]) -> bool:
+    return (
+        _has_file_redirection(command_text)
+        or "-i" in tokens
+        or ("git" in tokens[:1] and _second_token_is(tokens, {"add", "commit"}))
+    )
+
+
+def _has_file_redirection(command_text: str) -> bool:
+    normalized = command_text
+    for standard_stream in ("2>&1", "1>&2", ">&1", ">&2"):
+        normalized = normalized.replace(standard_stream, "")
+    return ">" in normalized
+
+
+def _has_destructive_pattern(tokens: tuple[str, ...]) -> bool:
+    return (
+        ("git" in tokens[:1] and _second_token_is(tokens, {"clean", "reset"}))
+        or ("docker" in tokens[:1] and _second_token_is(tokens, {"rm", "rmi"}))
+        or ("kubectl" in tokens[:1] and _second_token_is(tokens, {"delete"}))
+        or ("terraform" in tokens[:1] and _second_token_is(tokens, {"destroy"}))
+    )
+
+
+def _has_external_pattern(command_text: str, tokens: tuple[str, ...]) -> bool:
+    return (
+        "http://" in command_text
+        or "https://" in command_text
+        or ("git" in tokens[:1] and _second_token_is(tokens, {"fetch", "pull", "push"}))
+        or ("gh" in tokens[:1] and _second_token_is(tokens, {"api", "pr", "issue"}))
+    )
+
+
+def _has_credential_pattern(command_text: str, tokens: tuple[str, ...]) -> bool:
+    credential_markers = (
+        ".env",
+        "api_key",
+        "password",
+        "secret",
+        "token",
+    )
+    return any(marker in command_text for marker in credential_markers) or (
+        "cat" in tokens[:1] and any(token.endswith(".env") for token in tokens)
+    )
+
+
+def _has_production_pattern(tokens: tuple[str, ...]) -> bool:
+    return (
+        ("aws" in tokens[:1] and _second_token_is(tokens, {"s3", "ec2", "lambda"}))
+        or ("docker" in tokens[:1] and _second_token_is(tokens, {"push"}))
+        or ("helm" in tokens[:1] and _second_token_is(tokens, {"install", "upgrade"}))
+        or ("kubectl" in tokens[:1] and _second_token_is(tokens, {"apply", "delete"}))
+        or ("terraform" in tokens[:1] and _second_token_is(tokens, {"apply"}))
+    )
+
+
+def _has_paid_pattern(tokens: tuple[str, ...]) -> bool:
+    return (
+        ("aws" in tokens[:1] and _second_token_is(tokens, {"bedrock", "sagemaker"}))
+        or ("gcloud" in tokens[:1] and _second_token_is(tokens, {"ai"}))
+        or ("openai" in tokens[:1] and _second_token_is(tokens, {"api"}))
+        or "stripe" in tokens[:1]
+    )
+
+
+def _second_token_is(tokens: tuple[str, ...], values: set[str]) -> bool:
+    return len(tokens) > 1 and tokens[1] in values
+
+
+def _elapsed_ms(started: float) -> int:
+    return int((time.perf_counter() - started) * 1000)
+
+
+def _optional_text(value: str | bytes | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return value

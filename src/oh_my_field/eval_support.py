@@ -10,8 +10,12 @@ from pydantic import Field
 from oh_my_field.models import (
     CAPABILITY_NAME_PATTERN,
     EVIDENCE_ID_PATTERN,
+    CapabilityManifest,
+    CommandExecution,
     EvalCheck,
+    EvalChecklistItem,
     EvalResult,
+    EvalRubricScore,
     EvidenceRecord,
     ReplayRecord,
     StrictModel,
@@ -58,6 +62,12 @@ class EvalRequest(StrictModel):
     evidence_dir: Path
     replay_dir: Path
     eval_dir: Path
+    harness_commands: tuple[str, ...] = ()
+    checklist_items: tuple[EvalChecklistItem, ...] = ()
+    rubric_scores: tuple[EvalRubricScore, ...] = ()
+    command_cwd: Path = Path()
+    command_timeout_seconds: int = Field(default=60, ge=1)
+    approve_command_risk: bool = False
 
 
 class EvalSummary(StrictModel):
@@ -70,8 +80,10 @@ class EvalSummary(StrictModel):
 class EvalState(TypedDict, total=False):
     request: EvalRequest
     dependencies: EvalDependencies
+    manifest: CapabilityManifest
     source_evidence: EvidenceRecord
     replay: ReplayRecord | None
+    command_executions: tuple[CommandExecution, ...]
     result: EvalResult
     result_path: Path
     summary: EvalSummary
@@ -135,6 +147,13 @@ def state_manifest_source_evidence_id(state: EvalState) -> str:
     if source_evidence_id is None:
         raise EvalStateError(key="manifest_source_evidence_id")
     return source_evidence_id
+
+
+def state_manifest(state: EvalState) -> CapabilityManifest:
+    manifest = state.get("manifest")
+    if manifest is None:
+        raise EvalStateError(key="manifest")
+    return manifest
 
 
 def state_source_evidence(state: EvalState) -> EvidenceRecord:

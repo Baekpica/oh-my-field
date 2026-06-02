@@ -7,10 +7,16 @@ from langgraph.graph.state import CompiledStateGraph
 from pydantic import Field
 
 from oh_my_field.models import (
+    COMMAND_RISK_CATEGORIES,
     CapabilityManifest,
+    ContextPolicy,
+    EvidencePolicy,
     EvidenceRecord,
+    HarnessResult,
     PromotionCriteria,
+    RuntimeInfo,
     StrictModel,
+    WorkflowControl,
     WorkflowManifest,
 )
 from oh_my_field.storage import load_evidence, write_manifest
@@ -21,6 +27,32 @@ PROMOTE_NODES: Final = (
     "validate_manifest",
     "write_capability",
     "summarize",
+)
+CAPABILITY_WORKFLOW_NODES: Final = (
+    "parse_goal",
+    "collect_context",
+    "plan_execution",
+    "execute_tools",
+    "run_harness",
+    "collect_evidence",
+    "human_review",
+    "package_learning",
+)
+EVIDENCE_STORE_FIELDS: Final = (
+    "prompts",
+    "tool_calls",
+    "generated_commands",
+    "generated_scripts",
+    "execution_outputs",
+    "errors",
+    "retries",
+    "user_interventions",
+    "final_artifacts",
+    "harness_results",
+    "cost_metrics",
+    "latency_metrics",
+    "success_or_failure_label",
+    "improvement_notes",
 )
 
 
@@ -97,17 +129,52 @@ def _load_evidence(state: PromoteState) -> PromoteState:
 def _build_manifest(state: PromoteState) -> PromoteState:
     request = _state_request(state)
     evidence = _state_evidence(state)
+    runtime_tools = _runtime_tools(evidence)
     manifest = CapabilityManifest(
         name=request.name,
         version=request.version,
         description=request.description,
         status="candidate",
+        runtime_compatibility=_runtime_compatibility(evidence, runtime_tools),
         source_evidence_id=evidence.id,
-        normalized_goal=evidence.goal,
-        inputs=("goal",),
-        workflow=WorkflowManifest(graph="langgraph", nodes=PROMOTE_NODES),
-        harness=evidence.harness,
-        runtime=evidence.runtime,
+        normalized_goal=evidence.normalized_goal or evidence.goal,
+        inputs=("goal", *evidence.input_context),
+        context=ContextPolicy(
+            required=evidence.input_context,
+            optional=tuple(
+                file.path for file in evidence.files if file.role != "context"
+            ),
+            source_priority=("evidence", "repository", "user_feedback"),
+            evidence_recall_strategy="prefer prior successful evidence, then failures",
+        ),
+        workflow=WorkflowManifest(graph="langgraph", nodes=CAPABILITY_WORKFLOW_NODES),
+        harness=HarnessResult(
+            status=evidence.harness.status,
+            checks=evidence.harness.checks,
+            failures=evidence.harness.failures,
+            required_checks=tuple(
+                dict.fromkeys((*evidence.harness.required_checks, "schema_valid")),
+            ),
+            human_review_required=True,
+        ),
+        runtime=RuntimeInfo(
+            name=evidence.runtime.name,
+            model=evidence.runtime.model,
+            preferred_models=_preferred_models(evidence),
+            tools=runtime_tools,
+        ),
+        evidence=EvidencePolicy(store=EVIDENCE_STORE_FIELDS),
+        workflow_control=WorkflowControl(
+            allowed_tools=runtime_tools,
+            require_approval_before_write=True,
+            require_approval_before_external_call=True,
+            require_approval_before_destructive_action=True,
+            approval_required_actions=COMMAND_RISK_CATEGORIES,
+            safe_execution_mode=True,
+            network_policy="disabled",
+            rollback_policy="manual checkpoint restore",
+            checkpoint_interval=1,
+        ),
         promotion_criteria=PromotionCriteria(
             min_success_runs=3,
             max_human_intervention_rate=0.3,
@@ -115,6 +182,35 @@ def _build_manifest(state: PromoteState) -> PromoteState:
         ),
     )
     return PromoteState(manifest=manifest)
+
+
+def _runtime_tools(evidence: EvidenceRecord) -> tuple[str, ...]:
+    tools = [*evidence.runtime.tools]
+    if evidence.generated_commands:
+        tools.append("shell")
+    if evidence.files:
+        tools.append("file_system")
+    return tuple(dict.fromkeys(tools))
+
+
+def _preferred_models(evidence: EvidenceRecord) -> tuple[str, ...]:
+    models: list[str] = []
+    if evidence.runtime.model is not None:
+        models.append(evidence.runtime.model)
+    models.extend(evidence.runtime.preferred_models)
+    return tuple(dict.fromkeys(models))
+
+
+def _runtime_compatibility(
+    evidence: EvidenceRecord,
+    runtime_tools: tuple[str, ...],
+) -> tuple[str, ...]:
+    values = [f"runtime:{evidence.runtime.name}"]
+    if evidence.runtime.model is not None:
+        values.append(f"model:{evidence.runtime.model}")
+    values.extend(f"model:{model}" for model in evidence.runtime.preferred_models)
+    values.extend(f"tool:{tool}" for tool in runtime_tools)
+    return tuple(dict.fromkeys(values))
 
 
 def _validate_manifest(state: PromoteState) -> PromoteState:
