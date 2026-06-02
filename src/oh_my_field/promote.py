@@ -6,12 +6,19 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from pydantic import Field
 
+from oh_my_field.integrity import append_integrity_link, integrity_link
 from oh_my_field.models import (
     COMMAND_RISK_CATEGORIES,
+    ArtifactIntegrityLink,
     CapabilityManifest,
     ContextPolicy,
+    ContextSource,
     EvidencePolicy,
     EvidenceRecord,
+    FieldFailureHistory,
+    FieldManifest,
+    FieldPolicy,
+    FieldQualityBar,
     HarnessResult,
     PromotionCriteria,
     RuntimeInfo,
@@ -137,6 +144,8 @@ def _build_manifest(state: PromoteState) -> PromoteState:
         status="candidate",
         runtime_compatibility=_runtime_compatibility(evidence, runtime_tools),
         source_evidence_id=evidence.id,
+        source_evidence_ids=(evidence.id,),
+        field=_field_manifest(evidence),
         normalized_goal=evidence.normalized_goal or evidence.goal,
         inputs=("goal", *evidence.input_context),
         context=ContextPolicy(
@@ -144,6 +153,8 @@ def _build_manifest(state: PromoteState) -> PromoteState:
             optional=tuple(
                 file.path for file in evidence.files if file.role != "context"
             ),
+            forbidden=(".env", "secrets/", "production-kubeconfig"),
+            sources=_context_sources(evidence),
             source_priority=("evidence", "repository", "user_feedback"),
             evidence_recall_strategy="prefer prior successful evidence, then failures",
         ),
@@ -179,9 +190,85 @@ def _build_manifest(state: PromoteState) -> PromoteState:
             min_success_runs=3,
             max_human_intervention_rate=0.3,
             required_harness_pass_rate=0.9,
+            min_runtime_profiles=(f"runtime:{evidence.runtime.name}",),
         ),
     )
+    manifest = manifest.model_copy(
+        update={"integrity_chain": (_evidence_integrity_link(evidence),)},
+    )
+    manifest = append_integrity_link(
+        manifest,
+        artifact_type="capability",
+        artifact_id=manifest.name,
+        previous_sha256=manifest.integrity_chain[-1].sha256,
+    )
     return PromoteState(manifest=manifest)
+
+
+def _field_manifest(evidence: EvidenceRecord) -> FieldManifest:
+    return FieldManifest(
+        name=_field_name(evidence.field),
+        description=f"Field policy inferred from evidence field {evidence.field!r}.",
+        sources=_context_sources(evidence),
+        policies=FieldPolicy(
+            network="disabled",
+            require_approval=COMMAND_RISK_CATEGORIES,
+            forbidden_context=(".env", "secrets/", "production-kubeconfig"),
+        ),
+        quality_bar=FieldQualityBar(
+            required_checks=evidence.harness.required_checks,
+            human_review_required=True,
+        ),
+        failure_history=FieldFailureHistory(
+            recall_strategy="prefer_recent_regressions",
+            cases=evidence.errors,
+        ),
+    )
+
+
+def _field_name(value: str) -> str:
+    normalized = "".join(
+        character if character.isalnum() else "_"
+        for character in value.casefold()
+    ).strip("_")
+    if not normalized:
+        return "field_local"
+    if normalized[0].isalpha():
+        return normalized
+    return f"field_{normalized}"
+
+
+def _context_sources(evidence: EvidenceRecord) -> tuple[ContextSource, ...]:
+    sources = [
+        ContextSource(
+            name="source_evidence",
+            type="evidence",
+            location=evidence.id,
+            freshness="captured",
+            priority=0,
+        ),
+    ]
+    if evidence.input_context:
+        sources.append(
+            ContextSource(
+                name="input_context",
+                type="docs",
+                location=",".join(evidence.input_context),
+                freshness="captured",
+                priority=10,
+            ),
+        )
+    return tuple(sources)
+
+
+def _evidence_integrity_link(evidence: EvidenceRecord) -> ArtifactIntegrityLink:
+    if evidence.integrity_chain:
+        return evidence.integrity_chain[-1]
+    return integrity_link(
+        artifact_type="evidence",
+        artifact_id=evidence.id,
+        model=evidence,
+    )
 
 
 def _runtime_tools(evidence: EvidenceRecord) -> tuple[str, ...]:

@@ -18,9 +18,17 @@ type CapturedFileRole = Literal[
 ]
 type HarnessStatus = Literal["pass", "fail"]
 type EvalStatus = Literal["pass", "fail"]
-type CapabilityStatus = Literal["candidate"]
+type CapabilityStatus = Literal["candidate", "validated", "stable", "deprecated"]
 type WorkflowGraph = Literal["langgraph"]
 type SuccessLabel = Literal["success", "failure", "unknown"]
+type ContextSourceType = Literal[
+    "repo",
+    "docs",
+    "logs",
+    "evidence",
+    "review",
+    "preference",
+]
 type CommandRiskCategory = Literal[
     "write",
     "destructive",
@@ -107,6 +115,74 @@ class LatencyMetrics(StrictModel):
     tool_ms: int = Field(default=0, ge=0)
 
 
+class ContextSource(StrictModel):
+    name: str = Field(min_length=1)
+    type: ContextSourceType
+    location: str = Field(min_length=1)
+    freshness: str | None = None
+    priority: int = Field(default=100, ge=0)
+
+
+class FieldPreference(StrictModel):
+    key: str = Field(min_length=1)
+    value: str = Field(min_length=1)
+
+
+class FieldPolicy(StrictModel):
+    network: NetworkPolicy = "disabled"
+    require_approval: tuple[CommandRiskCategory, ...] = COMMAND_RISK_CATEGORIES
+    forbidden_context: tuple[str, ...] = ()
+
+
+class FieldQualityBar(StrictModel):
+    required_checks: tuple[str, ...] = ()
+    human_review_required: bool = True
+
+
+class FieldFailureHistory(StrictModel):
+    recall_strategy: str | None = None
+    cases: tuple[str, ...] = ()
+
+
+class FieldManifest(StrictModel):
+    name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
+    description: str = Field(min_length=1)
+    sources: tuple[ContextSource, ...] = ()
+    policies: FieldPolicy = Field(default_factory=FieldPolicy)
+    quality_bar: FieldQualityBar = Field(default_factory=FieldQualityBar)
+    preferences: tuple[FieldPreference, ...] = ()
+    failure_history: FieldFailureHistory = Field(default_factory=FieldFailureHistory)
+
+
+class ContextItem(StrictModel):
+    path: str = Field(min_length=1)
+    source: str = Field(min_length=1)
+    reason: str = Field(min_length=1)
+    token_estimate: int = Field(ge=0)
+
+
+class ExcludedContextItem(StrictModel):
+    path: str = Field(min_length=1)
+    source: str = Field(min_length=1)
+    reason: str = Field(min_length=1)
+
+
+class ContextPackPlan(StrictModel):
+    required: tuple[ContextItem, ...] = ()
+    optional: tuple[ContextItem, ...] = ()
+    excluded: tuple[ExcludedContextItem, ...] = ()
+    token_estimate: int = Field(ge=0)
+    compression_strategy: str = Field(min_length=1)
+    source_priority: tuple[str, ...] = ()
+
+
+class ArtifactIntegrityLink(StrictModel):
+    artifact_type: str = Field(min_length=1)
+    artifact_id: str = Field(min_length=1)
+    sha256: str = Field(pattern=SHA256_PATTERN)
+    previous_sha256: str | None = Field(default=None, pattern=SHA256_PATTERN)
+
+
 class HumanReview(StrictModel):
     status: HumanReviewStatus = "pending"
     reviewer: str | None = None
@@ -164,6 +240,7 @@ class EvidenceRecord(StrictModel):
     success_or_failure_label: SuccessLabel = "unknown"
     improvement_notes: tuple[str, ...] = ()
     human_review: HumanReview = Field(default_factory=HumanReview)
+    integrity_chain: tuple[ArtifactIntegrityLink, ...] = ()
 
 
 class WorkflowManifest(StrictModel):
@@ -175,6 +252,7 @@ class ContextPolicy(StrictModel):
     required: tuple[str, ...] = ()
     optional: tuple[str, ...] = ()
     forbidden: tuple[str, ...] = ()
+    sources: tuple[ContextSource, ...] = ()
     retrieval_query_template: str | None = None
     summarization_rule: str | None = None
     compression_rule: str | None = None
@@ -213,6 +291,7 @@ class PromotionCriteria(StrictModel):
     min_success_runs: int = Field(ge=1)
     max_human_intervention_rate: float = Field(ge=0.0, le=1.0)
     required_harness_pass_rate: float = Field(ge=0.0, le=1.0)
+    min_runtime_profiles: tuple[str, ...] = ()
 
 
 class CapabilityManifest(StrictModel):
@@ -225,6 +304,8 @@ class CapabilityManifest(StrictModel):
     runtime_compatibility: tuple[str, ...] = ()
     evaluation_results: tuple[str, ...] = ()
     source_evidence_id: str = Field(pattern=EVIDENCE_ID_PATTERN)
+    source_evidence_ids: tuple[str, ...] = ()
+    field: FieldManifest | None = None
     normalized_goal: str = Field(min_length=1)
     inputs: tuple[str, ...]
     context: ContextPolicy = Field(default_factory=ContextPolicy)
@@ -235,6 +316,7 @@ class CapabilityManifest(StrictModel):
     workflow_control: WorkflowControl = Field(default_factory=WorkflowControl)
     human_review: HumanReview = Field(default_factory=HumanReview)
     promotion_criteria: PromotionCriteria
+    integrity_chain: tuple[ArtifactIntegrityLink, ...] = ()
 
 
 class ReplayRecord(StrictModel):
@@ -248,6 +330,7 @@ class ReplayRecord(StrictModel):
     runtime: RuntimeInfo
     command_executions: tuple[CommandExecution, ...] = ()
     human_review: HumanReview = Field(default_factory=HumanReview)
+    integrity_chain: tuple[ArtifactIntegrityLink, ...] = ()
 
 
 class EvalCheck(StrictModel):
@@ -283,6 +366,7 @@ class EvalResult(StrictModel):
     command_executions: tuple[CommandExecution, ...] = ()
     checklist_items: tuple[EvalChecklistItem, ...] = ()
     rubric_scores: tuple[EvalRubricScore, ...] = ()
+    integrity_chain: tuple[ArtifactIntegrityLink, ...] = ()
 
 
 class HumanReviewRecord(StrictModel):
@@ -292,6 +376,7 @@ class HumanReviewRecord(StrictModel):
     target_id: str = Field(min_length=1)
     action: HumanReviewAction
     review: HumanReview
+    integrity_chain: tuple[ArtifactIntegrityLink, ...] = ()
 
 
 class LearningExport(StrictModel):
@@ -307,6 +392,7 @@ class LearningExport(StrictModel):
     eval_set_candidates: tuple[str, ...] = ()
     fine_tuning_candidates: tuple[str, ...] = ()
     preference_dataset_candidates: tuple[str, ...] = ()
+    integrity_chain: tuple[ArtifactIntegrityLink, ...] = ()
 
 
 class ContextBundle(StrictModel):
@@ -319,6 +405,8 @@ class ContextBundle(StrictModel):
     summaries: tuple[str, ...] = ()
     compressed_context: tuple[CapturedTextFile, ...] = ()
     policy: ContextPolicy
+    pack_plan: ContextPackPlan | None = None
+    integrity_chain: tuple[ArtifactIntegrityLink, ...] = ()
 
 
 class WorkflowFileInput(StrictModel):
@@ -409,6 +497,7 @@ class ReflectionReport(StrictModel):
     prompt_patches: tuple[str, ...] = ()
     tool_call_revisions: tuple[str, ...] = ()
     notes: tuple[str, ...] = ()
+    integrity_chain: tuple[ArtifactIntegrityLink, ...] = ()
 
 
 class CapabilityExportBundle(StrictModel):
@@ -421,3 +510,4 @@ class CapabilityExportBundle(StrictModel):
     context_bundles: tuple[ContextBundle, ...] = ()
     learning_exports: tuple[LearningExport, ...] = ()
     reflection_reports: tuple[ReflectionReport, ...] = ()
+    integrity_chain: tuple[ArtifactIntegrityLink, ...] = ()

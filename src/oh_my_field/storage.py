@@ -3,6 +3,7 @@ import tempfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import cast
 
 import yaml
 from pydantic import BaseModel, ValidationError
@@ -499,93 +500,7 @@ def _manifest_yaml(manifest: CapabilityManifest) -> str:
 
 
 def _manifest_yaml_data(manifest: CapabilityManifest) -> dict[str, YamlValue]:
-    return {
-        "name": manifest.name,
-        "version": manifest.version,
-        "description": manifest.description,
-        "status": manifest.status,
-        "owner": manifest.owner,
-        "dependencies": list(manifest.dependencies),
-        "runtime_compatibility": list(manifest.runtime_compatibility),
-        "evaluation_results": list(manifest.evaluation_results),
-        "source_evidence_id": manifest.source_evidence_id,
-        "normalized_goal": manifest.normalized_goal,
-        "inputs": list(manifest.inputs),
-        "context": {
-            "required": list(manifest.context.required),
-            "optional": list(manifest.context.optional),
-            "forbidden": list(manifest.context.forbidden),
-            "retrieval_query_template": manifest.context.retrieval_query_template,
-            "summarization_rule": manifest.context.summarization_rule,
-            "compression_rule": manifest.context.compression_rule,
-            "freshness_rule": manifest.context.freshness_rule,
-            "source_priority": list(manifest.context.source_priority),
-            "maximum_token_budget": manifest.context.maximum_token_budget,
-            "evidence_recall_strategy": manifest.context.evidence_recall_strategy,
-        },
-        "workflow": {
-            "graph": manifest.workflow.graph,
-            "nodes": list(manifest.workflow.nodes),
-        },
-        "harness": {
-            "status": manifest.harness.status,
-            "checks": list(manifest.harness.checks),
-            "failures": list(manifest.harness.failures),
-            "required_checks": list(manifest.harness.required_checks),
-            "human_review_required": manifest.harness.human_review_required,
-        },
-        "runtime": {
-            "name": manifest.runtime.name,
-            "model": manifest.runtime.model,
-            "preferred_models": list(manifest.runtime.preferred_models),
-            "tools": list(manifest.runtime.tools),
-        },
-        "evidence": {
-            "store": list(manifest.evidence.store),
-        },
-        "workflow_control": {
-            "max_iterations": manifest.workflow_control.max_iterations,
-            "max_runtime_seconds": manifest.workflow_control.max_runtime_seconds,
-            "max_cost_usd": manifest.workflow_control.max_cost_usd,
-            "allowed_tools": list(manifest.workflow_control.allowed_tools),
-            "disallowed_tools": list(manifest.workflow_control.disallowed_tools),
-            "require_approval_before_write": (
-                manifest.workflow_control.require_approval_before_write
-            ),
-            "require_approval_before_external_call": (
-                manifest.workflow_control.require_approval_before_external_call
-            ),
-            "require_approval_before_destructive_action": (
-                manifest.workflow_control.require_approval_before_destructive_action
-            ),
-            "approval_required_actions": list(
-                manifest.workflow_control.approval_required_actions,
-            ),
-            "safe_execution_mode": manifest.workflow_control.safe_execution_mode,
-            "credential_scope": manifest.workflow_control.credential_scope,
-            "network_policy": manifest.workflow_control.network_policy,
-            "rollback_policy": manifest.workflow_control.rollback_policy,
-            "checkpoint_interval": manifest.workflow_control.checkpoint_interval,
-            "rollback_strategy": manifest.workflow_control.rollback_strategy,
-            "resume_from_checkpoint": manifest.workflow_control.resume_from_checkpoint,
-        },
-        "human_review": {
-            "status": manifest.human_review.status,
-            "reviewer": manifest.human_review.reviewer,
-            "notes": list(manifest.human_review.notes),
-            "revision_request": manifest.human_review.revision_request,
-            "reviewed_at": _datetime_yaml(manifest.human_review.reviewed_at),
-        },
-        "promotion_criteria": {
-            "min_success_runs": manifest.promotion_criteria.min_success_runs,
-            "max_human_intervention_rate": (
-                manifest.promotion_criteria.max_human_intervention_rate
-            ),
-            "required_harness_pass_rate": (
-                manifest.promotion_criteria.required_harness_pass_rate
-            ),
-        },
-    }
+    return cast("dict[str, YamlValue]", manifest.model_dump(mode="json"))
 
 
 def _datetime_yaml(value: datetime | None) -> str | None:

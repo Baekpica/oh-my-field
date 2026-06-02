@@ -52,6 +52,13 @@ def make_evidence_record() -> EvidenceRecord:
                 size_bytes=13,
                 sha256="1" * 64,
             ),
+            CapturedTextFile(
+                role="artifact",
+                path="secrets/token.txt",
+                content="do not include",
+                size_bytes=14,
+                sha256="2" * 64,
+            ),
         ),
         harness=HarnessResult(status="pass", checks=("schema_valid",)),
     )
@@ -66,7 +73,12 @@ def make_manifest() -> CapabilityManifest:
         source_evidence_id="20260602T010203Z-deadbeef",
         normalized_goal="triage repo issue",
         inputs=("goal",),
-        context=ContextPolicy(required=("repo.md",), optional=("prompt.md",)),
+        context=ContextPolicy(
+            required=("repo.md",),
+            optional=("prompt.md", "secrets/token.txt"),
+            forbidden=("secrets/",),
+            source_priority=("evidence", "repository"),
+        ),
         workflow=WorkflowManifest(graph="langgraph", nodes=("collect_context",)),
         harness=HarnessResult(status="pass", checks=("schema_valid",)),
         runtime=RuntimeInfo(name="codex", model="gpt-5.5"),
@@ -113,6 +125,13 @@ def test_context_builds_context_bundle_from_capability_policy(
     assert output.optional_count == 1
     assert bundle.required_context[0].path == "repo.md"
     assert bundle.optional_context[0].path == "prompt.md"
+    assert bundle.pack_plan is not None
+    assert bundle.pack_plan.token_estimate > 0
+    assert bundle.pack_plan.excluded[0].path == "secrets/token.txt"
+    assert bundle.pack_plan.excluded[0].reason == (
+        "forbidden by capability context policy"
+    )
+    assert bundle.integrity_chain[-1].artifact_type == "context"
 
 
 def test_context_filters_optional_context_and_writes_compressed_copy(

@@ -78,7 +78,22 @@ def test_promote_creates_capability_manifest_from_evidence(tmp_path: Path) -> No
     assert manifest_path == capabilities_dir / "repo_issue_triage" / "manifest.yaml"
     assert "name: repo_issue_triage" in manifest_text
     assert f"source_evidence_id: {evidence.id}" in manifest_text
+    assert f"- {evidence.id}" in manifest_text
     manifest = load_manifest("repo_issue_triage", capabilities_dir)
+    assert manifest.source_evidence_ids == (evidence.id,)
+    assert manifest.field is not None
+    assert manifest.field.name == "local"
+    assert manifest.field.policies.forbidden_context == (
+        ".env",
+        "secrets/",
+        "production-kubeconfig",
+    )
+    assert manifest.context.sources[0].type == "evidence"
+    assert manifest.integrity_chain[-2].artifact_type == "evidence"
+    assert manifest.integrity_chain[-1].artifact_type == "capability"
+    assert manifest.integrity_chain[-1].previous_sha256 == (
+        manifest.integrity_chain[-2].sha256
+    )
     assert manifest.workflow.nodes == (
         "parse_goal",
         "collect_context",

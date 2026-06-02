@@ -10,12 +10,17 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from pydantic import Field
 
+from oh_my_field.integrity import append_integrity_link, integrity_link
 from oh_my_field.models import (
     CAPABILITY_NAME_PATTERN,
+    ArtifactIntegrityLink,
     CapabilityManifest,
     CapturedTextFile,
     ContextBundle,
+    ContextItem,
+    ContextPackPlan,
     EvidenceRecord,
+    ExcludedContextItem,
     StrictModel,
 )
 from oh_my_field.storage import load_evidence, load_manifest, write_context_bundle
@@ -151,12 +156,14 @@ def _select_context(state: ContextState) -> ContextState:
     created_at = dependencies.clock().astimezone(UTC)
     required_paths = set(manifest.context.required)
     optional_paths = set(manifest.context.optional)
+    forbidden = manifest.context.forbidden
     required_context = tuple(
         file
         for file in evidence.files
-        if file.path in required_paths or file.role == "context"
+        if not _is_forbidden(file.path, forbidden)
+        and (file.path in required_paths or file.role == "context")
     )
-    optional_context = ()
+    optional_context: tuple[CapturedTextFile, ...] = ()
     if request.include_optional:
         optional_context = tuple(
             file
@@ -164,9 +171,28 @@ def _select_context(state: ContextState) -> ContextState:
             if file.path in optional_paths
             and file not in required_context
             and _matches_query(file, request.query)
+            and not _is_forbidden(file.path, forbidden)
         )
     selected_context = (*required_context, *optional_context)
     max_chars = _max_chars(request, manifest)
+    pack_plan = ContextPackPlan(
+        required=tuple(
+            _context_item(file, "required by capability context policy")
+            for file in required_context
+        ),
+        optional=tuple(
+            _context_item(file, "optional context selected by query")
+            for file in optional_context
+        ),
+        excluded=tuple(
+            _excluded_context_item(file, forbidden, request.query)
+            for file in evidence.files
+            if file not in selected_context
+        ),
+        token_estimate=sum(_token_estimate(file.content) for file in selected_context),
+        compression_strategy=_compression_strategy(request, manifest),
+        source_priority=manifest.context.source_priority,
+    )
     bundle = ContextBundle(
         id=f"{created_at:%Y%m%dT%H%M%SZ}-{dependencies.token_factory()}",
         created_at=created_at,
@@ -179,6 +205,16 @@ def _select_context(state: ContextState) -> ContextState:
             _compress_file(file, max_chars) for file in selected_context
         ),
         policy=manifest.context,
+        pack_plan=pack_plan,
+    )
+    bundle = bundle.model_copy(
+        update={"integrity_chain": (_evidence_integrity_link(evidence),)},
+    )
+    bundle = append_integrity_link(
+        bundle,
+        artifact_type="context",
+        artifact_id=bundle.id,
+        previous_sha256=bundle.integrity_chain[-1].sha256,
     )
     return ContextState(bundle=bundle)
 
@@ -214,6 +250,63 @@ def _matches_query(file: CapturedTextFile, query: str | None) -> bool:
         return True
     needle = query.casefold()
     return needle in file.path.casefold() or needle in file.content.casefold()
+
+
+def _is_forbidden(path: str, forbidden: tuple[str, ...]) -> bool:
+    return any(rule in path for rule in forbidden)
+
+
+def _context_item(file: CapturedTextFile, reason: str) -> ContextItem:
+    return ContextItem(
+        path=file.path,
+        source="source_evidence",
+        reason=reason,
+        token_estimate=_token_estimate(file.content),
+    )
+
+
+def _excluded_context_item(
+    file: CapturedTextFile,
+    forbidden: tuple[str, ...],
+    query: str | None,
+) -> ExcludedContextItem:
+    reason = "not selected"
+    if _is_forbidden(file.path, forbidden):
+        reason = "forbidden by capability context policy"
+    elif query is not None and not _matches_query(file, query):
+        reason = "optional context did not match query"
+    return ExcludedContextItem(
+        path=file.path,
+        source="source_evidence",
+        reason=reason,
+    )
+
+
+def _token_estimate(content: str) -> int:
+    return max(1, len(content) // 4) if content else 0
+
+
+def _compression_strategy(
+    request: ContextRequest,
+    manifest: CapabilityManifest,
+) -> str:
+    if request.max_chars is not None:
+        return f"truncate_each_item_to_{request.max_chars}_chars"
+    if manifest.context.compression_rule is not None:
+        return manifest.context.compression_rule
+    if manifest.context.maximum_token_budget is not None:
+        return f"fit_to_{manifest.context.maximum_token_budget}_tokens"
+    return "none"
+
+
+def _evidence_integrity_link(evidence: EvidenceRecord) -> ArtifactIntegrityLink:
+    if evidence.integrity_chain:
+        return evidence.integrity_chain[-1]
+    return integrity_link(
+        artifact_type="evidence",
+        artifact_id=evidence.id,
+        model=evidence,
+    )
 
 
 def _summary_for_file(file: CapturedTextFile) -> str:
