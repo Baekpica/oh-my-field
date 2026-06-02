@@ -15,6 +15,8 @@ from oh_my_field.eval import EvalError, EvalRequest, run_eval_workflow
 from oh_my_field.learn import LearnError, LearnRequest, run_learn_workflow
 from oh_my_field.models import (
     CapturedFileRole,
+    EvalChecklistItem,
+    EvalRubricScore,
     HumanReviewAction,
     ReviewTargetType,
 )
@@ -36,6 +38,13 @@ app = typer.Typer(
     help="oh-my-field turns tacit know-how into reusable capabilities.",
     no_args_is_help=True,
 )
+RUBRIC_SCORE_REQUIRED_PARTS = 4
+RUBRIC_SCORE_SPLIT_MAX = 4
+
+
+class RubricScoreParseError(ValueError):
+    def __str__(self) -> str:
+        return "rubric score must use name:score:max_score:pass_threshold[:message]"
 
 
 def _main() -> None:
@@ -232,6 +241,18 @@ def _eval(
         list[str] | None,
         typer.Option("--harness-command"),
     ] = None,
+    checklist_pass: Annotated[
+        list[str] | None,
+        typer.Option("--checklist-pass"),
+    ] = None,
+    checklist_fail: Annotated[
+        list[str] | None,
+        typer.Option("--checklist-fail"),
+    ] = None,
+    rubric_score: Annotated[
+        list[str] | None,
+        typer.Option("--rubric-score"),
+    ] = None,
     command_cwd: Annotated[Path, typer.Option("--command-cwd")] = Path(),
     command_timeout_seconds: Annotated[
         int,
@@ -248,11 +269,16 @@ def _eval(
                 replay_dir=replay_dir,
                 eval_dir=eval_dir,
                 harness_commands=tuple(harness_command or ()),
+                checklist_items=_eval_checklist_items(
+                    passes=checklist_pass,
+                    failures=checklist_fail,
+                ),
+                rubric_scores=_eval_rubric_scores(rubric_score),
                 command_cwd=command_cwd,
                 command_timeout_seconds=command_timeout_seconds,
             ),
         )
-    except (EvalError, StorageError, ValidationError) as exc:
+    except (EvalError, StorageError, ValidationError, ValueError) as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
 
@@ -260,6 +286,55 @@ def _eval(
 
 
 app.command("eval")(_eval)
+
+
+def _eval_checklist_items(
+    *,
+    passes: list[str] | None,
+    failures: list[str] | None,
+) -> tuple[EvalChecklistItem, ...]:
+    return (
+        *(
+            EvalChecklistItem(
+                name=item,
+                status="pass",
+                message=f"checklist item passed: {item}",
+            )
+            for item in passes or ()
+        ),
+        *(
+            EvalChecklistItem(
+                name=item,
+                status="fail",
+                message=f"checklist item failed: {item}",
+            )
+            for item in failures or ()
+        ),
+    )
+
+
+def _eval_rubric_scores(values: list[str] | None) -> tuple[EvalRubricScore, ...]:
+    return tuple(_eval_rubric_score(value) for value in values or ())
+
+
+def _eval_rubric_score(value: str) -> EvalRubricScore:
+    parts = value.split(":", RUBRIC_SCORE_SPLIT_MAX)
+    if len(parts) < RUBRIC_SCORE_REQUIRED_PARTS:
+        raise RubricScoreParseError
+    name, score_text, max_score_text, threshold_text, *message = parts
+    score = float(score_text)
+    max_score = float(max_score_text)
+    pass_threshold = float(threshold_text)
+    status = "pass" if score >= pass_threshold else "fail"
+    default_message = f"rubric score {score:g}/{max_score:g}"
+    return EvalRubricScore(
+        name=name,
+        score=score,
+        max_score=max_score,
+        pass_threshold=pass_threshold,
+        status=status,
+        message=message[0] if message else default_message,
+    )
 
 
 def _approve(
@@ -526,6 +601,18 @@ def _run(
         list[str] | None,
         typer.Option("--harness-command"),
     ] = None,
+    checklist_pass: Annotated[
+        list[str] | None,
+        typer.Option("--checklist-pass"),
+    ] = None,
+    checklist_fail: Annotated[
+        list[str] | None,
+        typer.Option("--checklist-fail"),
+    ] = None,
+    rubric_score: Annotated[
+        list[str] | None,
+        typer.Option("--rubric-score"),
+    ] = None,
     runtime_tool: Annotated[
         list[str] | None,
         typer.Option("--runtime-tool"),
@@ -595,6 +682,11 @@ def _run(
         command_cwd=command_cwd,
         command_timeout_seconds=command_timeout_seconds,
         harness_commands=tuple(harness_command or ()),
+        checklist_items=_eval_checklist_items(
+            passes=checklist_pass,
+            failures=checklist_fail,
+        ),
+        rubric_scores=_eval_rubric_scores(rubric_score),
         execute_replay_commands=not skip_replay_execute,
         include_optional_context=not skip_optional_context,
         allow_failed_capture=allow_failed_capture,

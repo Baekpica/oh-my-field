@@ -236,6 +236,41 @@ def test_eval_runs_harness_commands_and_records_failures(
     assert "harness_command_1" in {check.name for check in eval_result.checks}
 
 
+def test_eval_records_checklist_and_rubric_harness_results(
+    tmp_path: Path,
+) -> None:
+    evidence_dir = tmp_path / "evidence"
+    capabilities_dir = tmp_path / "capabilities"
+    evidence = make_evidence_record()
+    manifest = make_manifest()
+    write_evidence(evidence, evidence_dir)
+    write_manifest(manifest, capabilities_dir)
+
+    result = invoke_eval(
+        manifest.name,
+        "--checklist-pass",
+        "schema includes reviewer",
+        "--checklist-fail",
+        "approval attached",
+        "--rubric-score",
+        "clarity:2:5:3:needs clearer evidence",
+        tmp_path=tmp_path,
+    )
+
+    assert result.exit_code == 0
+    output = EvalOutput.model_validate_json(result.stdout)
+    eval_result = EvalResult.model_validate_json(
+        Path(output.eval_path).read_text(encoding="utf-8"),
+    )
+    assert output.status == "fail"
+    assert [item.status for item in eval_result.checklist_items] == ["pass", "fail"]
+    assert eval_result.rubric_scores[0].status == "fail"
+    assert "checklist_2_approval_attached" in {
+        check.name for check in eval_result.checks
+    }
+    assert "rubric_1_clarity" in {check.name for check in eval_result.checks}
+
+
 def test_eval_fails_for_missing_manifest(tmp_path: Path) -> None:
     result = invoke_eval("repo_issue_triage", tmp_path=tmp_path)
 

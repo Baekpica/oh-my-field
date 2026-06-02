@@ -12,7 +12,9 @@ from oh_my_field.models import (
     EVIDENCE_ID_PATTERN,
     CommandExecution,
     EvalCheck,
+    EvalChecklistItem,
     EvalResult,
+    EvalRubricScore,
     EvidenceRecord,
     ReplayRecord,
     StrictModel,
@@ -60,6 +62,8 @@ class EvalRequest(StrictModel):
     replay_dir: Path
     eval_dir: Path
     harness_commands: tuple[str, ...] = ()
+    checklist_items: tuple[EvalChecklistItem, ...] = ()
+    rubric_scores: tuple[EvalRubricScore, ...] = ()
     command_cwd: Path = Path()
     command_timeout_seconds: int = Field(default=60, ge=1)
 

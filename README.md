@@ -46,6 +46,8 @@ uv run omf context repo_issue_triage \
 uv run omf eval repo_issue_triage \
   --replay-id <replay_id> \
   --harness-command "printf 'harness ok\n'" \
+  --checklist-pass "schema includes reviewer" \
+  --rubric-score "clarity:4:5:3:clear enough" \
   --evidence-dir /private/tmp/omf-evidence-smoke \
   --capabilities-dir /private/tmp/omf-capabilities-smoke \
   --replay-dir /private/tmp/omf-replays-smoke \
@@ -92,6 +94,8 @@ uv run omf run \
   --prompt tests/fixtures/prompt.md \
   --command "printf 'orchestrated smoke ok\n'" \
   --harness-command "printf 'harness ok\n'" \
+  --checklist-pass "operator rubric attached" \
+  --rubric-score "quality:4:5:3:usable" \
   --runtime-tool shell \
   --evidence-dir /private/tmp/omf-run-evidence-smoke \
   --capabilities-dir /private/tmp/omf-run-capabilities-smoke \

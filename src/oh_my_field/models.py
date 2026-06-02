@@ -228,6 +228,21 @@ class EvalCheck(StrictModel):
     message: str = Field(min_length=1)
 
 
+class EvalChecklistItem(StrictModel):
+    name: str = Field(min_length=1)
+    status: EvalStatus
+    message: str = Field(min_length=1)
+
+
+class EvalRubricScore(StrictModel):
+    name: str = Field(min_length=1)
+    score: float = Field(ge=0.0)
+    max_score: float = Field(gt=0.0)
+    pass_threshold: float = Field(ge=0.0)
+    status: EvalStatus
+    message: str = Field(min_length=1)
+
+
 class EvalResult(StrictModel):
     id: str = Field(pattern=EVIDENCE_ID_PATTERN)
     created_at: datetime
@@ -238,6 +253,8 @@ class EvalResult(StrictModel):
     checks: tuple[EvalCheck, ...]
     failures: tuple[str, ...] = ()
     command_executions: tuple[CommandExecution, ...] = ()
+    checklist_items: tuple[EvalChecklistItem, ...] = ()
+    rubric_scores: tuple[EvalRubricScore, ...] = ()
 
 
 class HumanReviewRecord(StrictModel):
@@ -294,6 +311,8 @@ class WorkflowRunConfig(StrictModel):
     command_cwd: str = Field(min_length=1)
     command_timeout_seconds: int = Field(ge=1)
     harness_commands: tuple[str, ...] = ()
+    checklist_items: tuple[EvalChecklistItem, ...] = ()
+    rubric_scores: tuple[EvalRubricScore, ...] = ()
     execute_replay_commands: bool = True
     include_optional_context: bool = True
     allow_failed_capture: bool = False

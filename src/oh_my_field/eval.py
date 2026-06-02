@@ -26,7 +26,13 @@ from oh_my_field.execution import (
     CommandExecutionRequest,
     execute_shell_command,
 )
-from oh_my_field.models import CommandExecution, EvalCheck, EvalResult
+from oh_my_field.models import (
+    CommandExecution,
+    EvalCheck,
+    EvalChecklistItem,
+    EvalResult,
+    EvalRubricScore,
+)
 from oh_my_field.storage import (
     load_evidence,
     load_manifest,
@@ -166,6 +172,8 @@ def _build_eval(state: EvalState) -> EvalState:
         )
     command_executions = _state_command_executions(state)
     checks.extend(_harness_command_checks(command_executions))
+    checks.extend(_checklist_checks(request.checklist_items))
+    checks.extend(_rubric_checks(request.rubric_scores))
     created_at = dependencies.clock().astimezone(UTC)
     failures = tuple(check.message for check in checks if check.status == "fail")
     result = EvalResult(
@@ -178,6 +186,8 @@ def _build_eval(state: EvalState) -> EvalState:
         checks=tuple(checks),
         failures=failures,
         command_executions=command_executions,
+        checklist_items=request.checklist_items,
+        rubric_scores=request.rubric_scores,
     )
     return EvalState(result=result)
 
@@ -244,6 +254,43 @@ def _harness_command_message(execution: CommandExecution) -> str:
         return f"harness command passed: {execution.command!r}"
     detail = execution.stderr or execution.stdout or f"exit code {execution.exit_code}"
     return f"harness command failed: {execution.command!r}: {detail}"
+
+
+def _checklist_checks(
+    checklist_items: tuple[EvalChecklistItem, ...],
+) -> tuple[EvalCheck, ...]:
+    return tuple(
+        EvalCheck(
+            name=f"checklist_{index}_{_check_name(item.name)}",
+            status=item.status,
+            message=item.message,
+        )
+        for index, item in enumerate(checklist_items, start=1)
+    )
+
+
+def _rubric_checks(
+    rubric_scores: tuple[EvalRubricScore, ...],
+) -> tuple[EvalCheck, ...]:
+    return tuple(
+        EvalCheck(
+            name=f"rubric_{index}_{_check_name(score.name)}",
+            status=score.status,
+            message=(
+                f"{score.name}: {score.score:g}/{score.max_score:g} "
+                f"(threshold {score.pass_threshold:g}) - {score.message}"
+            ),
+        )
+        for index, score in enumerate(rubric_scores, start=1)
+    )
+
+
+def _check_name(value: str) -> str:
+    normalized = "".join(
+        character if character.isalnum() else "_"
+        for character in value.casefold()
+    ).strip("_")
+    return normalized or "item"
 
 
 def _state_command_executions(

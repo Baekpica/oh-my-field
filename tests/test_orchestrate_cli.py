@@ -7,6 +7,7 @@ from typer.testing import CliRunner
 from oh_my_field.cli import app
 from oh_my_field.models import (
     CapabilityManifest,
+    EvalResult,
     EvidenceRecord,
     HarnessResult,
     PromotionCriteria,
@@ -62,6 +63,10 @@ def test_run_executes_full_workflow_and_writes_checkpoints(
             "printf orchestrated",
             "--harness-command",
             "printf harness",
+            "--checklist-pass",
+            "operator rubric attached",
+            "--rubric-score",
+            "quality:4:5:3:usable",
             "--runtime-tool",
             "shell",
             "--evidence-dir",
@@ -100,6 +105,13 @@ def test_run_executes_full_workflow_and_writes_checkpoints(
     assert record.context_id is not None
     assert record.learning_id is not None
     assert Path(output.run_path).exists()
+    eval_result = EvalResult.model_validate_json(
+        (tmp_path / "evals" / f"{record.eval_id}.json").read_text(
+            encoding="utf-8",
+        ),
+    )
+    assert eval_result.checklist_items[0].name == "operator rubric attached"
+    assert eval_result.rubric_scores[0].status == "pass"
 
 
 def test_resume_continues_from_saved_checkpoint(tmp_path: Path) -> None:
