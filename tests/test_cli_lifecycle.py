@@ -425,6 +425,8 @@ def test_capture_promote_replay_eval_lifecycle_uses_real_artifacts(tmp_path: Pat
         if artifact_type == "learning":
             assert get_int(inspect_summary, "item_count") == 3
             assert inspect_summary["output_jsonl_verified"] is True
+            assert inspect_summary["source_artifacts_verified"] is True
+            assert get_int(inspect_summary, "source_artifact_count") == 3
             assert get_str(inspect_summary, "output_jsonl_sha256") == sha256_file(
                 learning_jsonl_path
             )
@@ -767,6 +769,102 @@ def test_inspect_rejects_learning_export_with_tampered_jsonl(tmp_path: Path) -> 
 
     assert inspect_result.returncode != 0
     assert "Learning export JSONL hash does not match manifest" in inspect_result.stderr
+
+
+def test_inspect_rejects_learning_export_with_tampered_source_artifact(
+    tmp_path: Path,
+) -> None:
+    script_path = tmp_path / "make_artifact.py"
+    write_script(script_path, "artifact.txt", "learning source artifact")
+    store_dir = tmp_path / ".omf"
+    capture = run_omf(
+        "capture",
+        "--goal",
+        "capture learning source artifact",
+        "--command",
+        f"{sys.executable} {script_path}",
+        "--artifact",
+        "artifact.txt",
+        "--cwd",
+        str(tmp_path),
+        "--store-dir",
+        str(store_dir),
+    )
+    assert capture.returncode == 0, capture.stderr
+    evidence_path = Path(get_str(parse_json(capture.stdout), "evidence_path"))
+
+    learning = run_omf(
+        "learn",
+        "--source-artifact",
+        str(evidence_path),
+        "--name",
+        "source tamper detection",
+        "--purpose",
+        "eval_set",
+        "--note",
+        "exported from verified source artifact",
+        "--store-dir",
+        str(store_dir),
+    )
+    assert learning.returncode == 0, learning.stderr
+    learning_path = Path(get_str(parse_json(learning.stdout), "manifest_path"))
+    _ = evidence_path.write_text(
+        evidence_path.read_text(encoding="utf-8").replace(
+            "capture learning source artifact",
+            "tampered learning source artifact",
+        ),
+        encoding="utf-8",
+    )
+
+    inspect_result = run_omf("inspect", str(learning_path))
+
+    assert inspect_result.returncode != 0
+    assert "Learning source artifact hash does not match manifest" in inspect_result.stderr
+
+
+def test_inspect_rejects_learning_export_with_missing_source_artifact(
+    tmp_path: Path,
+) -> None:
+    script_path = tmp_path / "make_artifact.py"
+    write_script(script_path, "artifact.txt", "missing learning source artifact")
+    store_dir = tmp_path / ".omf"
+    capture = run_omf(
+        "capture",
+        "--goal",
+        "capture missing learning source artifact",
+        "--command",
+        f"{sys.executable} {script_path}",
+        "--artifact",
+        "artifact.txt",
+        "--cwd",
+        str(tmp_path),
+        "--store-dir",
+        str(store_dir),
+    )
+    assert capture.returncode == 0, capture.stderr
+    evidence_path = Path(get_str(parse_json(capture.stdout), "evidence_path"))
+
+    learning = run_omf(
+        "learn",
+        "--source-artifact",
+        str(evidence_path),
+        "--name",
+        "missing source detection",
+        "--purpose",
+        "eval_set",
+        "--note",
+        "exported from source artifact that must still exist",
+        "--store-dir",
+        str(store_dir),
+    )
+    assert learning.returncode == 0, learning.stderr
+    learning_path = Path(get_str(parse_json(learning.stdout), "manifest_path"))
+    evidence_path.unlink()
+
+    inspect_result = run_omf("inspect", str(learning_path))
+
+    assert inspect_result.returncode != 0
+    assert "Learning source artifact does not exist" in inspect_result.stderr
 
 
 def test_inspect_rejects_capability_with_tampered_source_evidence(tmp_path: Path) -> None:

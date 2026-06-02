@@ -278,6 +278,18 @@ class OmfError(Exception):
     def learning_item_count_mismatch(cls, path: Path) -> OmfError:
         return cls(f"Learning export item count does not match JSONL rows: {path}")
 
+    @classmethod
+    def missing_learning_source_artifact(cls, path: Path) -> OmfError:
+        return cls(f"Learning source artifact does not exist: {path}")
+
+    @classmethod
+    def learning_source_artifact_hash_mismatch(cls, path: Path) -> OmfError:
+        return cls(f"Learning source artifact hash does not match manifest: {path}")
+
+    @classmethod
+    def learning_source_artifact_record_mismatch(cls, path: Path) -> OmfError:
+        return cls(f"Learning source artifact type or status does not match manifest: {path}")
+
 
 @dataclass(frozen=True, slots=True)
 class CaptureRequest:
@@ -649,6 +661,28 @@ def read_learning_jsonl(path: Path) -> tuple[LearningExportItem, ...]:
     return tuple(items)
 
 
+def validate_learning_source_artifacts(
+    owner_path: Path,
+    items: tuple[LearningExportItem, ...],
+) -> None:
+    for item in items:
+        source_artifact_path = resolve_manifest_reference(
+            owner_path, item.source_artifact_path
+        )
+        if not source_artifact_path.is_file():
+            raise OmfError.missing_learning_source_artifact(source_artifact_path)
+        if source_artifact_path.resolve() == owner_path.resolve():
+            raise OmfError.learning_source_artifact_record_mismatch(source_artifact_path)
+        if sha256_file(source_artifact_path) != item.source_artifact_sha256:
+            raise OmfError.learning_source_artifact_hash_mismatch(source_artifact_path)
+        inspected_source = inspect_json_artifact(source_artifact_path)
+        if (
+            inspected_source.artifact_type != item.source_artifact_type
+            or inspected_source.status != item.source_artifact_status
+        ):
+            raise OmfError.learning_source_artifact_record_mismatch(source_artifact_path)
+
+
 def inspect_learning_export(path: Path, payload: dict[str, object]) -> InspectResult:
     learning_export = LearningExportManifest.model_validate(payload)
     jsonl_path = resolve_manifest_reference(path, learning_export.output_jsonl_path)
@@ -661,6 +695,7 @@ def inspect_learning_export(path: Path, payload: dict[str, object]) -> InspectRe
         raise OmfError.learning_item_count_mismatch(jsonl_path)
     if jsonl_items != learning_export.items:
         raise OmfError.learning_jsonl_item_mismatch(jsonl_path)
+    validate_learning_source_artifacts(path, learning_export.items)
     return InspectResult(
         path=str(path.resolve()),
         artifact_type="learning",
@@ -673,6 +708,8 @@ def inspect_learning_export(path: Path, payload: dict[str, object]) -> InspectRe
             "output_jsonl_path": str(jsonl_path.resolve()),
             "output_jsonl_sha256": learning_export.output_jsonl_sha256,
             "output_jsonl_verified": True,
+            "source_artifact_count": len(learning_export.items),
+            "source_artifacts_verified": True,
         },
     )
 

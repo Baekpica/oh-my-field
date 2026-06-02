@@ -120,6 +120,7 @@ def test_local_cli_lifecycle_doc_matches_implemented_commands() -> None:
     assert "learning export" in lifecycle_doc
     assert "JSONL SHA-256" in lifecycle_doc
     assert "verifies the JSONL content" in lifecycle_doc
+    assert "source artifact hashes" in lifecycle_doc
     assert "not an actual model training run" in lifecycle_doc
     assert "HEAD SHA" in lifecycle_doc
     assert "diff" in lifecycle_doc

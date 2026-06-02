@@ -265,7 +265,7 @@
 - eval artifact는 embedded replay result, pass count/rate/status/timing 일치를 재검증
 - review artifact는 reviewed artifact 파일 존재, SHA-256, type/status 일치를 재검증
 - regression artifact는 source artifact와 capability manifest 파일 존재, SHA-256, type/status, capability name, embedded replay status 일치를 재검증
-- learning artifact는 manifest만 보지 않고 JSONL 파일 존재, SHA-256, row schema, row count, manifest item 일치 여부까지 재검증
+- learning artifact는 manifest만 보지 않고 JSONL 파일 존재, SHA-256, row schema, row count, manifest item 일치 여부와 source artifact path/SHA-256/type/status까지 재검증
 - schema가 지원되지 않거나 깨진 JSON이면 실패
 
 ## `omf review`
@@ -584,7 +584,7 @@ promotion_criteria:
 
 - 현재 구현된 범위는 검증된 omf JSON artifact를 local JSONL learning candidate와 manifest로 export하는 것
 - export manifest는 source artifact path/SHA-256/type/status, JSONL path/SHA-256, item count를 기록
-- learning export는 `omf inspect`에서 JSONL hash, row schema, row count, manifest item 일치가 통과해야 유효
+- learning export는 `omf inspect`에서 JSONL hash, row schema, row count, manifest item 일치와 source artifact hash/type/status 재검증이 통과해야 유효
 - prompt patch, eval set, few-shot example, fine-tuning dataset으로의 실제 적용은 후속 pipeline에서 별도 검증해야 함
 - 모델 학습, dataset upload, runtime policy 자동 반영은 아직 출시 기능으로 주장하지 않음
 

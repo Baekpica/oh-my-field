@@ -12,7 +12,7 @@ Field-fit agents to real work. Turn tacit know-how into reusable capabilities.
 - `omf replay` reruns only an inspected capability manifest and stores manifest/evidence SHA-256 checks.
 - `omf eval` repeats replay from an inspected capability manifest and writes an eval artifact with verified replay results, pass rate, and measured timing.
 - `omf list` lists local artifacts only after validating each entry with `omf inspect`.
-- `omf inspect` validates and summarizes a single omf JSON artifact, including evidence artifact hashes, linked evidence, and JSONL hash checks where applicable.
+- `omf inspect` validates and summarizes a single omf JSON artifact, including evidence artifact hashes, linked evidence, linked source artifacts, and JSONL hash checks where applicable.
 - `omf review` records a reviewer decision against an inspected omf JSON artifact.
 - `omf regress` creates and immediately runs a regression case from an inspected capability manifest and source artifact.
 - `omf learn` exports inspected artifacts into a local JSONL learning candidate set with a hashed manifest.

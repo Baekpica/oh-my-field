@@ -155,7 +155,9 @@ The learning export writes `.omf/learning/<export-name>-<export-id>/items.jsonl`
 source artifact SHA-256 values, source artifact types, and source artifact statuses. This is a
 local export for prompt improvement, eval-set assembly, or fine-tuning candidate review. It is not an actual model training run, upload, or fine-tuning job.
 `omf inspect` reopens the JSONL file, verifies its SHA-256, validates each JSONL row, and rejects
-the learning export if the row count or row contents no longer match the manifest.
+the learning export if the row count or row contents no longer match the manifest. It also reopens
+each source artifact and rejects the export if any source artifact hash, type, or status no longer
+matches the exported item.
 
 List generated artifacts.
 
@@ -178,9 +180,9 @@ command/harness status and verifies recorded artifact existence, SHA-256, and si
 inspection also verifies that the source evidence file still exists, still matches the recorded
 SHA-256, is passing, and matches the promoted command/artifact/check contract. Replay inspection
 verifies the linked manifest and replay evidence hashes, then recomputes checks and timing. Eval
-inspection validates its embedded replay results. Review and regression inspection verify their
-linked artifact hashes instead of trusting the stored label. Unsupported or corrupted artifact
-schemas fail instead of being treated as valid results.
+inspection validates its embedded replay results. Review, regression, and learning inspection
+verify their linked artifact hashes instead of trusting the stored label. Unsupported or corrupted
+artifact schemas fail instead of being treated as valid results.
 
 Search the local store artifacts.
 
@@ -215,4 +217,5 @@ discoverability is claimed, the artifact must also be returned by `search` with 
 If regression coverage is claimed, it must come from a `regression` artifact with an embedded
 replay result and an `inspect` result that verifies the source artifact and manifest hashes. If
 learning export is claimed, it must come from a `learning` manifest with a hashed JSONL file,
-inspected source artifact hashes, and a passing `inspect` result that verifies the JSONL content.
+inspected source artifact hashes, and a passing `inspect` result that verifies the JSONL content
+and the source artifact hashes.
