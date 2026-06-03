@@ -43,6 +43,7 @@ class CapabilityImportOutput(BaseModel):
     capability_name: str
     imported_package_path: str
     validation_report_path: str
+    overlay_path: str
     status: str
     tool_compatibility: str
     portability_score: float
@@ -192,6 +193,18 @@ def test_capability_import_writes_validation_report(tmp_path: Path) -> None:
     assert report["model_delta"]["model_changed"]
     assert report["eval_id"] == output.eval_id
     assert report["failure_evidence_id"] == output.failure_evidence_id
+    overlay = yaml.safe_load(Path(output.overlay_path).read_text(encoding="utf-8"))
+    target_dir = Path(output.overlay_path).parent
+    assert overlay["target"]["runtime"] == "generic"
+    assert overlay["target"]["model"] == "small-local"
+    assert overlay["status"] == "needs_adaptation"
+    assert overlay["overrides"]["instruction_variant"] == "compact"
+    assert overlay["overrides"]["context_variant"] == "full"
+    assert overlay["eval_id"] == output.eval_id
+    assert overlay["failure_evidence_id"] == output.failure_evidence_id
+    assert target_dir.joinpath("README.md").exists()
+    assert target_dir.joinpath("instructions.md").exists()
+    assert target_dir.joinpath("context.pack.md").exists()
 
 
 @pytest.mark.parametrize(

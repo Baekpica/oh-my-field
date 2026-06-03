@@ -176,6 +176,28 @@ class TargetValidationReport(StrictModel):
     next_action: str = Field(min_length=1)
 
 
+class TargetOverrides(StrictModel):
+    instruction_variant: str = "base"
+    context_variant: str = "full"
+    required_human_review: bool = True
+
+
+class TargetOverlay(StrictModel):
+    capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
+    source: PortabilitySource
+    target: PortabilityTarget
+    status: ValidationStatus
+    tool_compatibility: ToolCompatibilityStatus
+    portability_score: float = Field(ge=0.0, le=1.0)
+    transfer_type: tuple[str, ...] = ()
+    overrides: TargetOverrides = Field(default_factory=TargetOverrides)
+    validation_report_path: str = "validation_report.yaml"
+    instructions_path: str = "instructions.md"
+    context_pack_path: str = "context.pack.md"
+    eval_id: str | None = None
+    failure_evidence_id: str | None = None
+
+
 class CapabilityPortabilityExportRequest(StrictModel):
     capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
     target: ExportTarget
@@ -218,6 +240,7 @@ class CapabilityPortabilityImportSummary(StrictModel):
     capability_name: str
     imported_package_path: str
     validation_report_path: str
+    overlay_path: str
     status: ValidationStatus
     tool_compatibility: ToolCompatibilityStatus
     portability_score: float = Field(ge=0.0, le=1.0)
@@ -268,13 +291,14 @@ def import_capability_package(
             "project": request.project or portability.target.project,
         },
     )
+    resolved = portability.model_copy(update={"target": target})
     imported_path = write_capability_package(
         manifest,
         request.capabilities_dir,
     ).package_dir
     report = _validation_report(
         manifest=manifest,
-        portability=portability.model_copy(update={"target": target}),
+        portability=resolved,
         available_tools=request.available_tools,
     )
     if request.validate_import:
@@ -298,17 +322,20 @@ def import_capability_package(
                     "failure_evidence_path": str(evidence_path),
                 },
             )
-    report_path = (
-        imported_path
-        / "imports"
-        / _target_slug(report.target)
-        / "validation_report.yaml"
+    target_dir = imported_path / "imports" / _target_slug(report.target)
+    report_path = target_dir / "validation_report.yaml"
+    overlay_path = _write_target_overlay(
+        target_dir=target_dir,
+        report=report,
+        portability=resolved,
+        manifest=manifest,
     )
     _write_text_exclusive(report_path, _yaml_dump(report))
     return CapabilityPortabilityImportSummary(
         capability_name=manifest.name,
         imported_package_path=str(imported_path),
         validation_report_path=str(report_path),
+        overlay_path=str(overlay_path),
         status=report.status,
         tool_compatibility=report.tool_compatibility,
         portability_score=report.portability_score,
@@ -316,6 +343,110 @@ def import_capability_package(
         eval_path=report.eval_path,
         failure_evidence_id=report.failure_evidence_id,
         failure_evidence_path=report.failure_evidence_path,
+    )
+
+
+def _write_target_overlay(
+    *,
+    target_dir: Path,
+    report: TargetValidationReport,
+    portability: PortabilityManifest,
+    manifest: CapabilityManifest,
+) -> Path:
+    overlay = _build_overlay(report, portability)
+    overlay_path = target_dir / "target.overlay.yaml"
+    _write_text_exclusive(overlay_path, _yaml_dump(overlay))
+    _write_text_exclusive(target_dir / "README.md", _target_readme(overlay))
+    compact = overlay.overrides.instruction_variant == "compact"
+    _write_text_exclusive(
+        target_dir / "instructions.md",
+        _compact_instructions(manifest) if compact else _base_instructions(manifest),
+    )
+    _write_text_exclusive(
+        target_dir / "context.pack.md",
+        _target_context_pack(
+            manifest,
+            portability,
+            compressed=overlay.overrides.context_variant == "compressed",
+        ),
+    )
+    return overlay_path
+
+
+def _build_overlay(
+    report: TargetValidationReport,
+    portability: PortabilityManifest,
+) -> TargetOverlay:
+    return TargetOverlay(
+        capability_name=report.capability_name,
+        source=report.source,
+        target=report.target,
+        status=report.status,
+        tool_compatibility=report.tool_compatibility,
+        portability_score=report.portability_score,
+        transfer_type=portability.adaptation.transfer_type,
+        overrides=TargetOverrides(
+            instruction_variant="compact" if _model_downgrade(portability) else "base",
+            context_variant=(
+                "compressed"
+                if portability.compatibility.compression_required
+                else "full"
+            ),
+            required_human_review=portability.adaptation.human_review_required,
+        ),
+        eval_id=report.eval_id,
+        failure_evidence_id=report.failure_evidence_id,
+    )
+
+
+def _target_readme(overlay: TargetOverlay) -> str:
+    source_model = overlay.source.model or "model_unknown"
+    target_model = overlay.target.model or "model_unknown"
+    return "\n".join(
+        [
+            f"# {overlay.capability_name} ({overlay.target.runtime})",
+            "",
+            "## Imported Target",
+            f"- Source: {overlay.source.runtime}/{source_model}",
+            f"- Target: {overlay.target.runtime}/{target_model}",
+            f"- Project: {overlay.target.project or 'not recorded'}",
+            f"- Status: {overlay.status}",
+            f"- Tool compatibility: {overlay.tool_compatibility}",
+            f"- Portability score: {overlay.portability_score:.2f}",
+            "",
+            "## Adaptation",
+            f"- Instruction variant: {overlay.overrides.instruction_variant}",
+            f"- Context variant: {overlay.overrides.context_variant}",
+            f"- Human review required: {overlay.overrides.required_human_review}",
+            "",
+            "## Next Action",
+            f"- {_next_action(overlay.status)}",
+            "",
+        ],
+    )
+
+
+def _target_context_pack(
+    manifest: CapabilityManifest,
+    portability: PortabilityManifest,
+    *,
+    compressed: bool,
+) -> str:
+    if compressed:
+        return _compressed_context_pack(manifest, portability)
+    required = "\n".join(f"- {item}" for item in manifest.context.required)
+    optional = "\n".join(f"- {item}" for item in manifest.context.optional)
+    return "\n".join(
+        [
+            "# Context Pack",
+            "",
+            "## Required",
+            required or "- No required context recorded.",
+            "",
+            "## Optional",
+            optional or "- No optional context recorded.",
+            "",
+        ],
     )
 
 
