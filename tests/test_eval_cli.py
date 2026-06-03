@@ -17,7 +17,12 @@ from oh_my_field.models import (
     RuntimeInfo,
     WorkflowManifest,
 )
-from oh_my_field.storage import write_evidence, write_manifest, write_replay
+from oh_my_field.storage import (
+    load_eval_set,
+    write_evidence,
+    write_manifest,
+    write_replay,
+)
 
 
 class EvalOutput(BaseModel):
@@ -27,6 +32,32 @@ class EvalOutput(BaseModel):
     eval_path: str
     capability_name: str
     status: str
+
+
+class EvalMatrixItemOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    runtime_profile: str
+    eval_id: str
+    eval_path: str
+    status: str
+
+
+class EvalMatrixOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    capability_name: str
+    results: tuple[EvalMatrixItemOutput, ...]
+
+
+class RegressionCaseOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    eval_set_name: str
+    eval_set_path: str
+    capability_name: str
+    case_id: str
+    case_count: int
 
 
 def invoke_eval(
@@ -305,6 +336,163 @@ def test_eval_records_checklist_and_rubric_harness_results(
         check.name for check in eval_result.checks
     }
     assert "rubric_1_clarity" in {check.name for check in eval_result.checks}
+
+
+def test_regression_case_creates_eval_set_and_eval_loads_it(
+    tmp_path: Path,
+) -> None:
+    evidence_dir = tmp_path / "evidence"
+    capabilities_dir = tmp_path / "capabilities"
+    eval_dir = tmp_path / "evals"
+    eval_set_dir = tmp_path / "eval_sets"
+    evidence = make_evidence_record()
+    manifest = make_manifest()
+    write_evidence(evidence, evidence_dir)
+    write_manifest(manifest, capabilities_dir)
+
+    create_result = CliRunner().invoke(
+        app,
+        [
+            "regression-case",
+            manifest.name,
+            "--eval-set",
+            "repo_issue_regression",
+            "--case-id",
+            "failed_import_case",
+            "--input",
+            "issue=ImportError",
+            "--check",
+            "identifies_root_cause",
+            "--flaky-check",
+            "uses_minimal_context",
+            "--eval-set-dir",
+            str(eval_set_dir),
+        ],
+    )
+
+    assert create_result.exit_code == 0
+    create_output = RegressionCaseOutput.model_validate_json(create_result.stdout)
+    eval_set = load_eval_set(create_output.eval_set_name, eval_set_dir)
+    assert create_output.case_count == 1
+    assert eval_set.cases[0].expected_checks[0].name == "identifies_root_cause"
+    assert eval_set.cases[0].expected_checks[1].flaky
+
+    eval_result = invoke_eval(
+        manifest.name,
+        "--eval-set",
+        eval_set.name,
+        "--eval-set-dir",
+        str(eval_set_dir),
+        "--checklist-pass",
+        "identifies_root_cause",
+        tmp_path=tmp_path,
+        capabilities_dir=capabilities_dir,
+        evidence_dir=evidence_dir,
+        eval_dir=eval_dir,
+    )
+
+    assert eval_result.exit_code == 0
+    output = EvalOutput.model_validate_json(eval_result.stdout)
+    result = EvalResult.model_validate_json(
+        Path(output.eval_path).read_text(encoding="utf-8"),
+    )
+    assert result.eval_set_name == eval_set.name
+    assert result.eval_case_ids == ("failed_import_case",)
+    assert result.status == "pass"
+    assert "eval_case_failed_import_case_identifies_root_cause" in {
+        check.name for check in result.checks
+    }
+
+
+def test_eval_set_missing_required_expected_check_fails(
+    tmp_path: Path,
+) -> None:
+    evidence_dir = tmp_path / "evidence"
+    capabilities_dir = tmp_path / "capabilities"
+    eval_dir = tmp_path / "evals"
+    eval_set_dir = tmp_path / "eval_sets"
+    evidence = make_evidence_record()
+    manifest = make_manifest()
+    write_evidence(evidence, evidence_dir)
+    write_manifest(manifest, capabilities_dir)
+
+    create_result = CliRunner().invoke(
+        app,
+        [
+            "regression-case",
+            manifest.name,
+            "--eval-set",
+            "repo_issue_regression",
+            "--case-id",
+            "missing_check_case",
+            "--check",
+            "explains_root_cause",
+            "--flaky-check",
+            "mentions_optional_trace",
+            "--eval-set-dir",
+            str(eval_set_dir),
+        ],
+    )
+
+    assert create_result.exit_code == 0
+    eval_result = invoke_eval(
+        manifest.name,
+        "--eval-set",
+        "repo_issue_regression",
+        "--eval-set-dir",
+        str(eval_set_dir),
+        tmp_path=tmp_path,
+        capabilities_dir=capabilities_dir,
+        evidence_dir=evidence_dir,
+        eval_dir=eval_dir,
+    )
+
+    assert eval_result.exit_code == 0
+    output = EvalOutput.model_validate_json(eval_result.stdout)
+    result = EvalResult.model_validate_json(
+        Path(output.eval_path).read_text(encoding="utf-8"),
+    )
+    assert output.status == "fail"
+    assert any(
+        check.status == "fail"
+        and "missing expected check 'explains_root_cause'" in check.message
+        for check in result.checks
+    )
+    assert any(
+        check.status == "pass"
+        and "flaky eval check 'mentions_optional_trace' was not observed"
+        in check.message
+        for check in result.checks
+    )
+
+
+def test_eval_matrix_creates_one_eval_per_runtime_profile(tmp_path: Path) -> None:
+    evidence_dir = tmp_path / "evidence"
+    capabilities_dir = tmp_path / "capabilities"
+    eval_dir = tmp_path / "evals"
+    evidence = make_evidence_record()
+    manifest = make_manifest()
+    write_evidence(evidence, evidence_dir)
+    write_manifest(manifest, capabilities_dir)
+
+    result = invoke_eval(
+        manifest.name,
+        "--matrix",
+        "frontier,local",
+        tmp_path=tmp_path,
+        capabilities_dir=capabilities_dir,
+        evidence_dir=evidence_dir,
+        eval_dir=eval_dir,
+    )
+
+    assert result.exit_code == 0
+    output = EvalMatrixOutput.model_validate_json(result.stdout)
+    assert [item.runtime_profile for item in output.results] == ["frontier", "local"]
+    for item in output.results:
+        eval_result = EvalResult.model_validate_json(
+            Path(item.eval_path).read_text(encoding="utf-8"),
+        )
+        assert eval_result.runtime_profile == item.runtime_profile
 
 
 def test_eval_fails_for_missing_manifest(tmp_path: Path) -> None:

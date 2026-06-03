@@ -4,6 +4,12 @@ from typing import Annotated, Literal, cast
 import typer
 from pydantic import ValidationError
 
+from oh_my_field.adapters import (
+    AdapterError,
+    AgentArtifactInput,
+    AgentImportRequest,
+    import_agent_run,
+)
 from oh_my_field.capture import (
     CaptureError,
     CaptureFileInput,
@@ -20,15 +26,27 @@ from oh_my_field.dashboard import (
     create_dashboard_server,
 )
 from oh_my_field.eval import EvalError, EvalRequest, run_eval_workflow
+from oh_my_field.eval_set import (
+    EvalSetError,
+    RegressionCaseRequest,
+    upsert_regression_case,
+)
 from oh_my_field.export import ExportError, ExportRequest, run_export_workflow
 from oh_my_field.inspection import InspectRequest, inspect_artifact
 from oh_my_field.learn import LearnError, LearnRequest, run_learn_workflow
+from oh_my_field.learning_patch import (
+    LearningPatchError,
+    LearningPatchRequest,
+    apply_learning_patch,
+)
 from oh_my_field.models import (
     CapturedFileRole,
     EvalChecklistItem,
     EvalRubricScore,
     HumanReviewAction,
+    PatchDecisionStatus,
     ReviewTargetType,
+    StrictModel,
 )
 from oh_my_field.orchestrate import (
     OrchestrateError,
@@ -45,6 +63,7 @@ from oh_my_field.replay import ReplayError, ReplayRequest, run_replay_workflow
 from oh_my_field.review import ReviewError, ReviewRequest, run_review_workflow
 from oh_my_field.rollback import RollbackError, RollbackRequest, rollback_workflow
 from oh_my_field.storage import StorageError
+from oh_my_field.verify import VerifyError, VerifyRequest, verify_artifact
 
 app = typer.Typer(
     help="oh-my-field turns tacit know-how into reusable capabilities.",
@@ -57,6 +76,30 @@ RUBRIC_SCORE_SPLIT_MAX = 4
 class RubricScoreParseError(ValueError):
     def __str__(self) -> str:
         return "rubric score must use name:score:max_score:pass_threshold[:message]"
+
+
+class EvalMatrixItem(StrictModel):
+    runtime_profile: str
+    eval_id: str
+    eval_path: str
+    status: str
+
+
+class EvalMatrixSummary(StrictModel):
+    capability_name: str
+    results: tuple[EvalMatrixItem, ...]
+
+
+class ReplayMatrixItem(StrictModel):
+    runtime_profile: str
+    replay_id: str
+    replay_path: str
+    harness_status: str
+
+
+class ReplayMatrixSummary(StrictModel):
+    capability_name: str
+    results: tuple[ReplayMatrixItem, ...]
 
 
 def _main() -> None:
@@ -163,17 +206,24 @@ def _capture_file_inputs(
     return tuple(CaptureFileInput(role=role, path=path) for path in paths or ())
 
 
-app.command("capture")(_capture)
+app.command("capture", help="Capture files, commands, and feedback as evidence.")(
+    _capture,
+)
 
 
 def _promote(
-    evidence_id: Annotated[str, typer.Argument()],
     name: Annotated[str, typer.Option("--name")],
     description: Annotated[str, typer.Option("--description")],
+    evidence_id: Annotated[str | None, typer.Argument()] = None,
     version: Annotated[str, typer.Option("--version")] = "0.1.0",
+    from_evidence_set: Annotated[
+        Path | None,
+        typer.Option("--from-evidence-set"),
+    ] = None,
     evidence_dir: Annotated[Path, typer.Option("--evidence-dir")] = Path(
         ".omf/evidence",
     ),
+    eval_dir: Annotated[Path, typer.Option("--eval-dir")] = Path(".omf/evals"),
     capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
         "capabilities",
     ),
@@ -182,10 +232,12 @@ def _promote(
         summary = run_promote_workflow(
             PromoteRequest(
                 evidence_id=evidence_id,
+                from_evidence_set=from_evidence_set,
                 name=name,
                 description=description,
                 version=version,
                 evidence_dir=evidence_dir,
+                eval_dir=eval_dir,
                 capabilities_dir=capabilities_dir,
             ),
         )
@@ -196,7 +248,9 @@ def _promote(
     typer.echo(summary.model_dump_json())
 
 
-app.command("promote")(_promote)
+app.command("promote", help="Promote evidence or an evidence set into a capability.")(
+    _promote,
+)
 
 
 def _replay(
@@ -220,19 +274,33 @@ def _replay(
         bool,
         typer.Option("--approve-command-risk"),
     ] = False,
+    matrix: Annotated[list[str] | None, typer.Option("--matrix")] = None,
 ) -> None:
     try:
+        request = ReplayRequest(
+            capability_name=capability_name,
+            capabilities_dir=capabilities_dir,
+            evidence_dir=evidence_dir,
+            replay_dir=replay_dir,
+            execute_commands=execute,
+            command_cwd=command_cwd,
+            command_timeout_seconds=command_timeout_seconds,
+            approve_command_risk=approve_command_risk,
+        )
+        profiles = _matrix_profiles(matrix)
+        if profiles:
+            results = tuple(
+                _replay_matrix_item(request, profile) for profile in profiles
+            )
+            typer.echo(
+                ReplayMatrixSummary(
+                    capability_name=capability_name,
+                    results=results,
+                ).model_dump_json(),
+            )
+            return
         summary = run_replay_workflow(
-            ReplayRequest(
-                capability_name=capability_name,
-                capabilities_dir=capabilities_dir,
-                evidence_dir=evidence_dir,
-                replay_dir=replay_dir,
-                execute_commands=execute,
-                command_cwd=command_cwd,
-                command_timeout_seconds=command_timeout_seconds,
-                approve_command_risk=approve_command_risk,
-            ),
+            request,
         )
     except (ReplayError, StorageError, ValidationError) as exc:
         typer.echo(str(exc), err=True)
@@ -241,7 +309,24 @@ def _replay(
     typer.echo(summary.model_dump_json())
 
 
-app.command("replay")(_replay)
+app.command("replay", help="Replay a capability against its source evidence.")(
+    _replay,
+)
+
+
+def _replay_matrix_item(
+    request: ReplayRequest,
+    runtime_profile: str,
+) -> ReplayMatrixItem:
+    summary = run_replay_workflow(
+        request.model_copy(update={"runtime_profile": runtime_profile}),
+    )
+    return ReplayMatrixItem(
+        runtime_profile=runtime_profile,
+        replay_id=summary.replay_id,
+        replay_path=summary.replay_path,
+        harness_status=summary.harness_status,
+    )
 
 
 def _eval(
@@ -259,6 +344,11 @@ def _eval(
     eval_dir: Annotated[Path, typer.Option("--eval-dir")] = Path(
         ".omf/evals",
     ),
+    eval_set: Annotated[str | None, typer.Option("--eval-set")] = None,
+    eval_set_dir: Annotated[Path, typer.Option("--eval-set-dir")] = Path(
+        ".omf/eval_sets",
+    ),
+    matrix: Annotated[list[str] | None, typer.Option("--matrix")] = None,
     harness_command: Annotated[
         list[str] | None,
         typer.Option("--harness-command"),
@@ -286,25 +376,38 @@ def _eval(
     ] = False,
 ) -> None:
     try:
-        summary = run_eval_workflow(
-            EvalRequest(
-                capability_name=capability_name,
-                replay_id=replay_id,
-                capabilities_dir=capabilities_dir,
-                evidence_dir=evidence_dir,
-                replay_dir=replay_dir,
-                eval_dir=eval_dir,
-                harness_commands=tuple(harness_command or ()),
-                checklist_items=_eval_checklist_items(
-                    passes=checklist_pass,
-                    failures=checklist_fail,
-                ),
-                rubric_scores=_eval_rubric_scores(rubric_score),
-                command_cwd=command_cwd,
-                command_timeout_seconds=command_timeout_seconds,
-                approve_command_risk=approve_command_risk,
+        request = EvalRequest(
+            capability_name=capability_name,
+            replay_id=replay_id,
+            capabilities_dir=capabilities_dir,
+            evidence_dir=evidence_dir,
+            replay_dir=replay_dir,
+            eval_dir=eval_dir,
+            eval_set_dir=eval_set_dir,
+            eval_set_name=eval_set,
+            harness_commands=tuple(harness_command or ()),
+            checklist_items=_eval_checklist_items(
+                passes=checklist_pass,
+                failures=checklist_fail,
             ),
+            rubric_scores=_eval_rubric_scores(rubric_score),
+            command_cwd=command_cwd,
+            command_timeout_seconds=command_timeout_seconds,
+            approve_command_risk=approve_command_risk,
         )
+        profiles = _matrix_profiles(matrix)
+        if profiles:
+            results = tuple(
+                _eval_matrix_item(request, profile) for profile in profiles
+            )
+            typer.echo(
+                EvalMatrixSummary(
+                    capability_name=capability_name,
+                    results=results,
+                ).model_dump_json(),
+            )
+            return
+        summary = run_eval_workflow(request)
     except (EvalError, StorageError, ValidationError, ValueError) as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
@@ -312,7 +415,73 @@ def _eval(
     typer.echo(summary.model_dump_json())
 
 
-app.command("eval")(_eval)
+app.command("eval", help="Evaluate a capability with harness, rubric, or matrix runs.")(
+    _eval,
+)
+
+
+def _matrix_profiles(values: list[str] | None) -> tuple[str, ...]:
+    profiles = [
+        profile.strip()
+        for value in values or ()
+        for profile in value.split(",")
+        if profile.strip()
+    ]
+    return tuple(dict.fromkeys(profiles))
+
+
+def _eval_matrix_item(request: EvalRequest, runtime_profile: str) -> EvalMatrixItem:
+    summary = run_eval_workflow(
+        request.model_copy(update={"runtime_profile": runtime_profile}),
+    )
+    return EvalMatrixItem(
+        runtime_profile=runtime_profile,
+        eval_id=summary.eval_id,
+        eval_path=summary.eval_path,
+        status=summary.status,
+    )
+
+
+def _regression_case(
+    capability_name: Annotated[str, typer.Argument()],
+    case_id: Annotated[str, typer.Option("--case-id")],
+    eval_set: Annotated[str | None, typer.Option("--eval-set")] = None,
+    eval_set_version: Annotated[str, typer.Option("--eval-set-version")] = "0.1.0",
+    input_value: Annotated[list[str] | None, typer.Option("--input")] = None,
+    check: Annotated[list[str] | None, typer.Option("--check")] = None,
+    flaky_check: Annotated[list[str] | None, typer.Option("--flaky-check")] = None,
+    harness_command: Annotated[
+        list[str] | None,
+        typer.Option("--harness-command"),
+    ] = None,
+    eval_set_dir: Annotated[Path, typer.Option("--eval-set-dir")] = Path(
+        ".omf/eval_sets",
+    ),
+) -> None:
+    try:
+        summary = upsert_regression_case(
+            RegressionCaseRequest(
+                capability_name=capability_name,
+                eval_set_name=eval_set or f"{capability_name}_regression",
+                eval_set_version=eval_set_version,
+                case_id=case_id,
+                inputs=tuple(input_value or ()),
+                expected_checks=tuple(check or ()),
+                flaky_checks=tuple(flaky_check or ()),
+                harness_commands=tuple(harness_command or ()),
+                eval_set_dir=eval_set_dir,
+            ),
+        )
+    except (EvalSetError, StorageError, ValidationError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(summary.model_dump_json())
+
+
+app.command("regression-case", help="Create or update a regression eval case.")(
+    _regression_case,
+)
 
 
 def _eval_checklist_items(
@@ -387,7 +556,9 @@ def _approve(
     )
 
 
-app.command("approve")(_approve)
+app.command("approve", help="Approve an evidence, capability, replay, or eval target.")(
+    _approve,
+)
 
 
 def _reject(
@@ -413,7 +584,9 @@ def _reject(
     )
 
 
-app.command("reject")(_reject)
+app.command("reject", help="Reject an evidence, capability, replay, or eval target.")(
+    _reject,
+)
 
 
 def _revise(
@@ -440,7 +613,7 @@ def _revise(
     )
 
 
-app.command("revise")(_revise)
+app.command("revise", help="Request revision for a reviewed artifact.")(_revise)
 
 
 def _run_review_command(
@@ -535,7 +708,7 @@ def _review(
     )
 
 
-app.command("review")(_review)
+app.command("review", help="Record a structured human review action.")(_review)
 
 
 def _learn(
@@ -566,7 +739,213 @@ def _learn(
     typer.echo(summary.model_dump_json())
 
 
-app.command("learn")(_learn)
+app.command("learn", help="Export learning assets from capability evidence.")(_learn)
+
+
+def _import_run(
+    adapter: Annotated[
+        Literal["codex", "claude_code", "hermes"],
+        typer.Argument(),
+    ],
+    log_path: Annotated[Path, typer.Option("--log")],
+    goal: Annotated[str, typer.Option("--goal")],
+    diff: Annotated[list[Path] | None, typer.Option("--diff")] = None,
+    test_result: Annotated[
+        list[Path] | None,
+        typer.Option("--test-result"),
+    ] = None,
+    command_output: Annotated[
+        list[Path] | None,
+        typer.Option("--command-output"),
+    ] = None,
+    artifact: Annotated[list[Path] | None, typer.Option("--artifact")] = None,
+    artifact_root: Annotated[
+        list[Path] | None,
+        typer.Option("--artifact-root"),
+    ] = None,
+    field: Annotated[str, typer.Option("--field")] = "local",
+    model: Annotated[str | None, typer.Option("--model")] = None,
+    evidence_dir: Annotated[Path, typer.Option("--evidence-dir")] = Path(
+        ".omf/evidence",
+    ),
+) -> None:
+    try:
+        summary = import_agent_run(
+            AgentImportRequest(
+                adapter=adapter,
+                log_path=log_path,
+                goal=goal,
+                field=field,
+                model=model,
+                evidence_dir=evidence_dir,
+                artifacts=(
+                    *_agent_artifacts("diff", diff),
+                    *_agent_artifacts("test_result", test_result),
+                    *_agent_artifacts("command_output", command_output),
+                    *_agent_artifacts("artifact", artifact),
+                ),
+                artifact_roots=tuple(artifact_root or ()),
+            ),
+        )
+    except (AdapterError, StorageError, ValidationError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(summary.model_dump_json())
+
+
+def _agent_artifacts(
+    role: CapturedFileRole,
+    paths: list[Path] | None,
+) -> tuple[AgentArtifactInput, ...]:
+    return tuple(AgentArtifactInput(role=role, path=path) for path in paths or ())
+
+
+app.command("import-run", help="Import an external agent run log as evidence.")(
+    _import_run,
+)
+
+
+def _verify(
+    target_type: Annotated[
+        Literal[
+            "evidence",
+            "capability",
+            "replay",
+            "eval",
+            "context",
+            "learning",
+            "learning_patch",
+            "reflection",
+            "review",
+            "export",
+        ],
+        typer.Argument(),
+    ],
+    target_id: Annotated[str, typer.Argument()],
+    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
+        "capabilities",
+    ),
+    evidence_dir: Annotated[Path, typer.Option("--evidence-dir")] = Path(
+        ".omf/evidence",
+    ),
+    replay_dir: Annotated[Path, typer.Option("--replay-dir")] = Path(
+        ".omf/replays",
+    ),
+    eval_dir: Annotated[Path, typer.Option("--eval-dir")] = Path(".omf/evals"),
+    context_dir: Annotated[Path, typer.Option("--context-dir")] = Path(".omf/context"),
+    learning_dir: Annotated[Path, typer.Option("--learning-dir")] = Path(
+        ".omf/learning",
+    ),
+    learning_patch_dir: Annotated[
+        Path,
+        typer.Option("--learning-patch-dir"),
+    ] = Path(".omf/learning_patches"),
+    reflection_dir: Annotated[Path, typer.Option("--reflection-dir")] = Path(
+        ".omf/reflections",
+    ),
+    review_dir: Annotated[Path, typer.Option("--review-dir")] = Path(".omf/reviews"),
+    export_dir: Annotated[Path, typer.Option("--export-dir")] = Path(".omf/exports"),
+) -> None:
+    try:
+        result = verify_artifact(
+            VerifyRequest(
+                target_type=target_type,
+                target_id=target_id,
+                capabilities_dir=capabilities_dir,
+                evidence_dir=evidence_dir,
+                replay_dir=replay_dir,
+                eval_dir=eval_dir,
+                context_dir=context_dir,
+                learning_dir=learning_dir,
+                learning_patch_dir=learning_patch_dir,
+                reflection_dir=reflection_dir,
+                review_dir=review_dir,
+                export_dir=export_dir,
+            ),
+        )
+    except (VerifyError, StorageError, ValidationError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(result.model_dump_json())
+    if result.status == "fail":
+        raise typer.Exit(code=1)
+
+
+app.command("verify", help="Verify artifact integrity chain hashes.")(_verify)
+
+
+def _learn_patch(
+    capability_name: Annotated[str, typer.Argument()],
+    learning_id: Annotated[str, typer.Option("--learning-id")],
+    patch_index: Annotated[int, typer.Option("--patch-index")],
+    decision: Annotated[
+        Literal["accept", "reject", "accepted", "rejected"],
+        typer.Option("--decision"),
+    ],
+    patch_kind: Annotated[
+        Literal["prompt", "context", "harness"],
+        typer.Option("--patch-kind"),
+    ] = "prompt",
+    reviewer: Annotated[str | None, typer.Option("--reviewer")] = None,
+    note: Annotated[list[str] | None, typer.Option("--note")] = None,
+    before_eval_id: Annotated[
+        str | None,
+        typer.Option("--before-eval-id"),
+    ] = None,
+    after_eval_id: Annotated[str | None, typer.Option("--after-eval-id")] = None,
+    pass_rate_delta: Annotated[
+        float | None,
+        typer.Option("--pass-rate-delta"),
+    ] = None,
+    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
+        "capabilities",
+    ),
+    learning_dir: Annotated[Path, typer.Option("--learning-dir")] = Path(
+        ".omf/learning",
+    ),
+    learning_patch_dir: Annotated[
+        Path,
+        typer.Option("--learning-patch-dir"),
+    ] = Path(".omf/learning_patches"),
+) -> None:
+    try:
+        summary = apply_learning_patch(
+            LearningPatchRequest(
+                capability_name=capability_name,
+                learning_id=learning_id,
+                patch_kind=patch_kind,
+                patch_index=patch_index,
+                decision=_patch_decision(decision),
+                reviewer=reviewer,
+                notes=tuple(note or ()),
+                before_eval_id=before_eval_id,
+                after_eval_id=after_eval_id,
+                pass_rate_delta=pass_rate_delta,
+                capabilities_dir=capabilities_dir,
+                learning_dir=learning_dir,
+                learning_patch_dir=learning_patch_dir,
+            ),
+        )
+    except (LearningPatchError, StorageError, ValidationError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(summary.model_dump_json())
+
+
+def _patch_decision(
+    decision: Literal["accept", "reject", "accepted", "rejected"],
+) -> PatchDecisionStatus:
+    if decision in {"accept", "accepted"}:
+        return "accepted"
+    return "rejected"
+
+
+app.command("learn-patch", help="Accept or reject a learning prompt patch.")(
+    _learn_patch,
+)
 
 
 def _context(
@@ -603,7 +982,7 @@ def _context(
     typer.echo(summary.model_dump_json())
 
 
-app.command("context")(_context)
+app.command("context", help="Build a context bundle from capability policy.")(_context)
 
 
 def _run(
@@ -739,7 +1118,9 @@ def _run(
     typer.echo(summary.model_dump_json())
 
 
-app.command("run")(_run)
+app.command("run", help="Run capture, promotion, context, replay, eval, and learn.")(
+    _run,
+)
 
 
 def _resume(
@@ -759,7 +1140,7 @@ def _resume(
     typer.echo(summary.model_dump_json())
 
 
-app.command("resume")(_resume)
+app.command("resume", help="Resume a pending workflow run.")(_resume)
 
 
 def _status(
@@ -777,7 +1158,7 @@ def _status(
     typer.echo(summary.model_dump_json())
 
 
-app.command("status")(_status)
+app.command("status", help="Inspect workflow run status.")(_status)
 
 
 def _dashboard(
@@ -800,6 +1181,13 @@ def _dashboard(
     review_dir: Annotated[Path, typer.Option("--review-dir")] = Path(
         ".omf/reviews",
     ),
+    eval_set_dir: Annotated[Path, typer.Option("--eval-set-dir")] = Path(
+        ".omf/eval_sets",
+    ),
+    learning_patch_dir: Annotated[
+        Path,
+        typer.Option("--learning-patch-dir"),
+    ] = Path(".omf/learning_patches"),
 ) -> None:
     paths = DashboardPaths(
         capabilities_dir=capabilities_dir,
@@ -808,6 +1196,8 @@ def _dashboard(
         eval_dir=eval_dir,
         workflow_dir=workflow_dir,
         review_dir=review_dir,
+        eval_set_dir=eval_set_dir,
+        learning_patch_dir=learning_patch_dir,
     )
     try:
         if once:
@@ -830,7 +1220,9 @@ def _dashboard(
         server.server_close()
 
 
-app.command("dashboard")(_dashboard)
+app.command("dashboard", help="Serve or print the local operating dashboard.")(
+    _dashboard,
+)
 
 
 def _registry(
@@ -855,7 +1247,7 @@ def _registry(
     typer.echo(summary.model_dump_json())
 
 
-app.command("registry")(_registry)
+app.command("registry", help="List capability registry health and metadata.")(_registry)
 
 
 def _reflect(
@@ -892,7 +1284,9 @@ def _reflect(
     typer.echo(summary.model_dump_json())
 
 
-app.command("reflect")(_reflect)
+app.command("reflect", help="Generate a reflection report from evidence and evals.")(
+    _reflect,
+)
 
 
 def _inspect(
@@ -955,7 +1349,7 @@ def _inspect(
     typer.echo(summary.model_dump_json())
 
 
-app.command("inspect")(_inspect)
+app.command("inspect", help="Inspect a stored oh-my-field artifact.")(_inspect)
 
 
 def _export(
@@ -1005,7 +1399,9 @@ def _export(
     typer.echo(summary.model_dump_json())
 
 
-app.command("export")(_export)
+app.command("export", help="Export a capability bundle after explicit approval.")(
+    _export,
+)
 
 
 def _rollback(
@@ -1042,4 +1438,4 @@ def _rollback(
     typer.echo(summary.model_dump_json())
 
 
-app.command("rollback")(_rollback)
+app.command("rollback", help="Move a workflow run back to an earlier node.")(_rollback)

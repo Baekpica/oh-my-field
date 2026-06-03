@@ -16,6 +16,7 @@ from oh_my_field.models import (
     EvalChecklistItem,
     EvalResult,
     EvalRubricScore,
+    EvalSet,
     EvidenceRecord,
     ReplayRecord,
     StrictModel,
@@ -62,6 +63,9 @@ class EvalRequest(StrictModel):
     evidence_dir: Path
     replay_dir: Path
     eval_dir: Path
+    eval_set_dir: Path = Path(".omf/eval_sets")
+    eval_set_name: str | None = Field(default=None, pattern=CAPABILITY_NAME_PATTERN)
+    runtime_profile: str | None = None
     harness_commands: tuple[str, ...] = ()
     checklist_items: tuple[EvalChecklistItem, ...] = ()
     rubric_scores: tuple[EvalRubricScore, ...] = ()
@@ -83,6 +87,7 @@ class EvalState(TypedDict, total=False):
     manifest: CapabilityManifest
     source_evidence: EvidenceRecord
     replay: ReplayRecord | None
+    eval_set: EvalSet | None
     command_executions: tuple[CommandExecution, ...]
     result: EvalResult
     result_path: Path

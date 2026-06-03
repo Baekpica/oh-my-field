@@ -14,13 +14,16 @@ from oh_my_field.execution import (
     CommandExecutionRequest,
     execute_shell_command,
 )
+from oh_my_field.integrity import append_integrity_link, integrity_link
 from oh_my_field.models import (
     CAPABILITY_NAME_PATTERN,
+    ArtifactIntegrityLink,
     CapabilityManifest,
     CommandExecution,
     EvidenceRecord,
     HarnessResult,
     ReplayRecord,
+    RuntimeInfo,
     StrictModel,
     WorkflowManifest,
 )
@@ -79,6 +82,7 @@ class ReplayRequest(StrictModel):
     command_cwd: Path = Path()
     command_timeout_seconds: int = Field(default=60, ge=1)
     approve_command_risk: bool = False
+    runtime_profile: str | None = None
 
 
 class ReplaySummary(StrictModel):
@@ -183,6 +187,7 @@ def _execute_commands(state: ReplayState) -> ReplayState:
 
 
 def _build_replay(state: ReplayState) -> ReplayState:
+    request = _state_request(state)
     dependencies = _state_dependencies(state)
     manifest = _state_manifest(state)
     source_evidence = _state_source_evidence(state)
@@ -210,8 +215,18 @@ def _build_replay(state: ReplayState) -> ReplayState:
         source_goal=source_evidence.goal,
         workflow=WorkflowManifest(graph="langgraph", nodes=REPLAY_NODES),
         harness=harness,
-        runtime=source_evidence.runtime,
+        runtime=_replay_runtime(source_evidence.runtime, request.runtime_profile),
+        runtime_profile=request.runtime_profile,
         command_executions=command_executions,
+    )
+    replay = replay.model_copy(
+        update={"integrity_chain": (_evidence_integrity_link(source_evidence),)},
+    )
+    replay = append_integrity_link(
+        replay,
+        artifact_type="replay",
+        artifact_id=replay.id,
+        previous_sha256=replay.integrity_chain[-1].sha256,
     )
     return ReplayState(replay=replay)
 
@@ -266,6 +281,25 @@ def _execute_command(
             stderr=str(exc),
             duration_ms=0,
         )
+
+
+def _replay_runtime(
+    runtime: RuntimeInfo,
+    runtime_profile: str | None,
+) -> RuntimeInfo:
+    if runtime_profile is None:
+        return runtime
+    return runtime.model_copy(update={"name": runtime_profile})
+
+
+def _evidence_integrity_link(evidence: EvidenceRecord) -> ArtifactIntegrityLink:
+    if evidence.integrity_chain:
+        return evidence.integrity_chain[-1]
+    return integrity_link(
+        artifact_type="evidence",
+        artifact_id=evidence.id,
+        model=evidence,
+    )
 
 
 def _state_request(state: ReplayState) -> ReplayRequest:

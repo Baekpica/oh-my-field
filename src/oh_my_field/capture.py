@@ -15,6 +15,7 @@ from oh_my_field.execution import (
     CommandExecutionRequest,
     execute_shell_command,
 )
+from oh_my_field.integrity import append_integrity_link
 from oh_my_field.models import (
     CapturedFileRole,
     CapturedTextFile,
@@ -238,7 +239,13 @@ def _validate_harness(state: CaptureState) -> CaptureState:
         required_checks=(*checked.harness.required_checks, "schema_valid"),
         human_review_required=checked.harness.human_review_required,
     )
-    return CaptureState(evidence=checked.model_copy(update={"harness": harness}))
+    checked = checked.model_copy(update={"harness": harness})
+    checked = append_integrity_link(
+        checked,
+        artifact_type="evidence",
+        artifact_id=checked.id,
+    )
+    return CaptureState(evidence=checked)
 
 
 def _persist_evidence(state: CaptureState) -> CaptureState:

@@ -498,13 +498,17 @@ promotion_criteria:
 
 ## Runtime Adapter
 
-- OpenAI, Anthropic, local LLM, Claude Code, Codex, shell, MCP, browser 등 런타임 연결
+- OpenAI, Anthropic, local LLM, Claude Code, Codex, Hermes, shell, MCP, browser 등 런타임 연결
 - 모델/도구별 실행 차이를 capability 상위 계층에서 흡수
+- Codex / Claude Code / Hermes 같은 외부 agent runtime은 직접 재구현하지 않고, run log, diff, test result, command output, artifact를 evidence로 import하는 adapter를 제공
+- runtime matrix replay/eval은 capability portability를 검증하기 위한 artifact를 생성하며, agent 자체의 장시간 실행 loop를 대체하지 않음
 
 ## Learning Pipeline
 
 - evidence를 prompt patch, eval set, few-shot example, fine-tuning dataset으로 변환
 - 모델 학습 또는 runtime policy 개선에 활용
+- prompt patch뿐 아니라 context patch와 harness patch도 accept/reject decision을 거쳐 capability manifest에 반영
+- patch decision은 before/after eval, pass-rate delta, reviewer note, integrity link를 보존
 
 # Data Flow
 
@@ -518,7 +522,9 @@ promotion_criteria:
 - 실패 시 reflection 및 retry
 - 성공 시 evidence 저장
 - 반복 성공 시 capability promotion
+- promotion은 success run count, harness pass rate, human intervention rate, retry rate, runtime profile, eval pass rate를 계산해 candidate / validated / stable 상태를 산출
 - 누적 evidence 기반 prompt/context/harness/model 개선
+- integrity verification은 evidence → capability → replay → eval → review → learning/export lineage가 변조되지 않았는지 확인
 
 # Success Metrics
 
@@ -765,13 +771,20 @@ promotion_criteria:
 - 초기 제품은 CLI-first
 - CLI는 사람과 agent가 모두 호출하기 쉬운 command surface 제공
 - 주요 명령은 다음을 중심으로 구성
-  - /capture
-  - /promote
-  - /replay
-  - /eval
-  - /inspect
-  - /rollback
-  - /export
+  - capture
+  - import-run
+  - promote
+  - context
+  - replay
+  - eval
+  - review
+  - learn
+  - learn-patch
+  - verify
+  - inspect
+  - rollback
+  - export
+  - dashboard
 
 - 이후 web dashboard 또는 desktop workbench를 통해 다음 기능 제공 가능
   - capability registry 조회
@@ -781,6 +794,8 @@ promotion_criteria:
   - model/runtime 비교
   - human feedback 입력
   - capability version 관리
+  - approval/review/regression case action 생성
+  - promotion metrics, matrix coverage, patch count, integrity status 확인
 
 # Observability
 

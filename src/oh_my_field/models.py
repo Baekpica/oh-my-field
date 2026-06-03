@@ -18,9 +18,18 @@ type CapturedFileRole = Literal[
 ]
 type HarnessStatus = Literal["pass", "fail"]
 type EvalStatus = Literal["pass", "fail"]
-type CapabilityStatus = Literal["candidate"]
+type CapabilityStatus = Literal["candidate", "validated", "stable", "deprecated"]
 type WorkflowGraph = Literal["langgraph"]
 type SuccessLabel = Literal["success", "failure", "unknown"]
+type RuntimeAdapterName = Literal["codex", "claude_code", "hermes"]
+type ContextSourceType = Literal[
+    "repo",
+    "docs",
+    "logs",
+    "evidence",
+    "review",
+    "preference",
+]
 type CommandRiskCategory = Literal[
     "write",
     "destructive",
@@ -56,6 +65,9 @@ type HumanReviewStatus = Literal[
 ]
 type WorkflowRunStatus = Literal["running", "completed", "failed", "pending_review"]
 type WorkflowNodeStatus = Literal["pending", "pass", "fail", "skipped"]
+type PatchDecisionStatus = Literal["accepted", "rejected"]
+type PatchKind = Literal["prompt", "context", "harness"]
+type IntegrityVerificationStatus = Literal["pass", "fail"]
 
 COMMAND_RISK_CATEGORIES: Final[tuple[CommandRiskCategory, ...]] = (
     "write",
@@ -76,6 +88,19 @@ class RuntimeInfo(StrictModel):
     model: str | None = None
     preferred_models: tuple[str, ...] = ()
     tools: tuple[str, ...] = ()
+
+
+class RuntimeRunSource(StrictModel):
+    adapter: RuntimeAdapterName
+    path: str = Field(min_length=1)
+
+
+class RuntimeAdapterSpec(StrictModel):
+    name: RuntimeAdapterName
+    display_name: str = Field(min_length=1)
+    captures: tuple[str, ...] = ()
+    replays: tuple[str, ...] = ()
+    artifact_roles: tuple[CapturedFileRole, ...] = ()
 
 
 class ToolCallRecord(StrictModel):
@@ -105,6 +130,99 @@ class CostMetrics(StrictModel):
 class LatencyMetrics(StrictModel):
     total_ms: int = Field(default=0, ge=0)
     tool_ms: int = Field(default=0, ge=0)
+
+
+class ContextSource(StrictModel):
+    name: str = Field(min_length=1)
+    type: ContextSourceType
+    location: str = Field(min_length=1)
+    freshness: str | None = None
+    priority: int = Field(default=100, ge=0)
+
+
+class FieldPreference(StrictModel):
+    key: str = Field(min_length=1)
+    value: str = Field(min_length=1)
+
+
+class FieldPolicy(StrictModel):
+    network: NetworkPolicy = "disabled"
+    require_approval: tuple[CommandRiskCategory, ...] = COMMAND_RISK_CATEGORIES
+    forbidden_context: tuple[str, ...] = ()
+
+
+class FieldQualityBar(StrictModel):
+    required_checks: tuple[str, ...] = ()
+    human_review_required: bool = True
+
+
+class FieldFailureHistory(StrictModel):
+    recall_strategy: str | None = None
+    cases: tuple[str, ...] = ()
+
+
+class FieldManifest(StrictModel):
+    name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
+    description: str = Field(min_length=1)
+    sources: tuple[ContextSource, ...] = ()
+    policies: FieldPolicy = Field(default_factory=FieldPolicy)
+    quality_bar: FieldQualityBar = Field(default_factory=FieldQualityBar)
+    preferences: tuple[FieldPreference, ...] = ()
+    failure_history: FieldFailureHistory = Field(default_factory=FieldFailureHistory)
+
+
+class ContextItem(StrictModel):
+    path: str = Field(min_length=1)
+    source: str = Field(min_length=1)
+    reason: str = Field(min_length=1)
+    token_estimate: int = Field(ge=0)
+    source_type: ContextSourceType | None = None
+    freshness: str | None = None
+    priority: int = Field(default=100, ge=0)
+    matched_query: bool = False
+    compressed: bool = False
+
+
+class ExcludedContextItem(StrictModel):
+    path: str = Field(min_length=1)
+    source: str = Field(min_length=1)
+    reason: str = Field(min_length=1)
+    source_type: ContextSourceType | None = None
+    freshness: str | None = None
+    priority: int = Field(default=100, ge=0)
+
+
+class ContextPackPlan(StrictModel):
+    required: tuple[ContextItem, ...] = ()
+    optional: tuple[ContextItem, ...] = ()
+    excluded: tuple[ExcludedContextItem, ...] = ()
+    token_estimate: int = Field(ge=0)
+    compression_strategy: str = Field(min_length=1)
+    source_priority: tuple[str, ...] = ()
+    recall_notes: tuple[str, ...] = ()
+
+
+class ArtifactIntegrityLink(StrictModel):
+    artifact_type: str = Field(min_length=1)
+    artifact_id: str = Field(min_length=1)
+    sha256: str = Field(pattern=SHA256_PATTERN)
+    previous_sha256: str | None = Field(default=None, pattern=SHA256_PATTERN)
+
+
+class IntegrityVerificationCheck(StrictModel):
+    artifact_type: str = Field(min_length=1)
+    artifact_id: str = Field(min_length=1)
+    status: IntegrityVerificationStatus
+    message: str = Field(min_length=1)
+    expected_sha256: str | None = Field(default=None, pattern=SHA256_PATTERN)
+    actual_sha256: str | None = Field(default=None, pattern=SHA256_PATTERN)
+
+
+class IntegrityVerificationResult(StrictModel):
+    target_type: str = Field(min_length=1)
+    target_id: str = Field(min_length=1)
+    status: IntegrityVerificationStatus
+    checks: tuple[IntegrityVerificationCheck, ...]
 
 
 class HumanReview(StrictModel):
@@ -164,6 +282,7 @@ class EvidenceRecord(StrictModel):
     success_or_failure_label: SuccessLabel = "unknown"
     improvement_notes: tuple[str, ...] = ()
     human_review: HumanReview = Field(default_factory=HumanReview)
+    integrity_chain: tuple[ArtifactIntegrityLink, ...] = ()
 
 
 class WorkflowManifest(StrictModel):
@@ -175,6 +294,7 @@ class ContextPolicy(StrictModel):
     required: tuple[str, ...] = ()
     optional: tuple[str, ...] = ()
     forbidden: tuple[str, ...] = ()
+    sources: tuple[ContextSource, ...] = ()
     retrieval_query_template: str | None = None
     summarization_rule: str | None = None
     compression_rule: str | None = None
@@ -213,6 +333,28 @@ class PromotionCriteria(StrictModel):
     min_success_runs: int = Field(ge=1)
     max_human_intervention_rate: float = Field(ge=0.0, le=1.0)
     required_harness_pass_rate: float = Field(ge=0.0, le=1.0)
+    min_runtime_profiles: tuple[str, ...] = ()
+
+
+class PromotionMetrics(StrictModel):
+    evidence_count: int = Field(ge=0)
+    successful_evidence_count: int = Field(ge=0)
+    failed_evidence_count: int = Field(ge=0)
+    harness_pass_rate: float = Field(ge=0.0, le=1.0)
+    human_intervention_rate: float = Field(ge=0.0, le=1.0)
+    retry_rate: float = Field(ge=0.0)
+    eval_count: int = Field(default=0, ge=0)
+    eval_pass_rate: float = Field(default=0.0, ge=0.0, le=1.0)
+    runtime_profiles: tuple[str, ...] = ()
+    criteria_met: bool = False
+    eval_gate_met: bool = True
+    recommended_version_bump: str = "patch"
+
+
+class CapabilityPatchSet(StrictModel):
+    prompt: tuple[str, ...] = ()
+    context: tuple[str, ...] = ()
+    harness: tuple[str, ...] = ()
 
 
 class CapabilityManifest(StrictModel):
@@ -225,6 +367,8 @@ class CapabilityManifest(StrictModel):
     runtime_compatibility: tuple[str, ...] = ()
     evaluation_results: tuple[str, ...] = ()
     source_evidence_id: str = Field(pattern=EVIDENCE_ID_PATTERN)
+    source_evidence_ids: tuple[str, ...] = ()
+    field: FieldManifest | None = None
     normalized_goal: str = Field(min_length=1)
     inputs: tuple[str, ...]
     context: ContextPolicy = Field(default_factory=ContextPolicy)
@@ -235,6 +379,9 @@ class CapabilityManifest(StrictModel):
     workflow_control: WorkflowControl = Field(default_factory=WorkflowControl)
     human_review: HumanReview = Field(default_factory=HumanReview)
     promotion_criteria: PromotionCriteria
+    promotion_metrics: PromotionMetrics | None = None
+    patches: CapabilityPatchSet = Field(default_factory=CapabilityPatchSet)
+    integrity_chain: tuple[ArtifactIntegrityLink, ...] = ()
 
 
 class ReplayRecord(StrictModel):
@@ -246,8 +393,10 @@ class ReplayRecord(StrictModel):
     workflow: WorkflowManifest
     harness: HarnessResult
     runtime: RuntimeInfo
+    runtime_profile: str | None = None
     command_executions: tuple[CommandExecution, ...] = ()
     human_review: HumanReview = Field(default_factory=HumanReview)
+    integrity_chain: tuple[ArtifactIntegrityLink, ...] = ()
 
 
 class EvalCheck(StrictModel):
@@ -271,18 +420,46 @@ class EvalRubricScore(StrictModel):
     message: str = Field(min_length=1)
 
 
+class EvalCaseInput(StrictModel):
+    name: str = Field(min_length=1)
+    value: str = Field(min_length=1)
+
+
+class EvalExpectedCheck(StrictModel):
+    name: str = Field(min_length=1)
+    flaky: bool = False
+
+
+class EvalCase(StrictModel):
+    id: str = Field(pattern=CAPABILITY_NAME_PATTERN)
+    input: tuple[EvalCaseInput, ...] = ()
+    expected_checks: tuple[EvalExpectedCheck, ...] = ()
+    harness_commands: tuple[str, ...] = ()
+
+
+class EvalSet(StrictModel):
+    name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
+    version: str = Field(min_length=1)
+    capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
+    cases: tuple[EvalCase, ...] = ()
+
+
 class EvalResult(StrictModel):
     id: str = Field(pattern=EVIDENCE_ID_PATTERN)
     created_at: datetime
     capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
     source_evidence_id: str = Field(pattern=EVIDENCE_ID_PATTERN)
     replay_id: str | None = Field(default=None, pattern=EVIDENCE_ID_PATTERN)
+    runtime_profile: str | None = None
+    eval_set_name: str | None = Field(default=None, pattern=CAPABILITY_NAME_PATTERN)
+    eval_case_ids: tuple[str, ...] = ()
     status: EvalStatus
     checks: tuple[EvalCheck, ...]
     failures: tuple[str, ...] = ()
     command_executions: tuple[CommandExecution, ...] = ()
     checklist_items: tuple[EvalChecklistItem, ...] = ()
     rubric_scores: tuple[EvalRubricScore, ...] = ()
+    integrity_chain: tuple[ArtifactIntegrityLink, ...] = ()
 
 
 class HumanReviewRecord(StrictModel):
@@ -292,6 +469,7 @@ class HumanReviewRecord(StrictModel):
     target_id: str = Field(min_length=1)
     action: HumanReviewAction
     review: HumanReview
+    integrity_chain: tuple[ArtifactIntegrityLink, ...] = ()
 
 
 class LearningExport(StrictModel):
@@ -304,9 +482,33 @@ class LearningExport(StrictModel):
     few_shot_examples: tuple[str, ...] = ()
     preference_signals: tuple[str, ...] = ()
     prompt_patches: tuple[str, ...] = ()
+    context_patches: tuple[str, ...] = ()
+    harness_patches: tuple[str, ...] = ()
     eval_set_candidates: tuple[str, ...] = ()
     fine_tuning_candidates: tuple[str, ...] = ()
+    fine_tuning_export_format: str = "jsonl"
     preference_dataset_candidates: tuple[str, ...] = ()
+    preference_dataset_schema: str = (
+        "prompt,accepted_output,rejected_output,source_evidence_id"
+    )
+    integrity_chain: tuple[ArtifactIntegrityLink, ...] = ()
+
+
+class LearningPatchDecision(StrictModel):
+    id: str = Field(pattern=EVIDENCE_ID_PATTERN)
+    created_at: datetime
+    capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
+    learning_id: str = Field(pattern=EVIDENCE_ID_PATTERN)
+    patch_kind: PatchKind = "prompt"
+    patch: str = Field(min_length=1)
+    decision: PatchDecisionStatus
+    reviewer: str | None = None
+    notes: tuple[str, ...] = ()
+    manifest_path: str | None = None
+    before_eval_id: str | None = Field(default=None, pattern=EVIDENCE_ID_PATTERN)
+    after_eval_id: str | None = Field(default=None, pattern=EVIDENCE_ID_PATTERN)
+    pass_rate_delta: float | None = None
+    integrity_chain: tuple[ArtifactIntegrityLink, ...] = ()
 
 
 class ContextBundle(StrictModel):
@@ -319,6 +521,8 @@ class ContextBundle(StrictModel):
     summaries: tuple[str, ...] = ()
     compressed_context: tuple[CapturedTextFile, ...] = ()
     policy: ContextPolicy
+    pack_plan: ContextPackPlan | None = None
+    integrity_chain: tuple[ArtifactIntegrityLink, ...] = ()
 
 
 class WorkflowFileInput(StrictModel):
@@ -389,6 +593,17 @@ class CapabilityRegistryEntry(StrictModel):
     dependencies: tuple[str, ...] = ()
     runtime_compatibility: tuple[str, ...] = ()
     evaluation_results: tuple[str, ...] = ()
+    source_evidence_count: int = Field(default=1, ge=0)
+    eval_count: int = Field(default=0, ge=0)
+    latest_eval_status: EvalStatus | None = None
+    pass_rate: float = Field(default=0.0, ge=0.0, le=1.0)
+    runtime_profiles: tuple[str, ...] = ()
+    patch_count: int = Field(default=0, ge=0)
+    promotion_success_runs: int = Field(default=0, ge=0)
+    promotion_harness_pass_rate: float = Field(default=0.0, ge=0.0, le=1.0)
+    promotion_eval_pass_rate: float = Field(default=0.0, ge=0.0, le=1.0)
+    promotion_criteria_met: bool = False
+    integrity_status: IntegrityVerificationStatus = "fail"
     manifest_path: str = Field(min_length=1)
 
 
@@ -409,6 +624,7 @@ class ReflectionReport(StrictModel):
     prompt_patches: tuple[str, ...] = ()
     tool_call_revisions: tuple[str, ...] = ()
     notes: tuple[str, ...] = ()
+    integrity_chain: tuple[ArtifactIntegrityLink, ...] = ()
 
 
 class CapabilityExportBundle(StrictModel):
@@ -421,3 +637,4 @@ class CapabilityExportBundle(StrictModel):
     context_bundles: tuple[ContextBundle, ...] = ()
     learning_exports: tuple[LearningExport, ...] = ()
     reflection_reports: tuple[ReflectionReport, ...] = ()
+    integrity_chain: tuple[ArtifactIntegrityLink, ...] = ()

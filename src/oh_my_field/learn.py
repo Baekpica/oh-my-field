@@ -9,8 +9,10 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from pydantic import Field
 
+from oh_my_field.integrity import append_integrity_link, integrity_link
 from oh_my_field.models import (
     CAPABILITY_NAME_PATTERN,
+    ArtifactIntegrityLink,
     CapabilityManifest,
     CapturedTextFile,
     EvidenceRecord,
@@ -165,12 +167,23 @@ def _build_learning_export(state: LearnState) -> LearnState:
         few_shot_examples=few_shot_examples,
         preference_signals=preference_signals,
         prompt_patches=_prompt_patches(prompt_improvement_candidates),
+        context_patches=_context_patches(preference_signals),
+        harness_patches=_harness_patches(regression_eval_candidates),
         eval_set_candidates=_eval_set_candidates(
             goal=evidence.normalized_goal or evidence.goal,
             regression_eval_candidates=regression_eval_candidates,
         ),
         fine_tuning_candidates=few_shot_examples,
         preference_dataset_candidates=preference_signals,
+    )
+    export = export.model_copy(
+        update={"integrity_chain": (_evidence_integrity_link(evidence),)},
+    )
+    export = append_integrity_link(
+        export,
+        artifact_type="learning",
+        artifact_id=export.id,
+        previous_sha256=export.integrity_chain[-1].sha256,
     )
     return LearnState(export=export)
 
@@ -225,6 +238,14 @@ def _prompt_patches(candidates: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(f"Add instruction: {candidate}" for candidate in candidates)
 
 
+def _context_patches(candidates: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(f"Add context preference: {candidate}" for candidate in candidates)
+
+
+def _harness_patches(candidates: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(f"Add regression harness: {candidate}" for candidate in candidates)
+
+
 def _eval_set_candidates(
     *,
     goal: str,
@@ -233,6 +254,16 @@ def _eval_set_candidates(
     return tuple(
         f"goal: {goal}\nregression: {candidate}"
         for candidate in regression_eval_candidates
+    )
+
+
+def _evidence_integrity_link(evidence: EvidenceRecord) -> ArtifactIntegrityLink:
+    if evidence.integrity_chain:
+        return evidence.integrity_chain[-1]
+    return integrity_link(
+        artifact_type="evidence",
+        artifact_id=evidence.id,
+        model=evidence,
     )
 
 

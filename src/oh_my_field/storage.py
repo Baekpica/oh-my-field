@@ -1,8 +1,8 @@
 import os
 import tempfile
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
+from typing import cast
 
 import yaml
 from pydantic import BaseModel, ValidationError
@@ -12,9 +12,11 @@ from oh_my_field.models import (
     CapabilityManifest,
     ContextBundle,
     EvalResult,
+    EvalSet,
     EvidenceRecord,
     HumanReviewRecord,
     LearningExport,
+    LearningPatchDecision,
     ReflectionReport,
     ReplayRecord,
     WorkflowRunRecord,
@@ -168,6 +170,12 @@ def write_manifest(manifest: CapabilityManifest, capabilities_dir: Path) -> Path
     return target_path
 
 
+def update_manifest(manifest: CapabilityManifest, capabilities_dir: Path) -> Path:
+    target_path = capabilities_dir / manifest.name / "manifest.yaml"
+    _write_text_atomic(target_path, _manifest_yaml(manifest))
+    return target_path
+
+
 def load_manifest(capability_name: str, capabilities_dir: Path) -> CapabilityManifest:
     manifest_path = capabilities_dir / capability_name / "manifest.yaml"
     if not manifest_path.exists():
@@ -285,16 +293,85 @@ def _load_eval_result_path(eval_path: Path) -> EvalResult:
         raise EvalParseError(path=eval_path, reason=str(exc)) from exc
 
 
+def write_eval_set(eval_set: EvalSet, eval_set_dir: Path) -> Path:
+    target_path = eval_set_dir / f"{eval_set.name}.json"
+    _write_text_atomic(target_path, eval_set.model_dump_json(indent=2) + "\n")
+    return target_path
+
+
+def load_eval_set(eval_set_name: str, eval_set_dir: Path) -> EvalSet:
+    eval_set_path = _artifact_path(eval_set_name, eval_set_dir)
+    return _load_artifact(
+        "eval set",
+        eval_set_name,
+        eval_set_dir,
+        eval_set_path,
+        EvalSet,
+    )
+
+
+def list_eval_sets(eval_set_dir: Path) -> tuple[EvalSet, ...]:
+    return _list_artifacts("eval set", eval_set_dir, EvalSet)
+
+
 def write_human_review(record: HumanReviewRecord, review_dir: Path) -> Path:
     target_path = review_dir / f"{record.id}.json"
     _write_text_exclusive(target_path, record.model_dump_json(indent=2) + "\n")
     return target_path
 
 
+def load_human_review(review_id: str, review_dir: Path) -> HumanReviewRecord:
+    review_path = _artifact_path(review_id, review_dir)
+    return _load_artifact(
+        "review",
+        review_id,
+        review_dir,
+        review_path,
+        HumanReviewRecord,
+    )
+
+
+def list_human_reviews(review_dir: Path) -> tuple[HumanReviewRecord, ...]:
+    return _list_artifacts("review", review_dir, HumanReviewRecord)
+
+
 def write_learning_export(export: LearningExport, learning_dir: Path) -> Path:
     target_path = learning_dir / f"{export.id}.json"
     _write_text_exclusive(target_path, export.model_dump_json(indent=2) + "\n")
     return target_path
+
+
+def write_learning_patch_decision(
+    decision: LearningPatchDecision,
+    learning_patch_dir: Path,
+) -> Path:
+    target_path = learning_patch_dir / f"{decision.id}.json"
+    _write_text_exclusive(target_path, decision.model_dump_json(indent=2) + "\n")
+    return target_path
+
+
+def load_learning_patch_decision(
+    decision_id: str,
+    learning_patch_dir: Path,
+) -> LearningPatchDecision:
+    decision_path = _artifact_path(decision_id, learning_patch_dir)
+    return _load_artifact(
+        "learning patch decision",
+        decision_id,
+        learning_patch_dir,
+        decision_path,
+        LearningPatchDecision,
+    )
+
+
+def list_learning_patch_decisions(
+    learning_patch_dir: Path,
+) -> tuple[LearningPatchDecision, ...]:
+    return _list_artifacts(
+        "learning patch decision",
+        learning_patch_dir,
+        LearningPatchDecision,
+    )
 
 
 def write_context_bundle(bundle: ContextBundle, context_dir: Path) -> Path:
@@ -361,6 +438,16 @@ def write_export_bundle(bundle: CapabilityExportBundle, export_dir: Path) -> Pat
     target_path = export_dir / bundle.capability_name / f"{bundle.id}.json"
     _write_text_exclusive(target_path, bundle.model_dump_json(indent=2) + "\n")
     return target_path
+
+
+def load_export_bundle(export_id: str, export_dir: Path) -> CapabilityExportBundle:
+    for export_path in sorted(export_dir.glob(f"*/{export_id}.json")):
+        return _load_artifact_path("export", export_path, CapabilityExportBundle)
+    raise ArtifactNotFoundError(
+        artifact_type="export",
+        artifact_id=export_id,
+        artifact_dir=export_dir,
+    )
 
 
 def write_workflow_run(record: WorkflowRunRecord, workflow_dir: Path) -> Path:
@@ -499,96 +586,4 @@ def _manifest_yaml(manifest: CapabilityManifest) -> str:
 
 
 def _manifest_yaml_data(manifest: CapabilityManifest) -> dict[str, YamlValue]:
-    return {
-        "name": manifest.name,
-        "version": manifest.version,
-        "description": manifest.description,
-        "status": manifest.status,
-        "owner": manifest.owner,
-        "dependencies": list(manifest.dependencies),
-        "runtime_compatibility": list(manifest.runtime_compatibility),
-        "evaluation_results": list(manifest.evaluation_results),
-        "source_evidence_id": manifest.source_evidence_id,
-        "normalized_goal": manifest.normalized_goal,
-        "inputs": list(manifest.inputs),
-        "context": {
-            "required": list(manifest.context.required),
-            "optional": list(manifest.context.optional),
-            "forbidden": list(manifest.context.forbidden),
-            "retrieval_query_template": manifest.context.retrieval_query_template,
-            "summarization_rule": manifest.context.summarization_rule,
-            "compression_rule": manifest.context.compression_rule,
-            "freshness_rule": manifest.context.freshness_rule,
-            "source_priority": list(manifest.context.source_priority),
-            "maximum_token_budget": manifest.context.maximum_token_budget,
-            "evidence_recall_strategy": manifest.context.evidence_recall_strategy,
-        },
-        "workflow": {
-            "graph": manifest.workflow.graph,
-            "nodes": list(manifest.workflow.nodes),
-        },
-        "harness": {
-            "status": manifest.harness.status,
-            "checks": list(manifest.harness.checks),
-            "failures": list(manifest.harness.failures),
-            "required_checks": list(manifest.harness.required_checks),
-            "human_review_required": manifest.harness.human_review_required,
-        },
-        "runtime": {
-            "name": manifest.runtime.name,
-            "model": manifest.runtime.model,
-            "preferred_models": list(manifest.runtime.preferred_models),
-            "tools": list(manifest.runtime.tools),
-        },
-        "evidence": {
-            "store": list(manifest.evidence.store),
-        },
-        "workflow_control": {
-            "max_iterations": manifest.workflow_control.max_iterations,
-            "max_runtime_seconds": manifest.workflow_control.max_runtime_seconds,
-            "max_cost_usd": manifest.workflow_control.max_cost_usd,
-            "allowed_tools": list(manifest.workflow_control.allowed_tools),
-            "disallowed_tools": list(manifest.workflow_control.disallowed_tools),
-            "require_approval_before_write": (
-                manifest.workflow_control.require_approval_before_write
-            ),
-            "require_approval_before_external_call": (
-                manifest.workflow_control.require_approval_before_external_call
-            ),
-            "require_approval_before_destructive_action": (
-                manifest.workflow_control.require_approval_before_destructive_action
-            ),
-            "approval_required_actions": list(
-                manifest.workflow_control.approval_required_actions,
-            ),
-            "safe_execution_mode": manifest.workflow_control.safe_execution_mode,
-            "credential_scope": manifest.workflow_control.credential_scope,
-            "network_policy": manifest.workflow_control.network_policy,
-            "rollback_policy": manifest.workflow_control.rollback_policy,
-            "checkpoint_interval": manifest.workflow_control.checkpoint_interval,
-            "rollback_strategy": manifest.workflow_control.rollback_strategy,
-            "resume_from_checkpoint": manifest.workflow_control.resume_from_checkpoint,
-        },
-        "human_review": {
-            "status": manifest.human_review.status,
-            "reviewer": manifest.human_review.reviewer,
-            "notes": list(manifest.human_review.notes),
-            "revision_request": manifest.human_review.revision_request,
-            "reviewed_at": _datetime_yaml(manifest.human_review.reviewed_at),
-        },
-        "promotion_criteria": {
-            "min_success_runs": manifest.promotion_criteria.min_success_runs,
-            "max_human_intervention_rate": (
-                manifest.promotion_criteria.max_human_intervention_rate
-            ),
-            "required_harness_pass_rate": (
-                manifest.promotion_criteria.required_harness_pass_rate
-            ),
-        },
-    }
-
-
-def _datetime_yaml(value: datetime | None) -> str | None:
-    if value is None:
-        return None
-    return str(value)
+    return cast("dict[str, YamlValue]", manifest.model_dump(mode="json"))

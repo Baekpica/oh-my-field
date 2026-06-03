@@ -6,9 +6,14 @@ from pydantic import ValidationError
 from oh_my_field.models import (
     CapabilityManifest,
     CapturedTextFile,
+    ContextItem,
+    ContextPackPlan,
+    ContextSource,
     EvalCheck,
     EvalResult,
     EvidenceRecord,
+    FieldManifest,
+    FieldPolicy,
     HarnessResult,
     PromotionCriteria,
     ReplayRecord,
@@ -125,3 +130,39 @@ def test_replay_and_eval_models_accept_valid_payloads() -> None:
 
     assert replay.capability_name == "repo_issue"
     assert result.checks[0].name == "schema_valid"
+
+
+def test_field_manifest_and_context_pack_plan_are_first_class_models() -> None:
+    field = FieldManifest(
+        name="infra_ops",
+        description="Local infra operations",
+        sources=(
+            ContextSource(
+                name="runbook",
+                type="docs",
+                location="runbooks/",
+                priority=1,
+            ),
+        ),
+        policies=FieldPolicy(
+            network="internal_only",
+            forbidden_context=(".env", "secrets/"),
+        ),
+    )
+    plan = ContextPackPlan(
+        required=(
+            ContextItem(
+                path="runbooks/deploy.md",
+                source="runbook",
+                reason="required by field policy",
+                token_estimate=20,
+            ),
+        ),
+        token_estimate=20,
+        compression_strategy="none",
+        source_priority=("runbook",),
+    )
+
+    assert field.policies.network == "internal_only"
+    assert field.sources[0].type == "docs"
+    assert plan.required[0].reason == "required by field policy"

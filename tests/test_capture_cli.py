@@ -54,6 +54,8 @@ def test_capture_creates_evidence_file_from_manual_inputs(tmp_path: Path) -> Non
     assert evidence.runtime.name == "codex"
     assert evidence.runtime.model == "gpt-5.5"
     assert evidence.harness.status == output.harness_status
+    assert evidence.integrity_chain[-1].artifact_type == "evidence"
+    assert evidence.integrity_chain[-1].artifact_id == evidence.id
     assert [captured.role for captured in evidence.files] == [
         "prompt",
         "command_output",
