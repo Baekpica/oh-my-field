@@ -395,6 +395,108 @@ def test_capability_export_redacts_and_omits_evidence(tmp_path: Path) -> None:
     assert not (none_provenance / "evidence_proofs.yaml").exists()
 
 
+class HealthEntriesOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    capability_name: str | None = None
+    count: int
+    entries: list[dict[str, object]]
+
+
+def test_health_and_card_reflect_export_and_import_status(tmp_path: Path) -> None:
+    source_caps = tmp_path / "source-capabilities"
+    target_caps = tmp_path / "target-capabilities"
+    export_dir = tmp_path / "exports" / "repo_issue_triage-hermes"
+    eval_dir = tmp_path / "evals"
+    evidence_dir = tmp_path / "evidence"
+    write_manifest(make_manifest(), source_caps)
+
+    export_result = CliRunner().invoke(
+        app,
+        [
+            "capability",
+            "export",
+            "repo_issue_triage",
+            "--target",
+            "hermes",
+            "--target-model",
+            "qwen3.6-27b",
+            "--out",
+            str(export_dir),
+            "--capabilities-dir",
+            str(source_caps),
+        ],
+    )
+    assert export_result.exit_code == 0
+    source_entry = _health_entry(source_caps, eval_dir)
+    assert source_entry["export_status"] == "exported"
+    assert source_entry["export_count"] == 1
+    assert source_entry["import_status"] == "not_imported"
+
+    import_result = CliRunner().invoke(
+        app,
+        [
+            "capability",
+            "import",
+            str(export_dir),
+            "--runtime",
+            "hermes",
+            "--model",
+            "qwen3.6-27b",
+            "--project",
+            "target-repo",
+            "--available-tool",
+            "file_system",
+            "--validate",
+            "--capabilities-dir",
+            str(target_caps),
+            "--eval-dir",
+            str(eval_dir),
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
+    )
+    assert import_result.exit_code == 0
+    target_entry = _health_entry(target_caps, eval_dir)
+    assert target_entry["import_status"] == "imported"
+    assert target_entry["import_count"] == 1
+    assert target_entry["validation_status"] == "needs_adaptation"
+    assert target_entry["target_validation_count"] == 1
+
+    card_result = CliRunner().invoke(
+        app,
+        [
+            "card",
+            "repo_issue_triage",
+            "--write",
+            "--capabilities-dir",
+            str(target_caps),
+        ],
+    )
+    assert card_result.exit_code == 0
+    card = (target_caps / "repo_issue_triage" / "README.md").read_text(encoding="utf-8")
+    assert "Import status: imported" in card
+    assert "hermes:qwen3.6-27b" in card
+
+
+def _health_entry(capabilities_dir: Path, eval_dir: Path) -> dict[str, object]:
+    result = CliRunner().invoke(
+        app,
+        [
+            "health",
+            "repo_issue_triage",
+            "--capabilities-dir",
+            str(capabilities_dir),
+            "--eval-dir",
+            str(eval_dir),
+        ],
+    )
+    assert result.exit_code == 0
+    output = HealthEntriesOutput.model_validate_json(result.stdout)
+    assert len(output.entries) == 1
+    return output.entries[0]
+
+
 def make_evidence() -> EvidenceRecord:
     content = "API_KEY=supersecret\nrun log\n"
     raw = content.encode("utf-8")

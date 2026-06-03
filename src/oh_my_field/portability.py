@@ -224,6 +224,15 @@ class CapabilityPortabilityExportSummary(StrictModel):
     evidence_proof_count: int = Field(default=0, ge=0)
 
 
+class CapabilityExportRecord(StrictModel):
+    capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
+    target: PortabilityTarget
+    transfer_type: tuple[str, ...] = ()
+    bundle_path: str = Field(min_length=1)
+    evidence_mode: EvidenceInclusionMode = "summary"
+    evidence_proof_count: int = Field(default=0, ge=0)
+
+
 class CapabilityPortabilityImportRequest(StrictModel):
     bundle_path: Path
     capabilities_dir: Path
@@ -268,6 +277,17 @@ def export_capability_package(
         records=records,
     )
     runtime_path = _write_runtime_target(request.out, manifest, portability)
+    _write_export_record(
+        capabilities_dir=request.capabilities_dir,
+        record=CapabilityExportRecord(
+            capability_name=manifest.name,
+            target=portability.target,
+            transfer_type=portability.adaptation.transfer_type,
+            bundle_path=str(request.out),
+            evidence_mode=request.include_evidence,
+            evidence_proof_count=len(pack.proofs),
+        ),
+    )
     return CapabilityPortabilityExportSummary(
         capability_name=manifest.name,
         export_path=str(request.out),
@@ -278,6 +298,23 @@ def export_capability_package(
         evidence_mode=request.include_evidence,
         evidence_proof_count=len(pack.proofs),
     )
+
+
+def _write_export_record(
+    *,
+    capabilities_dir: Path,
+    record: CapabilityExportRecord,
+) -> Path:
+    record_path = (
+        capabilities_dir
+        / record.capability_name
+        / "exports"
+        / _target_slug(record.target)
+        / "export.yaml"
+    )
+    record_path.parent.mkdir(parents=True, exist_ok=True)
+    record_path.write_text(_yaml_dump(record), encoding="utf-8")
+    return record_path
 
 
 def import_capability_package(

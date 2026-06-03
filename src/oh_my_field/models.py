@@ -69,6 +69,14 @@ type WorkflowNodeStatus = Literal["pending", "pass", "fail", "skipped"]
 type PatchDecisionStatus = Literal["accepted", "rejected"]
 type PatchKind = Literal["prompt", "context", "harness"]
 type IntegrityVerificationStatus = Literal["pass", "fail"]
+type ExportStatus = Literal["not_exported", "exported"]
+type ImportStatus = Literal["not_imported", "imported"]
+type TargetValidationStatus = Literal[
+    "not_run",
+    "needs_validation",
+    "needs_adaptation",
+    "validated",
+]
 
 COMMAND_RISK_CATEGORIES: Final[tuple[CommandRiskCategory, ...]] = (
     "write",
@@ -233,6 +241,23 @@ class IntegrityVerificationResult(StrictModel):
     target_id: str = Field(min_length=1)
     status: IntegrityVerificationStatus
     checks: tuple[IntegrityVerificationCheck, ...]
+
+
+class TargetStatusEntry(StrictModel):
+    target: str = Field(min_length=1)
+    validation_status: TargetValidationStatus
+    portability_score: float | None = Field(default=None, ge=0.0, le=1.0)
+    eval_recorded: bool = False
+
+
+class PortabilityHealth(StrictModel):
+    export_status: ExportStatus = "not_exported"
+    import_status: ImportStatus = "not_imported"
+    validation_status: TargetValidationStatus = "not_run"
+    export_count: int = Field(default=0, ge=0)
+    import_count: int = Field(default=0, ge=0)
+    target_validation_count: int = Field(default=0, ge=0)
+    target_statuses: tuple[TargetStatusEntry, ...] = ()
 
 
 class HumanReview(StrictModel):
