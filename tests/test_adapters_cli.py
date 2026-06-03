@@ -58,6 +58,9 @@ def test_import_run_captures_external_agent_log_and_artifacts(
         "test_result",
     ]
     assert evidence.tool_calls[0].tool == "agent_importer.import_run"
+    assert evidence.capture_status == "captured"
+    assert evidence.task_outcome == "unknown"
+    assert evidence.success_or_failure_label == "unknown"
     assert evidence.integrity_chain[-1].artifact_type == "evidence"
 
 
@@ -203,3 +206,32 @@ def test_import_run_discovers_agent_artifact_root_roles(
         "test_result",
         "command_output",
     ]
+
+
+def test_import_run_records_explicit_task_outcome(tmp_path: Path) -> None:
+    log_path = tmp_path / "codex.log"
+    evidence_dir = tmp_path / "evidence"
+    log_path.write_text("Codex completed the task.", encoding="utf-8")
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "import-run",
+            "codex",
+            "--log",
+            str(log_path),
+            "--goal",
+            "capture successful external agent run",
+            "--outcome",
+            "success",
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = AgentImportOutput.model_validate_json(result.stdout)
+    evidence = load_evidence(output.evidence_id, evidence_dir)
+    assert evidence.capture_status == "captured"
+    assert evidence.task_outcome == "success"
+    assert evidence.success_or_failure_label == "success"

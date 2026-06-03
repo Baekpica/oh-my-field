@@ -221,6 +221,7 @@ def _build_evidence(state: CaptureState) -> CaptureState:
             total_ms=sum(execution.duration_ms for execution in command_executions),
             tool_ms=sum(execution.duration_ms for execution in command_executions),
         ),
+        task_outcome=request.success_or_failure_label,
         success_or_failure_label=request.success_or_failure_label,
         improvement_notes=request.improvement_notes,
     )

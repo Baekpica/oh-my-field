@@ -51,6 +51,8 @@ def make_evidence_record() -> EvidenceRecord:
             checks=("files_readable", "schema_valid"),
             failures=(),
         ),
+        task_outcome="success",
+        success_or_failure_label="success",
     )
 
 
@@ -198,6 +200,43 @@ def test_promote_creates_manifest_from_evidence_set(tmp_path: Path) -> None:
     assert manifest.promotion_metrics.criteria_met
     assert manifest.promotion_metrics.successful_evidence_count == 3
     assert len(manifest.integrity_chain) == 4
+
+
+def test_promote_does_not_count_unknown_harness_pass_as_success(
+    tmp_path: Path,
+) -> None:
+    evidence_dir = tmp_path / "evidence"
+    capabilities_dir = tmp_path / "capabilities"
+    evidence = make_evidence_record().model_copy(
+        update={
+            "task_outcome": "unknown",
+            "success_or_failure_label": "unknown",
+        },
+    )
+    write_evidence(evidence, evidence_dir)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "promote",
+            evidence.id,
+            "--name",
+            "repo_issue_triage",
+            "--description",
+            "GitHub issue triage capability",
+            "--evidence-dir",
+            str(evidence_dir),
+            "--capabilities-dir",
+            str(capabilities_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = PromoteOutput.model_validate_json(result.stdout)
+    manifest = load_manifest(output.capability_name, capabilities_dir)
+    assert manifest.promotion_metrics is not None
+    assert manifest.promotion_metrics.harness_pass_rate == 1.0
+    assert manifest.promotion_metrics.successful_evidence_count == 0
 
 
 def test_promote_uses_eval_results_for_stable_status(tmp_path: Path) -> None:

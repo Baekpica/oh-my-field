@@ -516,16 +516,16 @@ def _capability_status(metrics: PromotionMetrics) -> CapabilityStatus:
 
 
 def _evidence_successful(evidence: EvidenceRecord) -> bool:
-    return (
-        evidence.success_or_failure_label == "success"
-        or evidence.harness.status == "pass"
+    return evidence.task_outcome == "success" or (
+        evidence.task_outcome == "unknown"
+        and evidence.success_or_failure_label == "success"
     )
 
 
 def _evidence_failed(evidence: EvidenceRecord) -> bool:
-    return (
-        evidence.success_or_failure_label == "failure"
-        or evidence.harness.status == "fail"
+    return evidence.task_outcome == "failure" or (
+        evidence.task_outcome == "unknown"
+        and evidence.success_or_failure_label == "failure"
     )
 
 

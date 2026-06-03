@@ -1150,6 +1150,10 @@ def _import_run(
         int | None,
         typer.Option("--max-artifact-bytes"),
     ] = None,
+    outcome: Annotated[
+        Literal["success", "failure", "unknown"],
+        typer.Option("--outcome"),
+    ] = "unknown",
     redact_secrets: Annotated[bool, typer.Option("--redact-secrets")] = False,
     evidence_dir: Annotated[Path, typer.Option("--evidence-dir")] = Path(
         ".omf/evidence",
@@ -1173,6 +1177,7 @@ def _import_run(
                 artifact_roots=tuple(artifact_root or ()),
                 max_artifact_bytes=max_artifact_bytes,
                 redact_secrets=redact_secrets,
+                task_outcome=outcome,
             ),
         )
     except (AdapterError, StorageError, ValidationError) as exc:

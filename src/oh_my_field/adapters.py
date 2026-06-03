@@ -22,6 +22,7 @@ from oh_my_field.models import (
     LatencyMetrics,
     RuntimeInfo,
     StrictModel,
+    TaskOutcome,
     ToolCallRecord,
 )
 from oh_my_field.storage import write_evidence
@@ -94,6 +95,7 @@ class AgentImportRequest(StrictModel):
     artifact_roots: tuple[Path, ...] = ()
     max_artifact_bytes: int | None = Field(default=None, ge=1)
     redact_secrets: bool = False
+    task_outcome: TaskOutcome = "unknown"
 
 
 class AgentImportSummary(StrictModel):
@@ -147,7 +149,9 @@ def import_agent_run(
             required_checks=("agent_log_imported", "artifacts_readable"),
         ),
         latency_metrics=LatencyMetrics(),
-        success_or_failure_label="unknown",
+        capture_status="captured",
+        task_outcome=request.task_outcome,
+        success_or_failure_label=request.task_outcome,
     )
     evidence = evidence.model_copy(
         update={

@@ -20,7 +20,9 @@ type HarnessStatus = Literal["pass", "fail"]
 type EvalStatus = Literal["pass", "fail"]
 type CapabilityStatus = Literal["candidate", "validated", "stable", "deprecated"]
 type WorkflowGraph = Literal["langgraph"]
+type CaptureStatus = Literal["captured", "partial", "failed"]
 type SuccessLabel = Literal["success", "failure", "unknown"]
+type TaskOutcome = Literal["success", "failure", "unknown"]
 type AgentImporterName = Literal["codex", "claude_code", "hermes"]
 type RuntimeAdapterName = AgentImporterName
 type ContextSourceType = Literal[
@@ -318,6 +320,8 @@ class EvidenceRecord(StrictModel):
     harness: HarnessResult
     cost_metrics: CostMetrics = Field(default_factory=CostMetrics)
     latency_metrics: LatencyMetrics = Field(default_factory=LatencyMetrics)
+    capture_status: CaptureStatus = "captured"
+    task_outcome: TaskOutcome = "unknown"
     success_or_failure_label: SuccessLabel = "unknown"
     improvement_notes: tuple[str, ...] = ()
     human_review: HumanReview = Field(default_factory=HumanReview)
