@@ -140,9 +140,8 @@ def assess_command_risk(
         categories.append("destructive")
     if first_token in EXTERNAL_COMMANDS or _has_external_pattern(command_text, tokens):
         categories.append("external_call")
-    if (
-        first_token in CREDENTIAL_COMMANDS
-        or _has_credential_pattern(command_text, tokens)
+    if first_token in CREDENTIAL_COMMANDS or _has_credential_pattern(
+        command_text, tokens
     ):
         categories.append("credential_access")
     if first_token in PRODUCTION_COMMANDS and _has_production_pattern(tokens):

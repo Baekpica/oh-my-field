@@ -780,9 +780,7 @@ def _eval(
         )
         profiles = _matrix_profiles(matrix)
         if profiles:
-            results = tuple(
-                _eval_matrix_item(request, profile) for profile in profiles
-            )
+            results = tuple(_eval_matrix_item(request, profile) for profile in profiles)
             typer.echo(
                 EvalMatrixSummary(
                     capability_name=capability_name,

@@ -54,8 +54,7 @@ class ExportApprovalRequiredError(ExportError):
 
     def __str__(self) -> str:
         return (
-            f"export for capability {self.capability_name!r} requires "
-            "--approve-export"
+            f"export for capability {self.capability_name!r} requires --approve-export"
         )
 
 

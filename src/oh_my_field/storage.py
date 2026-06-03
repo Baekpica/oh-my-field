@@ -166,10 +166,7 @@ class ArtifactParseError(StorageError):
     reason: str
 
     def __str__(self) -> str:
-        return (
-            f"could not parse {self.artifact_type} file {self.path}: "
-            f"{self.reason}"
-        )
+        return f"could not parse {self.artifact_type} file {self.path}: {self.reason}"
 
 
 def write_evidence(record: EvidenceRecord, evidence_dir: Path) -> Path:
@@ -257,9 +254,7 @@ def list_manifests(
         path
         for package_dir in sorted(path for path in capabilities_dir.iterdir())
         if package_dir.is_dir()
-        for path in (
-            manifest_path_for_capability(package_dir.name, capabilities_dir),
-        )
+        for path in (manifest_path_for_capability(package_dir.name, capabilities_dir),)
         if path is not None
     )
     return tuple((path, _load_manifest_path(path)) for path in manifest_paths)

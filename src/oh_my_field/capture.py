@@ -162,9 +162,7 @@ def _build_capture_graph() -> CompiledStateGraph[
 
 def _collect_files(state: CaptureState) -> CaptureState:
     request = _state_request(state)
-    captured_files = tuple(
-        _read_text_file(file_input) for file_input in request.files
-    )
+    captured_files = tuple(_read_text_file(file_input) for file_input in request.files)
     return CaptureState(captured_files=captured_files)
 
 

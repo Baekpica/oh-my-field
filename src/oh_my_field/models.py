@@ -356,9 +356,7 @@ class WorkflowControl(StrictModel):
     require_approval_before_write: bool = True
     require_approval_before_external_call: bool = True
     require_approval_before_destructive_action: bool = True
-    approval_required_actions: tuple[CommandRiskCategory, ...] = (
-        COMMAND_RISK_CATEGORIES
-    )
+    approval_required_actions: tuple[CommandRiskCategory, ...] = COMMAND_RISK_CATEGORIES
     safe_execution_mode: bool = True
     credential_scope: str | None = None
     network_policy: NetworkPolicy = "disabled"

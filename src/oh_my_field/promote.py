@@ -159,8 +159,7 @@ def _load_evidence(state: PromoteState) -> PromoteState:
     request = _state_request(state)
     evidence_ids = _evidence_ids(request)
     evidence_records = tuple(
-        load_evidence(evidence_id, request.evidence_dir)
-        for evidence_id in evidence_ids
+        load_evidence(evidence_id, request.evidence_dir) for evidence_id in evidence_ids
     )
     return PromoteState(evidence_records=evidence_records)
 
@@ -314,8 +313,7 @@ def _field_manifest(evidence_records: tuple[EvidenceRecord, ...]) -> FieldManife
 
 def _field_name(value: str) -> str:
     normalized = "".join(
-        character if character.isalnum() else "_"
-        for character in value.casefold()
+        character if character.isalnum() else "_" for character in value.casefold()
     ).strip("_")
     if not normalized:
         return "field_local"
@@ -362,11 +360,7 @@ def _evidence_integrity_link(evidence: EvidenceRecord) -> ArtifactIntegrityLink:
 
 
 def _runtime_tools(evidence_records: tuple[EvidenceRecord, ...]) -> tuple[str, ...]:
-    tools = [
-        tool
-        for evidence in evidence_records
-        for tool in evidence.runtime.tools
-    ]
+    tools = [tool for evidence in evidence_records for tool in evidence.runtime.tools]
     if any(evidence.generated_commands for evidence in evidence_records):
         tools.append("shell")
     if any(evidence.files for evidence in evidence_records):
@@ -387,10 +381,7 @@ def _runtime_compatibility(
     evidence_records: tuple[EvidenceRecord, ...],
     runtime_tools: tuple[str, ...],
 ) -> tuple[str, ...]:
-    values = [
-        f"runtime:{evidence.runtime.name}"
-        for evidence in evidence_records
-    ]
+    values = [f"runtime:{evidence.runtime.name}" for evidence in evidence_records]
     values.extend(
         f"model:{evidence.runtime.model}"
         for evidence in evidence_records
@@ -406,11 +397,7 @@ def _runtime_compatibility(
 
 
 def _input_context(evidence_records: tuple[EvidenceRecord, ...]) -> tuple[str, ...]:
-    values = [
-        item
-        for evidence in evidence_records
-        for item in evidence.input_context
-    ]
+    values = [item for evidence in evidence_records for item in evidence.input_context]
     return tuple(dict.fromkeys(values))
 
 
@@ -441,9 +428,7 @@ def _harness_result(evidence_records: tuple[EvidenceRecord, ...]) -> HarnessResu
     )
     checks = tuple(
         dict.fromkeys(
-            check
-            for evidence in evidence_records
-            for check in evidence.harness.checks
+            check for evidence in evidence_records for check in evidence.harness.checks
         ),
     )
     return HarnessResult(
@@ -472,9 +457,7 @@ def _promotion_metrics(
 ) -> PromotionMetrics:
     evidence_count = len(evidence_records)
     success_count = sum(
-        1
-        for evidence in evidence_records
-        if _evidence_successful(evidence)
+        1 for evidence in evidence_records if _evidence_successful(evidence)
     )
     failure_count = sum(
         1 for evidence in evidence_records if _evidence_failed(evidence)

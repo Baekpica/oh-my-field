@@ -339,9 +339,7 @@ def _eval_set_checks(
         EvalCheck(
             name=f"eval_set_{eval_set.name}_loaded",
             status="pass",
-            message=(
-                f"loaded eval set {eval_set.name!r} version {eval_set.version!r}"
-            ),
+            message=(f"loaded eval set {eval_set.name!r} version {eval_set.version!r}"),
         ),
     ]
     for case in eval_set.cases:
@@ -403,8 +401,7 @@ def _expected_check_observed(
 
 def _check_name(value: str) -> str:
     normalized = "".join(
-        character if character.isalnum() else "_"
-        for character in value.casefold()
+        character if character.isalnum() else "_" for character in value.casefold()
     ).strip("_")
     return normalized or "item"
 

@@ -1558,9 +1558,7 @@ def _pass_rate_comparison(
         else None
     )
     delta = (
-        round(target - source, 2)
-        if source is not None and target is not None
-        else None
+        round(target - source, 2) if source is not None and target is not None else None
     )
     return EvalPassRateComparison(
         source_pass_rate=source,
