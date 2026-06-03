@@ -7,6 +7,10 @@ from typing import Final, cast
 import yaml
 from pydantic import BaseModel, ValidationError
 
+from oh_my_field.domain.portability.lifecycle import (
+    build_portability_health,
+    normalize_target_validation_status,
+)
 from oh_my_field.models import (
     CapabilityExportBundle,
     CapabilityManifest,
@@ -808,15 +812,7 @@ def _target_status_lines(portability: PortabilityHealth) -> list[str]:
 def read_portability_health(package_dir: Path) -> PortabilityHealth:
     export_count = len(tuple(package_dir.glob("exports/*/export.yaml")))
     targets = _read_target_statuses(package_dir)
-    return PortabilityHealth(
-        export_status="exported" if export_count else "not_exported",
-        import_status="imported" if targets else "not_imported",
-        validation_status=_aggregate_validation_status(targets),
-        export_count=export_count,
-        import_count=len(targets),
-        target_validation_count=sum(1 for target in targets if target.eval_recorded),
-        target_statuses=targets,
-    )
+    return build_portability_health(export_count=export_count, targets=targets)
 
 
 def _read_target_statuses(package_dir: Path) -> tuple[TargetStatusEntry, ...]:
@@ -861,10 +857,7 @@ def _overlay_validation_status(
     overlay: dict[str, YamlValue],
 ) -> TargetValidationStatus:
     status = overlay.get("status")
-    known = ("not_run", "needs_validation", "needs_adaptation", "validated")
-    if status in known:
-        return status
-    return "needs_validation"
+    return normalize_target_validation_status(status)
 
 
 def _overlay_score(overlay: dict[str, YamlValue]) -> float | None:
@@ -874,18 +867,3 @@ def _overlay_score(overlay: dict[str, YamlValue]) -> float | None:
     if isinstance(score, (int, float)):
         return float(score)
     return None
-
-
-def _aggregate_validation_status(
-    targets: tuple[TargetStatusEntry, ...],
-) -> TargetValidationStatus:
-    if not targets:
-        return "not_run"
-    statuses = {target.validation_status for target in targets}
-    if "needs_adaptation" in statuses:
-        return "needs_adaptation"
-    if "needs_validation" in statuses:
-        return "needs_validation"
-    if statuses == {"validated"}:
-        return "validated"
-    return "needs_validation"

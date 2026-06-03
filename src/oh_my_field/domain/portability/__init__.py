@@ -17,6 +17,11 @@ from oh_my_field.domain.models import (
     TargetStatusEntry,
     TargetValidationStatus,
 )
+from oh_my_field.domain.portability.lifecycle import (
+    aggregate_target_validation_status,
+    build_portability_health,
+    normalize_target_validation_status,
+)
 
 __all__ = [
     "ArtifactIntegrityLink",
@@ -29,4 +34,7 @@ __all__ = [
     "PortabilityHealth",
     "TargetStatusEntry",
     "TargetValidationStatus",
+    "aggregate_target_validation_status",
+    "build_portability_health",
+    "normalize_target_validation_status",
 ]
