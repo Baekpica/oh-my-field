@@ -6,6 +6,7 @@ from oh_my_field.cli.commands import (
     context,
     dashboard,
     diagnostics,
+    diff_artifacts,
     evaluate,
     export,
     health,
@@ -43,6 +44,7 @@ diagnostics.register(app)
 capture.register(app)
 init_field.register(app)
 import_run.register(app)
+diff_artifacts.register(app)
 promote.register(app)
 health.register(app)
 capability.register(capability_app)
