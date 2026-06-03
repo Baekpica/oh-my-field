@@ -94,6 +94,133 @@ def test_inspect_reads_evidence_summary(tmp_path: Path) -> None:
     assert output.payload["file_count"] == 1
 
 
+def test_inspect_reads_run_alias(tmp_path: Path) -> None:
+    workflow_dir = tmp_path / "workflows"
+    run = make_workflow_run()
+    write_workflow_run(run, workflow_dir)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "inspect",
+            "run",
+            run.id,
+            "--workflow-dir",
+            str(workflow_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = InspectOutput.model_validate_json(result.stdout)
+    assert output.target_type == "run"
+    assert output.target_id == run.id
+    assert output.status == "completed"
+    assert output.payload["goal"] == "triage repo issue"
+
+
+def test_inspect_reads_portability_export_dir(tmp_path: Path) -> None:
+    capabilities_dir = tmp_path / "capabilities"
+    export_dir = tmp_path / "exports" / "repo_issue_triage-hermes"
+    write_manifest(make_manifest(), capabilities_dir)
+
+    export_result = CliRunner().invoke(
+        app,
+        [
+            "capability",
+            "export",
+            "repo_issue_triage",
+            "--target",
+            "hermes",
+            "--target-model",
+            "qwen3.6-27b",
+            "--out",
+            str(export_dir),
+            "--capabilities-dir",
+            str(capabilities_dir),
+        ],
+    )
+    assert export_result.exit_code == 0
+
+    inspect_result = CliRunner().invoke(app, ["inspect", "export", str(export_dir)])
+
+    assert inspect_result.exit_code == 0
+    output = InspectOutput.model_validate_json(inspect_result.stdout)
+    assert output.target_type == "export"
+    assert output.status == "exported"
+    assert output.payload["capability_name"] == "repo_issue_triage"
+    assert output.payload["target_runtime"] == "hermes"
+    assert output.payload["target_model"] == "qwen3.6-27b"
+
+
+def test_inspect_reads_imported_target_overlay(tmp_path: Path) -> None:
+    source_capabilities_dir = tmp_path / "source-capabilities"
+    target_capabilities_dir = tmp_path / "target-capabilities"
+    export_dir = tmp_path / "exports" / "repo_issue_triage-hermes"
+    write_manifest(make_manifest(), source_capabilities_dir)
+    export_result = CliRunner().invoke(
+        app,
+        [
+            "capability",
+            "export",
+            "repo_issue_triage",
+            "--target",
+            "hermes",
+            "--target-model",
+            "qwen3.6-27b",
+            "--out",
+            str(export_dir),
+            "--capabilities-dir",
+            str(source_capabilities_dir),
+        ],
+    )
+    assert export_result.exit_code == 0
+    import_result = CliRunner().invoke(
+        app,
+        [
+            "capability",
+            "import",
+            str(export_dir),
+            "--runtime",
+            "hermes",
+            "--model",
+            "qwen3.6-27b",
+            "--project",
+            "target-repo",
+            "--validate",
+            "--capabilities-dir",
+            str(target_capabilities_dir),
+            "--eval-dir",
+            str(tmp_path / "evals"),
+            "--evidence-dir",
+            str(tmp_path / "evidence"),
+        ],
+    )
+    assert import_result.exit_code == 0
+
+    inspect_result = CliRunner().invoke(
+        app,
+        [
+            "inspect",
+            "import",
+            "repo_issue_triage",
+            "--target",
+            "hermes",
+            "--model",
+            "qwen3.6-27b",
+            "--capabilities-dir",
+            str(target_capabilities_dir),
+        ],
+    )
+
+    assert inspect_result.exit_code == 0
+    output = InspectOutput.model_validate_json(inspect_result.stdout)
+    assert output.target_type == "import"
+    assert output.target_id == "repo_issue_triage"
+    assert output.status == "needs_adaptation"
+    assert output.payload["target_runtime"] == "hermes"
+    assert output.payload["target_model"] == "qwen3.6-27b"
+
+
 def test_export_requires_approval_and_writes_capability_bundle(
     tmp_path: Path,
 ) -> None:

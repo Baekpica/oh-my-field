@@ -16,6 +16,9 @@ def inspect_command(
             "capability",
             "replay",
             "eval",
+            "export",
+            "import",
+            "run",
             "workflow",
             "context",
             "learning",
@@ -46,6 +49,9 @@ def inspect_command(
     reflection_dir: Annotated[Path, typer.Option("--reflection-dir")] = Path(
         ".omf/reflections",
     ),
+    export_dir: Annotated[Path, typer.Option("--export-dir")] = Path(".omf/exports"),
+    target: Annotated[str | None, typer.Option("--target")] = None,
+    model: Annotated[str | None, typer.Option("--model")] = None,
 ) -> None:
     with cli_errors(ValueError):
         request = InspectRequest(
@@ -59,6 +65,9 @@ def inspect_command(
             context_dir=context_dir,
             learning_dir=learning_dir,
             reflection_dir=reflection_dir,
+            export_dir=export_dir,
+            target=target,
+            model=model,
         )
         summary = run_inspect(request)
         emit_json(summary)
