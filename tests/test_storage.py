@@ -241,8 +241,12 @@ def test_load_manifest_reads_yaml_written_by_write_manifest(tmp_path: Path) -> N
     manifest_path = write_manifest(manifest, tmp_path)
     loaded = load_manifest(manifest.name, tmp_path)
 
-    assert manifest_path == tmp_path / manifest.name / "manifest.yaml"
+    assert manifest_path == tmp_path / manifest.name / "capability.yaml"
     assert loaded == manifest
+    package_dir = tmp_path / manifest.name
+    assert package_dir.joinpath("instructions.md").exists()
+    assert package_dir.joinpath("harness.yaml").exists()
+    assert package_dir.joinpath("README.md").exists()
 
 
 def test_list_manifests_reads_capability_registry_entries(tmp_path: Path) -> None:
@@ -258,12 +262,47 @@ def test_load_manifest_rejects_missing_and_corrupt_yaml(tmp_path: Path) -> None:
     with pytest.raises(ManifestNotFoundError):
         load_manifest("missing_capability", tmp_path)
 
-    corrupt_path = tmp_path / "repo_issue" / "manifest.yaml"
+    corrupt_path = tmp_path / "repo_issue" / "capability.yaml"
     corrupt_path.parent.mkdir(parents=True, exist_ok=True)
     corrupt_path.write_text("- not-a-mapping\n", encoding="utf-8")
 
     with pytest.raises(ManifestParseError):
         load_manifest("repo_issue", tmp_path)
+
+
+def test_load_manifest_reads_legacy_manifest_yaml(tmp_path: Path) -> None:
+    manifest = make_manifest()
+    legacy_path = tmp_path / manifest.name / "manifest.yaml"
+    legacy_path.parent.mkdir(parents=True)
+    legacy_path.write_text(
+        "name: repo_issue\n"
+        "version: 0.1.0\n"
+        "description: GitHub issue triage capability\n"
+        "status: candidate\n"
+        "source_evidence_id: 20260602T010203Z-deadbeef\n"
+        "normalized_goal: triage repo issue\n"
+        "inputs:\n"
+        "  - goal\n"
+        "workflow:\n"
+        "  graph: langgraph\n"
+        "  nodes:\n"
+        "    - load_evidence\n"
+        "harness:\n"
+        "  status: pass\n"
+        "  checks:\n"
+        "    - schema_valid\n"
+        "runtime:\n"
+        "  name: codex\n"
+        "  model: null\n"
+        "promotion_criteria:\n"
+        "  min_success_runs: 3\n"
+        "  max_human_intervention_rate: 0.3\n"
+        "  required_harness_pass_rate: 0.9\n",
+        encoding="utf-8",
+    )
+
+    assert load_manifest(manifest.name, tmp_path).name == manifest.name
+    assert list_manifests(tmp_path)[0][0] == legacy_path
 
 
 def test_write_replay_persists_json_and_refuses_duplicate(tmp_path: Path) -> None:

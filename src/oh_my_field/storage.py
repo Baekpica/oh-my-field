@@ -2,7 +2,7 @@ import os
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
+from typing import Final, cast
 
 import yaml
 from pydantic import BaseModel, ValidationError
@@ -25,10 +25,21 @@ from oh_my_field.models import (
 type YamlValue = (
     str | int | float | bool | None | list["YamlValue"] | dict[str, "YamlValue"]
 )
+CAPABILITY_FILE_NAME: Final = "capability.yaml"
+LEGACY_MANIFEST_FILE_NAME: Final = "manifest.yaml"
 
 
 class StorageError(Exception):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class CapabilityPackagePaths:
+    package_dir: Path
+    capability_path: Path
+    instructions_path: Path
+    harness_path: Path
+    card_path: Path
 
 
 @dataclass
@@ -165,20 +176,39 @@ def write_evidence(record: EvidenceRecord, evidence_dir: Path) -> Path:
 
 
 def write_manifest(manifest: CapabilityManifest, capabilities_dir: Path) -> Path:
-    target_path = capabilities_dir / manifest.name / "manifest.yaml"
-    _write_text_exclusive(target_path, _manifest_yaml(manifest))
-    return target_path
+    return write_capability_package(manifest, capabilities_dir).capability_path
+
+
+def write_capability_package(
+    manifest: CapabilityManifest,
+    capabilities_dir: Path,
+) -> CapabilityPackagePaths:
+    paths = capability_package_paths(manifest.name, capabilities_dir)
+    _write_text_exclusive(paths.capability_path, _manifest_yaml(manifest))
+    _write_text_exclusive(
+        paths.instructions_path,
+        _capability_instructions_markdown(manifest),
+    )
+    _write_text_exclusive(paths.harness_path, _capability_harness_yaml(manifest))
+    _write_text_exclusive(paths.card_path, _capability_card_markdown(manifest))
+    return paths
 
 
 def update_manifest(manifest: CapabilityManifest, capabilities_dir: Path) -> Path:
-    target_path = capabilities_dir / manifest.name / "manifest.yaml"
-    _write_text_atomic(target_path, _manifest_yaml(manifest))
-    return target_path
+    paths = capability_package_paths(manifest.name, capabilities_dir)
+    _write_text_atomic(paths.capability_path, _manifest_yaml(manifest))
+    _write_text_atomic(
+        paths.instructions_path,
+        _capability_instructions_markdown(manifest),
+    )
+    _write_text_atomic(paths.harness_path, _capability_harness_yaml(manifest))
+    _write_text_atomic(paths.card_path, _capability_card_markdown(manifest))
+    return paths.capability_path
 
 
 def load_manifest(capability_name: str, capabilities_dir: Path) -> CapabilityManifest:
-    manifest_path = capabilities_dir / capability_name / "manifest.yaml"
-    if not manifest_path.exists():
+    manifest_path = manifest_path_for_capability(capability_name, capabilities_dir)
+    if manifest_path is None:
         raise ManifestNotFoundError(
             capability_name=capability_name,
             capabilities_dir=capabilities_dir,
@@ -186,12 +216,46 @@ def load_manifest(capability_name: str, capabilities_dir: Path) -> CapabilityMan
     return _load_manifest_path(manifest_path)
 
 
+def capability_package_paths(
+    capability_name: str,
+    capabilities_dir: Path,
+) -> CapabilityPackagePaths:
+    package_dir = capabilities_dir / capability_name
+    return CapabilityPackagePaths(
+        package_dir=package_dir,
+        capability_path=package_dir / CAPABILITY_FILE_NAME,
+        instructions_path=package_dir / "instructions.md",
+        harness_path=package_dir / "harness.yaml",
+        card_path=package_dir / "README.md",
+    )
+
+
+def manifest_path_for_capability(
+    capability_name: str,
+    capabilities_dir: Path,
+) -> Path | None:
+    package_dir = capabilities_dir / capability_name
+    for file_name in (CAPABILITY_FILE_NAME, LEGACY_MANIFEST_FILE_NAME):
+        candidate = package_dir / file_name
+        if candidate.exists():
+            return candidate
+    return None
+
+
 def list_manifests(
     capabilities_dir: Path,
 ) -> tuple[tuple[Path, CapabilityManifest], ...]:
     if not capabilities_dir.exists():
         return ()
-    manifest_paths = sorted(capabilities_dir.glob("*/manifest.yaml"))
+    manifest_paths = tuple(
+        path
+        for package_dir in sorted(path for path in capabilities_dir.iterdir())
+        if package_dir.is_dir()
+        for path in (
+            manifest_path_for_capability(package_dir.name, capabilities_dir),
+        )
+        if path is not None
+    )
     return tuple((path, _load_manifest_path(path)) for path in manifest_paths)
 
 
@@ -587,3 +651,136 @@ def _manifest_yaml(manifest: CapabilityManifest) -> str:
 
 def _manifest_yaml_data(manifest: CapabilityManifest) -> dict[str, YamlValue]:
     return cast("dict[str, YamlValue]", manifest.model_dump(mode="json"))
+
+
+def _capability_instructions_markdown(manifest: CapabilityManifest) -> str:
+    lines = [
+        f"# {manifest.name}",
+        "",
+        "## Purpose",
+        manifest.description,
+        "",
+        "## Runtime-Neutral Instructions",
+        f"- Use this capability for: {manifest.normalized_goal}",
+        "- Treat the package as the source of truth, not an agent runtime.",
+        "- Select context using the context policy before asking an agent to act.",
+        "- Run the harness checks before marking the work complete.",
+        "- Preserve new failures as evidence for future portability fixes.",
+        "",
+        "## Required Context",
+        *_markdown_list(manifest.context.required, "No required context recorded."),
+        "",
+        "## Forbidden Context",
+        *_markdown_list(
+            manifest.context.forbidden,
+            "No forbidden context recorded.",
+        ),
+        "",
+        "## Harness Checks",
+        *_markdown_list(
+            manifest.harness.required_checks,
+            "No required checks recorded.",
+        ),
+        "",
+        "## Runtime Coverage",
+        *_markdown_list(_runtime_profile_lines(manifest), "No runtime recorded."),
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def _capability_harness_yaml(manifest: CapabilityManifest) -> str:
+    data = cast(
+        "dict[str, YamlValue]",
+        {
+            "capability": manifest.name,
+            "status": manifest.harness.status,
+            "required_checks": list(manifest.harness.required_checks),
+            "observed_checks": list(manifest.harness.checks),
+            "failures": list(manifest.harness.failures),
+            "human_review_required": manifest.harness.human_review_required,
+            "workflow_control": {
+                "safe_execution_mode": manifest.workflow_control.safe_execution_mode,
+                "network_policy": manifest.workflow_control.network_policy,
+                "approval_required_actions": list(
+                    manifest.workflow_control.approval_required_actions,
+                ),
+                "allowed_tools": list(manifest.workflow_control.allowed_tools),
+                "disallowed_tools": list(manifest.workflow_control.disallowed_tools),
+            },
+        },
+    )
+    yaml_text: str = yaml.safe_dump(data, sort_keys=False, allow_unicode=True)
+    return yaml_text
+
+
+def _capability_card_markdown(manifest: CapabilityManifest) -> str:
+    lines = [
+        f"# {manifest.name}",
+        "",
+        "## What It Does",
+        manifest.description,
+        "",
+        "## When To Use",
+        f"- {manifest.normalized_goal}",
+        "",
+        "## Package Contents",
+        f"- `{CAPABILITY_FILE_NAME}`: canonical capability metadata.",
+        "- `instructions.md`: runtime-neutral agent instruction surface.",
+        "- `harness.yaml`: verification and approval checks.",
+        "- `README.md`: human-readable capability card.",
+        "",
+        "## Required Context",
+        *_markdown_list(manifest.context.required, "No required context recorded."),
+        "",
+        "## Harness",
+        f"- Status: {manifest.harness.status}",
+        *_markdown_list(
+            manifest.harness.required_checks,
+            "No required checks recorded.",
+        ),
+        "",
+        "## Runtime Coverage",
+        *_markdown_list(_runtime_profile_lines(manifest), "No runtime recorded."),
+        "",
+        "## Portability",
+        f"- Source runtime: {manifest.runtime.name}",
+        f"- Source model: {manifest.runtime.model or 'not recorded'}",
+        "- Target exports: not exported",
+        "- Target validation: not run",
+        "",
+        "## Status",
+        f"- Lifecycle: {manifest.status}",
+        f"- Version: {manifest.version}",
+        f"- Source evidence: {manifest.source_evidence_id}",
+        "",
+        "## Last Learning Patches",
+        *_markdown_list(_patch_lines(manifest), "No accepted patches recorded."),
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def _markdown_list(values: tuple[str, ...], empty: str) -> list[str]:
+    if not values:
+        return [f"- {empty}"]
+    return [f"- {value}" for value in values]
+
+
+def _runtime_profile_lines(manifest: CapabilityManifest) -> tuple[str, ...]:
+    values = [f"runtime: {manifest.runtime.name}"]
+    if manifest.runtime.model is not None:
+        values.append(f"model: {manifest.runtime.model}")
+    values.extend(
+        f"preferred model: {model}" for model in manifest.runtime.preferred_models
+    )
+    values.extend(f"tool: {tool}" for tool in manifest.runtime.tools)
+    return tuple(values)
+
+
+def _patch_lines(manifest: CapabilityManifest) -> tuple[str, ...]:
+    return (
+        *(f"prompt: {patch}" for patch in manifest.patches.prompt),
+        *(f"context: {patch}" for patch in manifest.patches.context),
+        *(f"harness: {patch}" for patch in manifest.patches.harness),
+    )

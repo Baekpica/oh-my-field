@@ -21,6 +21,11 @@ class PromoteOutput(BaseModel):
 
     capability_name: str
     manifest_path: str
+    package_path: str
+    capability_path: str
+    instructions_path: str
+    harness_path: str
+    card_path: str
     status: str
 
 
@@ -78,10 +83,11 @@ def test_promote_creates_capability_manifest_from_evidence(tmp_path: Path) -> No
     assert result.exit_code == 0
     output = PromoteOutput.model_validate_json(result.stdout)
     manifest_path = Path(output.manifest_path)
+    package_path = capabilities_dir / "repo_issue_triage"
     manifest_text = manifest_path.read_text(encoding="utf-8")
     assert output.capability_name == "repo_issue_triage"
     assert output.status == "candidate"
-    assert manifest_path == capabilities_dir / "repo_issue_triage" / "manifest.yaml"
+    _assert_package_output(output, package_path)
     assert "name: repo_issue_triage" in manifest_text
     assert f"source_evidence_id: {evidence.id}" in manifest_text
     assert f"- {evidence.id}" in manifest_text
@@ -105,14 +111,12 @@ def test_promote_creates_capability_manifest_from_evidence(tmp_path: Path) -> No
         manifest.integrity_chain[-2].sha256
     )
     assert manifest.workflow.nodes == (
-        "parse_goal",
-        "collect_context",
-        "plan_execution",
-        "execute_tools",
-        "run_harness",
-        "collect_evidence",
-        "human_review",
-        "package_learning",
+        "import_evidence",
+        "pack_context",
+        "run_verification",
+        "record_review",
+        "export_runtime_assets",
+        "apply_learning_patch",
     )
     assert manifest.harness.human_review_required
     assert manifest.evidence.store
@@ -130,6 +134,25 @@ def test_promote_creates_capability_manifest_from_evidence(tmp_path: Path) -> No
     assert "approval_required_actions:" in manifest_text
     assert "safe_execution_mode: true" in manifest_text
     assert "network_policy: disabled" in manifest_text
+
+
+def _assert_package_output(output: PromoteOutput, package_path: Path) -> None:
+    assert Path(output.manifest_path) == package_path / "capability.yaml"
+    assert Path(output.package_path) == package_path
+    assert Path(output.capability_path) == package_path / "capability.yaml"
+    assert Path(output.instructions_path) == package_path / "instructions.md"
+    assert Path(output.harness_path) == package_path / "harness.yaml"
+    assert Path(output.card_path) == package_path / "README.md"
+    assert (package_path / "instructions.md").exists()
+    assert (package_path / "harness.yaml").exists()
+    assert (package_path / "README.md").exists()
+    card_text = (package_path / "README.md").read_text(encoding="utf-8")
+    instructions_text = (package_path / "instructions.md").read_text(
+        encoding="utf-8",
+    )
+    assert "## Package Contents" in card_text
+    assert "runtime-neutral agent instruction surface" in card_text
+    assert "Treat the package as the source of truth" in instructions_text
 
 
 def test_promote_creates_manifest_from_evidence_set(tmp_path: Path) -> None:
@@ -239,9 +262,9 @@ def test_promote_refuses_duplicate_capability_name(tmp_path: Path) -> None:
     capabilities_dir = tmp_path / "capabilities"
     evidence = make_evidence_record()
     write_evidence(evidence, evidence_dir)
-    manifest_path = capabilities_dir / "repo_issue_triage" / "manifest.yaml"
-    manifest_path.parent.mkdir(parents=True)
-    manifest_path.write_text("name: repo_issue_triage\n", encoding="utf-8")
+    capability_path = capabilities_dir / "repo_issue_triage" / "capability.yaml"
+    capability_path.parent.mkdir(parents=True)
+    capability_path.write_text("name: repo_issue_triage\n", encoding="utf-8")
 
     result = CliRunner().invoke(
         app,
