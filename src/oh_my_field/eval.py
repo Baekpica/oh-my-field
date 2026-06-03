@@ -34,8 +34,10 @@ from oh_my_field.models import (
     EvalChecklistItem,
     EvalResult,
     EvalRubricScore,
+    EvalSet,
 )
 from oh_my_field.storage import (
+    load_eval_set,
     load_evidence,
     load_manifest,
     load_replay,
@@ -68,6 +70,7 @@ def _build_eval_graph() -> CompiledStateGraph[
     builder.add_node("load_manifest", _load_manifest)
     builder.add_node("load_source_evidence", _load_source_evidence)
     builder.add_node("load_replay", _load_replay)
+    builder.add_node("load_eval_set", _load_eval_set)
     builder.add_node("execute_harness", _execute_harness)
     builder.add_node("build_eval", _build_eval)
     builder.add_node("validate_eval", _validate_eval)
@@ -76,7 +79,8 @@ def _build_eval_graph() -> CompiledStateGraph[
     builder.add_edge(START, "load_manifest")
     builder.add_edge("load_manifest", "load_source_evidence")
     builder.add_edge("load_source_evidence", "load_replay")
-    builder.add_edge("load_replay", "execute_harness")
+    builder.add_edge("load_replay", "load_eval_set")
+    builder.add_edge("load_eval_set", "execute_harness")
     builder.add_edge("execute_harness", "build_eval")
     builder.add_edge("build_eval", "validate_eval")
     builder.add_edge("validate_eval", "write_eval")
@@ -116,12 +120,20 @@ def _load_replay(state: EvalState) -> EvalState:
     return EvalState(replay=replay)
 
 
+def _load_eval_set(state: EvalState) -> EvalState:
+    request = state_request(state)
+    if request.eval_set_name is None:
+        return EvalState(eval_set=None)
+    eval_set = load_eval_set(request.eval_set_name, request.eval_set_dir)
+    return EvalState(eval_set=eval_set)
+
+
 def _execute_harness(state: EvalState) -> EvalState:
     request = state_request(state)
     manifest = state_manifest(state)
     command_executions = tuple(
         _execute_command(command, request, manifest)
-        for command in request.harness_commands
+        for command in _harness_commands(request, state.get("eval_set"))
     )
     return EvalState(command_executions=command_executions)
 
@@ -179,6 +191,9 @@ def _build_eval(state: EvalState) -> EvalState:
     checks.extend(_harness_command_checks(command_executions))
     checks.extend(_checklist_checks(request.checklist_items))
     checks.extend(_rubric_checks(request.rubric_scores))
+    eval_set = state.get("eval_set")
+    if eval_set is not None:
+        checks.extend(_eval_set_checks(eval_set))
     created_at = dependencies.clock().astimezone(UTC)
     failures = tuple(check.message for check in checks if check.status == "fail")
     result = EvalResult(
@@ -187,6 +202,11 @@ def _build_eval(state: EvalState) -> EvalState:
         capability_name=request.capability_name,
         source_evidence_id=source_evidence.id,
         replay_id=None if replay is None else replay.id,
+        runtime_profile=request.runtime_profile,
+        eval_set_name=None if eval_set is None else eval_set.name,
+        eval_case_ids=(
+            () if eval_set is None else tuple(case.id for case in eval_set.cases)
+        ),
         status="fail" if failures else "pass",
         checks=tuple(checks),
         failures=failures,
@@ -249,6 +269,18 @@ def _execute_command(
         )
 
 
+def _harness_commands(
+    request: EvalRequest,
+    eval_set: EvalSet | None,
+) -> tuple[str, ...]:
+    if eval_set is None:
+        return request.harness_commands
+    case_commands = tuple(
+        command for case in eval_set.cases for command in case.harness_commands
+    )
+    return (*request.harness_commands, *case_commands)
+
+
 def _harness_command_checks(
     command_executions: tuple[CommandExecution, ...],
 ) -> tuple[EvalCheck, ...]:
@@ -296,6 +328,40 @@ def _rubric_checks(
         )
         for index, score in enumerate(rubric_scores, start=1)
     )
+
+
+def _eval_set_checks(eval_set: EvalSet) -> tuple[EvalCheck, ...]:
+    checks: list[EvalCheck] = [
+        EvalCheck(
+            name=f"eval_set_{eval_set.name}_loaded",
+            status="pass",
+            message=(
+                f"loaded eval set {eval_set.name!r} version {eval_set.version!r}"
+            ),
+        ),
+    ]
+    for case in eval_set.cases:
+        checks.append(
+            EvalCheck(
+                name=f"eval_case_{case.id}_registered",
+                status="pass",
+                message=f"registered eval case {case.id!r}",
+            ),
+        )
+        checks.extend(
+            EvalCheck(
+                name=f"eval_case_{case.id}_{_check_name(expected.name)}",
+                status="pass",
+                message=_expected_check_message(case.id, expected.name, expected.flaky),
+            )
+            for expected in case.expected_checks
+        )
+    return tuple(checks)
+
+
+def _expected_check_message(case_id: str, check_name: str, flaky: bool) -> str:
+    suffix = " (flaky)" if flaky else ""
+    return f"eval case {case_id!r} expects check {check_name!r}{suffix}"
 
 
 def _check_name(value: str) -> str:

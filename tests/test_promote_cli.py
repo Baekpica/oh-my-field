@@ -47,6 +47,10 @@ def make_evidence_record() -> EvidenceRecord:
     )
 
 
+def make_evidence_record_with_id(evidence_id: str) -> EvidenceRecord:
+    return make_evidence_record().model_copy(update={"id": evidence_id})
+
+
 def test_promote_creates_capability_manifest_from_evidence(tmp_path: Path) -> None:
     evidence_dir = tmp_path / "evidence"
     capabilities_dir = tmp_path / "capabilities"
@@ -120,6 +124,48 @@ def test_promote_creates_capability_manifest_from_evidence(tmp_path: Path) -> No
     assert "approval_required_actions:" in manifest_text
     assert "safe_execution_mode: true" in manifest_text
     assert "network_policy: disabled" in manifest_text
+
+
+def test_promote_creates_manifest_from_evidence_set(tmp_path: Path) -> None:
+    evidence_dir = tmp_path / "evidence"
+    capabilities_dir = tmp_path / "capabilities"
+    evidence_ids = (
+        "20260602T010203Z-deadbeef",
+        "20260602T010204Z-feedface",
+        "20260602T010205Z-cafebabe",
+    )
+    for evidence_id in evidence_ids:
+        write_evidence(make_evidence_record_with_id(evidence_id), evidence_dir)
+    evidence_set_path = tmp_path / "evidence-set.yaml"
+    evidence_set_path.write_text(
+        "evidence_ids:\n"
+        + "".join(f"  - {evidence_id}\n" for evidence_id in evidence_ids),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "promote",
+            "--from-evidence-set",
+            str(evidence_set_path),
+            "--name",
+            "repo_issue_triage",
+            "--description",
+            "GitHub issue triage capability",
+            "--evidence-dir",
+            str(evidence_dir),
+            "--capabilities-dir",
+            str(capabilities_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = PromoteOutput.model_validate_json(result.stdout)
+    manifest = load_manifest(output.capability_name, capabilities_dir)
+    assert manifest.status == "validated"
+    assert manifest.source_evidence_ids == evidence_ids
+    assert len(manifest.integrity_chain) == 4
 
 
 def test_promote_refuses_duplicate_capability_name(tmp_path: Path) -> None:

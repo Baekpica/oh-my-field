@@ -20,6 +20,11 @@ from oh_my_field.dashboard import (
     create_dashboard_server,
 )
 from oh_my_field.eval import EvalError, EvalRequest, run_eval_workflow
+from oh_my_field.eval_set import (
+    EvalSetError,
+    RegressionCaseRequest,
+    upsert_regression_case,
+)
 from oh_my_field.export import ExportError, ExportRequest, run_export_workflow
 from oh_my_field.inspection import InspectRequest, inspect_artifact
 from oh_my_field.learn import LearnError, LearnRequest, run_learn_workflow
@@ -29,6 +34,7 @@ from oh_my_field.models import (
     EvalRubricScore,
     HumanReviewAction,
     ReviewTargetType,
+    StrictModel,
 )
 from oh_my_field.orchestrate import (
     OrchestrateError,
@@ -57,6 +63,18 @@ RUBRIC_SCORE_SPLIT_MAX = 4
 class RubricScoreParseError(ValueError):
     def __str__(self) -> str:
         return "rubric score must use name:score:max_score:pass_threshold[:message]"
+
+
+class EvalMatrixItem(StrictModel):
+    runtime_profile: str
+    eval_id: str
+    eval_path: str
+    status: str
+
+
+class EvalMatrixSummary(StrictModel):
+    capability_name: str
+    results: tuple[EvalMatrixItem, ...]
 
 
 def _main() -> None:
@@ -167,10 +185,14 @@ app.command("capture")(_capture)
 
 
 def _promote(
-    evidence_id: Annotated[str, typer.Argument()],
     name: Annotated[str, typer.Option("--name")],
     description: Annotated[str, typer.Option("--description")],
+    evidence_id: Annotated[str | None, typer.Argument()] = None,
     version: Annotated[str, typer.Option("--version")] = "0.1.0",
+    from_evidence_set: Annotated[
+        Path | None,
+        typer.Option("--from-evidence-set"),
+    ] = None,
     evidence_dir: Annotated[Path, typer.Option("--evidence-dir")] = Path(
         ".omf/evidence",
     ),
@@ -182,6 +204,7 @@ def _promote(
         summary = run_promote_workflow(
             PromoteRequest(
                 evidence_id=evidence_id,
+                from_evidence_set=from_evidence_set,
                 name=name,
                 description=description,
                 version=version,
@@ -259,6 +282,11 @@ def _eval(
     eval_dir: Annotated[Path, typer.Option("--eval-dir")] = Path(
         ".omf/evals",
     ),
+    eval_set: Annotated[str | None, typer.Option("--eval-set")] = None,
+    eval_set_dir: Annotated[Path, typer.Option("--eval-set-dir")] = Path(
+        ".omf/eval_sets",
+    ),
+    matrix: Annotated[list[str] | None, typer.Option("--matrix")] = None,
     harness_command: Annotated[
         list[str] | None,
         typer.Option("--harness-command"),
@@ -286,25 +314,38 @@ def _eval(
     ] = False,
 ) -> None:
     try:
-        summary = run_eval_workflow(
-            EvalRequest(
-                capability_name=capability_name,
-                replay_id=replay_id,
-                capabilities_dir=capabilities_dir,
-                evidence_dir=evidence_dir,
-                replay_dir=replay_dir,
-                eval_dir=eval_dir,
-                harness_commands=tuple(harness_command or ()),
-                checklist_items=_eval_checklist_items(
-                    passes=checklist_pass,
-                    failures=checklist_fail,
-                ),
-                rubric_scores=_eval_rubric_scores(rubric_score),
-                command_cwd=command_cwd,
-                command_timeout_seconds=command_timeout_seconds,
-                approve_command_risk=approve_command_risk,
+        request = EvalRequest(
+            capability_name=capability_name,
+            replay_id=replay_id,
+            capabilities_dir=capabilities_dir,
+            evidence_dir=evidence_dir,
+            replay_dir=replay_dir,
+            eval_dir=eval_dir,
+            eval_set_dir=eval_set_dir,
+            eval_set_name=eval_set,
+            harness_commands=tuple(harness_command or ()),
+            checklist_items=_eval_checklist_items(
+                passes=checklist_pass,
+                failures=checklist_fail,
             ),
+            rubric_scores=_eval_rubric_scores(rubric_score),
+            command_cwd=command_cwd,
+            command_timeout_seconds=command_timeout_seconds,
+            approve_command_risk=approve_command_risk,
         )
+        profiles = _matrix_profiles(matrix)
+        if profiles:
+            results = tuple(
+                _eval_matrix_item(request, profile) for profile in profiles
+            )
+            typer.echo(
+                EvalMatrixSummary(
+                    capability_name=capability_name,
+                    results=results,
+                ).model_dump_json(),
+            )
+            return
+        summary = run_eval_workflow(request)
     except (EvalError, StorageError, ValidationError, ValueError) as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
@@ -313,6 +354,68 @@ def _eval(
 
 
 app.command("eval")(_eval)
+
+
+def _matrix_profiles(values: list[str] | None) -> tuple[str, ...]:
+    profiles = [
+        profile.strip()
+        for value in values or ()
+        for profile in value.split(",")
+        if profile.strip()
+    ]
+    return tuple(dict.fromkeys(profiles))
+
+
+def _eval_matrix_item(request: EvalRequest, runtime_profile: str) -> EvalMatrixItem:
+    summary = run_eval_workflow(
+        request.model_copy(update={"runtime_profile": runtime_profile}),
+    )
+    return EvalMatrixItem(
+        runtime_profile=runtime_profile,
+        eval_id=summary.eval_id,
+        eval_path=summary.eval_path,
+        status=summary.status,
+    )
+
+
+def _regression_case(
+    capability_name: Annotated[str, typer.Argument()],
+    case_id: Annotated[str, typer.Option("--case-id")],
+    eval_set: Annotated[str | None, typer.Option("--eval-set")] = None,
+    eval_set_version: Annotated[str, typer.Option("--eval-set-version")] = "0.1.0",
+    input_value: Annotated[list[str] | None, typer.Option("--input")] = None,
+    check: Annotated[list[str] | None, typer.Option("--check")] = None,
+    flaky_check: Annotated[list[str] | None, typer.Option("--flaky-check")] = None,
+    harness_command: Annotated[
+        list[str] | None,
+        typer.Option("--harness-command"),
+    ] = None,
+    eval_set_dir: Annotated[Path, typer.Option("--eval-set-dir")] = Path(
+        ".omf/eval_sets",
+    ),
+) -> None:
+    try:
+        summary = upsert_regression_case(
+            RegressionCaseRequest(
+                capability_name=capability_name,
+                eval_set_name=eval_set or f"{capability_name}_regression",
+                eval_set_version=eval_set_version,
+                case_id=case_id,
+                inputs=tuple(input_value or ()),
+                expected_checks=tuple(check or ()),
+                flaky_checks=tuple(flaky_check or ()),
+                harness_commands=tuple(harness_command or ()),
+                eval_set_dir=eval_set_dir,
+            ),
+        )
+    except (EvalSetError, StorageError, ValidationError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(summary.model_dump_json())
+
+
+app.command("regression-case")(_regression_case)
 
 
 def _eval_checklist_items(

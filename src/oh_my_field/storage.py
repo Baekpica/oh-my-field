@@ -1,7 +1,6 @@
 import os
 import tempfile
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 from typing import cast
 
@@ -13,6 +12,7 @@ from oh_my_field.models import (
     CapabilityManifest,
     ContextBundle,
     EvalResult,
+    EvalSet,
     EvidenceRecord,
     HumanReviewRecord,
     LearningExport,
@@ -286,6 +286,27 @@ def _load_eval_result_path(eval_path: Path) -> EvalResult:
         raise EvalParseError(path=eval_path, reason=str(exc)) from exc
 
 
+def write_eval_set(eval_set: EvalSet, eval_set_dir: Path) -> Path:
+    target_path = eval_set_dir / f"{eval_set.name}.json"
+    _write_text_atomic(target_path, eval_set.model_dump_json(indent=2) + "\n")
+    return target_path
+
+
+def load_eval_set(eval_set_name: str, eval_set_dir: Path) -> EvalSet:
+    eval_set_path = _artifact_path(eval_set_name, eval_set_dir)
+    return _load_artifact(
+        "eval set",
+        eval_set_name,
+        eval_set_dir,
+        eval_set_path,
+        EvalSet,
+    )
+
+
+def list_eval_sets(eval_set_dir: Path) -> tuple[EvalSet, ...]:
+    return _list_artifacts("eval set", eval_set_dir, EvalSet)
+
+
 def write_human_review(record: HumanReviewRecord, review_dir: Path) -> Path:
     target_path = review_dir / f"{record.id}.json"
     _write_text_exclusive(target_path, record.model_dump_json(indent=2) + "\n")
@@ -501,9 +522,3 @@ def _manifest_yaml(manifest: CapabilityManifest) -> str:
 
 def _manifest_yaml_data(manifest: CapabilityManifest) -> dict[str, YamlValue]:
     return cast("dict[str, YamlValue]", manifest.model_dump(mode="json"))
-
-
-def _datetime_yaml(value: datetime | None) -> str | None:
-    if value is None:
-        return None
-    return str(value)

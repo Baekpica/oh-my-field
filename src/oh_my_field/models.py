@@ -354,12 +354,39 @@ class EvalRubricScore(StrictModel):
     message: str = Field(min_length=1)
 
 
+class EvalCaseInput(StrictModel):
+    name: str = Field(min_length=1)
+    value: str = Field(min_length=1)
+
+
+class EvalExpectedCheck(StrictModel):
+    name: str = Field(min_length=1)
+    flaky: bool = False
+
+
+class EvalCase(StrictModel):
+    id: str = Field(pattern=CAPABILITY_NAME_PATTERN)
+    input: tuple[EvalCaseInput, ...] = ()
+    expected_checks: tuple[EvalExpectedCheck, ...] = ()
+    harness_commands: tuple[str, ...] = ()
+
+
+class EvalSet(StrictModel):
+    name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
+    version: str = Field(min_length=1)
+    capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
+    cases: tuple[EvalCase, ...] = ()
+
+
 class EvalResult(StrictModel):
     id: str = Field(pattern=EVIDENCE_ID_PATTERN)
     created_at: datetime
     capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
     source_evidence_id: str = Field(pattern=EVIDENCE_ID_PATTERN)
     replay_id: str | None = Field(default=None, pattern=EVIDENCE_ID_PATTERN)
+    runtime_profile: str | None = None
+    eval_set_name: str | None = Field(default=None, pattern=CAPABILITY_NAME_PATTERN)
+    eval_case_ids: tuple[str, ...] = ()
     status: EvalStatus
     checks: tuple[EvalCheck, ...]
     failures: tuple[str, ...] = ()
