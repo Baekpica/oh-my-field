@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Literal, cast
 
 import yaml
-from pydantic import Field
+from pydantic import Field, ValidationError
 
 from oh_my_field.integrity import append_integrity_link, model_sha256
 from oh_my_field.models import (
@@ -22,6 +22,7 @@ from oh_my_field.models import (
 from oh_my_field.storage import (
     DuplicateWriteError,
     StorageError,
+    capability_package_paths,
     load_evidence,
     load_manifest,
     write_capability_package,
@@ -30,7 +31,7 @@ from oh_my_field.storage import (
 )
 
 type ExportTarget = Literal["codex", "claude_code", "hermes", "generic"]
-type ValidationStatus = Literal["needs_validation", "needs_adaptation"]
+type ValidationStatus = Literal["needs_validation", "needs_adaptation", "validated"]
 type ToolCompatibilityStatus = Literal["pass", "partial", "unknown"]
 type EvidenceInclusionMode = Literal["none", "summary", "redacted", "full"]
 type YamlValue = (
@@ -60,6 +61,32 @@ class PortabilityBundleParseError(PortabilityError):
 
     def __str__(self) -> str:
         return f"could not parse portability bundle {self.path}: {self.reason}"
+
+
+@dataclass
+class PortabilityImportNotFoundError(PortabilityError):
+    capability: str
+    runtime: str
+    model: str | None
+
+    def __str__(self) -> str:
+        target = self.runtime if self.model is None else f"{self.runtime}/{self.model}"
+        return (
+            f"no imported target {target!r} for capability {self.capability!r}; "
+            "run `omf capability import` first"
+        )
+
+
+@dataclass
+class PortabilityAmbiguousTargetError(PortabilityError):
+    capability: str
+    runtime: str
+
+    def __str__(self) -> str:
+        return (
+            f"multiple imported targets for runtime {self.runtime!r} on capability "
+            f"{self.capability!r}; pass --model to disambiguate"
+        )
 
 
 class PortabilitySource(StrictModel):
@@ -259,6 +286,30 @@ class CapabilityPortabilityImportSummary(StrictModel):
     failure_evidence_path: str | None = None
 
 
+class CapabilityValidationRequest(StrictModel):
+    capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
+    capabilities_dir: Path
+    eval_dir: Path
+    evidence_dir: Path
+    target: ExportTarget
+    model: str | None = None
+    project: str | None = None
+    available_tools: tuple[str, ...] = ()
+
+
+class CapabilityValidationSummary(StrictModel):
+    capability_name: str
+    overlay_path: str
+    validation_report_path: str
+    status: ValidationStatus
+    tool_compatibility: ToolCompatibilityStatus
+    portability_score: float = Field(ge=0.0, le=1.0)
+    eval_id: str | None = None
+    eval_path: str | None = None
+    failure_evidence_id: str | None = None
+    failure_evidence_path: str | None = None
+
+
 def export_capability_package(
     request: CapabilityPortabilityExportRequest,
 ) -> CapabilityPortabilityExportSummary:
@@ -383,29 +434,187 @@ def import_capability_package(
     )
 
 
+def validate_capability_package(
+    request: CapabilityValidationRequest,
+) -> CapabilityValidationSummary:
+    manifest = load_manifest(request.capability_name, request.capabilities_dir)
+    package_dir = capability_package_paths(
+        request.capability_name,
+        request.capabilities_dir,
+    ).package_dir
+    overlay = _find_overlay(package_dir, runtime=request.target, model=request.model)
+    target = overlay.target.model_copy(
+        update={
+            "model": request.model or overlay.target.model,
+            "project": request.project or overlay.target.project,
+        },
+    )
+    portability = _portability_from_overlay(manifest, overlay, target)
+    report = _validation_report(
+        manifest=manifest,
+        portability=portability,
+        available_tools=request.available_tools,
+    )
+    eval_result, eval_path = _write_target_eval(
+        report=report,
+        manifest=manifest,
+        eval_dir=request.eval_dir,
+    )
+    final_status = _validated_status(report=report, eval_result=eval_result)
+    report = report.model_copy(
+        update={
+            "status": final_status,
+            "next_action": _next_action(final_status),
+            "eval_id": eval_result.id,
+            "eval_path": str(eval_path),
+        },
+    )
+    if eval_result.status == "fail":
+        evidence, evidence_path = _write_failure_evidence(
+            report=report,
+            eval_result=eval_result,
+            evidence_dir=request.evidence_dir,
+        )
+        report = report.model_copy(
+            update={
+                "failure_evidence_id": evidence.id,
+                "failure_evidence_path": str(evidence_path),
+            },
+        )
+    target_dir = package_dir / "imports" / _target_slug(target)
+    report_path = target_dir / "validation_report.yaml"
+    _write_text(report_path, _yaml_dump(report), overwrite=True)
+    overlay_path = _write_target_overlay(
+        target_dir=target_dir,
+        report=report,
+        portability=portability,
+        manifest=manifest,
+        overwrite=True,
+    )
+    return CapabilityValidationSummary(
+        capability_name=manifest.name,
+        overlay_path=str(overlay_path),
+        validation_report_path=str(report_path),
+        status=report.status,
+        tool_compatibility=report.tool_compatibility,
+        portability_score=report.portability_score,
+        eval_id=report.eval_id,
+        eval_path=report.eval_path,
+        failure_evidence_id=report.failure_evidence_id,
+        failure_evidence_path=report.failure_evidence_path,
+    )
+
+
+def _find_overlay(
+    package_dir: Path,
+    *,
+    runtime: ExportTarget,
+    model: str | None,
+) -> TargetOverlay:
+    matches: list[TargetOverlay] = []
+    for overlay_path in sorted(package_dir.glob("imports/*/target.overlay.yaml")):
+        overlay = _load_overlay(overlay_path)
+        if overlay is None or overlay.target.runtime != runtime:
+            continue
+        if model is not None and overlay.target.model != model:
+            continue
+        matches.append(overlay)
+    if not matches:
+        raise PortabilityImportNotFoundError(
+            capability=package_dir.name,
+            runtime=runtime,
+            model=model,
+        )
+    if len(matches) > 1:
+        raise PortabilityAmbiguousTargetError(
+            capability=package_dir.name,
+            runtime=runtime,
+        )
+    return matches[0]
+
+
+def _load_overlay(overlay_path: Path) -> TargetOverlay | None:
+    try:
+        data = yaml.safe_load(overlay_path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError):
+        return None
+    try:
+        return TargetOverlay.model_validate(data)
+    except ValidationError:
+        return None
+
+
+def _portability_from_overlay(
+    manifest: CapabilityManifest,
+    overlay: TargetOverlay,
+    target: PortabilityTarget,
+) -> PortabilityManifest:
+    required_tools = manifest.workflow_control.allowed_tools or manifest.runtime.tools
+    optional_tools = tuple(
+        tool for tool in manifest.runtime.tools if tool not in required_tools
+    )
+    compressed = overlay.overrides.context_variant == "compressed"
+    return PortabilityManifest(
+        capability=manifest.name,
+        version=manifest.version,
+        source=overlay.source,
+        target=target,
+        compatibility=PortabilityCompatibility(
+            required_tools=required_tools,
+            optional_tools=optional_tools,
+            compression_required=compressed,
+        ),
+        adaptation=PortabilityAdaptation(
+            transfer_type=overlay.transfer_type,
+            prompt_variant=overlay.overrides.instruction_variant,
+            context_variant=overlay.overrides.context_variant,
+            human_review_required=overlay.overrides.required_human_review,
+        ),
+        validation=PortabilityValidation(eval_set=f"{manifest.name}_regression"),
+    )
+
+
+def _validated_status(
+    *,
+    report: TargetValidationReport,
+    eval_result: EvalResult,
+) -> ValidationStatus:
+    if (
+        report.unavailable_tools
+        or report.portability_score < PORTABILITY_REQUIRED_PASS_RATE
+    ):
+        return "needs_adaptation"
+    if eval_result.status == "pass":
+        return "validated"
+    return "needs_validation"
+
+
 def _write_target_overlay(
     *,
     target_dir: Path,
     report: TargetValidationReport,
     portability: PortabilityManifest,
     manifest: CapabilityManifest,
+    overwrite: bool = False,
 ) -> Path:
     overlay = _build_overlay(report, portability)
     overlay_path = target_dir / "target.overlay.yaml"
-    _write_text_exclusive(overlay_path, _yaml_dump(overlay))
-    _write_text_exclusive(target_dir / "README.md", _target_readme(overlay))
+    _write_text(overlay_path, _yaml_dump(overlay), overwrite=overwrite)
+    _write_text(target_dir / "README.md", _target_readme(overlay), overwrite=overwrite)
     compact = overlay.overrides.instruction_variant == "compact"
-    _write_text_exclusive(
+    _write_text(
         target_dir / "instructions.md",
         _compact_instructions(manifest) if compact else _base_instructions(manifest),
+        overwrite=overwrite,
     )
-    _write_text_exclusive(
+    _write_text(
         target_dir / "context.pack.md",
         _target_context_pack(
             manifest,
             portability,
             compressed=overlay.overrides.context_variant == "compressed",
         ),
+        overwrite=overwrite,
     )
     return overlay_path
 
@@ -1089,6 +1298,8 @@ def _context_remap_required(portability: PortabilityManifest) -> bool:
 def _next_action(status: ValidationStatus) -> str:
     if status == "needs_adaptation":
         return "review unavailable tools and adapt the target package"
+    if status == "validated":
+        return "target import validated; monitor or promote the capability"
     return "run the target eval set before marking the import validated"
 
 
@@ -1279,7 +1490,11 @@ def _yaml_dump(model: StrictModel) -> str:
 
 
 def _write_text_exclusive(target_path: Path, content: str) -> None:
+    _write_text(target_path, content, overwrite=False)
+
+
+def _write_text(target_path: Path, content: str, *, overwrite: bool) -> None:
     target_path.parent.mkdir(parents=True, exist_ok=True)
-    if target_path.exists():
+    if target_path.exists() and not overwrite:
         raise DuplicateWriteError(path=target_path)
     target_path.write_text(content, encoding="utf-8")

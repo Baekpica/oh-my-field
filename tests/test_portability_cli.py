@@ -53,6 +53,21 @@ class CapabilityImportOutput(BaseModel):
     failure_evidence_path: str | None
 
 
+class CapabilityValidateOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    capability_name: str
+    overlay_path: str
+    validation_report_path: str
+    status: str
+    tool_compatibility: str
+    portability_score: float
+    eval_id: str | None
+    eval_path: str | None
+    failure_evidence_id: str | None
+    failure_evidence_path: str | None
+
+
 def test_capability_export_writes_portability_bundle(tmp_path: Path) -> None:
     capabilities_dir = tmp_path / "capabilities"
     export_dir = tmp_path / "exports" / "repo_issue_triage-hermes"
@@ -393,6 +408,182 @@ def test_capability_export_redacts_and_omits_evidence(tmp_path: Path) -> None:
     assert (none_provenance / "integrity.yaml").exists()
     assert not (none_provenance / "source_evidence").exists()
     assert not (none_provenance / "evidence_proofs.yaml").exists()
+
+
+def test_capability_validate_marks_validated_when_checks_pass(tmp_path: Path) -> None:
+    source_caps = tmp_path / "source-capabilities"
+    target_caps = tmp_path / "target-capabilities"
+    export_dir = tmp_path / "exports" / "codex"
+    eval_dir = tmp_path / "evals"
+    evidence_dir = tmp_path / "evidence"
+    write_manifest(make_manifest(), source_caps)
+    _run_ok(
+        [
+            "capability",
+            "export",
+            "repo_issue_triage",
+            "--target",
+            "codex",
+            "--target-model",
+            "gpt-5.5",
+            "--out",
+            str(export_dir),
+            "--capabilities-dir",
+            str(source_caps),
+        ],
+    )
+    _run_ok(
+        [
+            "capability",
+            "import",
+            str(export_dir),
+            "--runtime",
+            "codex",
+            "--model",
+            "gpt-5.5",
+            "--available-tool",
+            "shell",
+            "--capabilities-dir",
+            str(target_caps),
+            "--eval-dir",
+            str(eval_dir),
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "capability",
+            "validate",
+            "repo_issue_triage",
+            "--target",
+            "codex",
+            "--model",
+            "gpt-5.5",
+            "--available-tool",
+            "shell",
+            "--capabilities-dir",
+            str(target_caps),
+            "--eval-dir",
+            str(eval_dir),
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = CapabilityValidateOutput.model_validate_json(result.stdout)
+    assert output.status == "validated"
+    assert output.tool_compatibility == "pass"
+    assert output.portability_score == 1.0
+    assert output.failure_evidence_id is None
+    overlay = yaml.safe_load(Path(output.overlay_path).read_text(encoding="utf-8"))
+    assert overlay["status"] == "validated"
+
+
+def test_capability_validate_records_failure_when_tools_missing(tmp_path: Path) -> None:
+    source_caps = tmp_path / "source-capabilities"
+    target_caps = tmp_path / "target-capabilities"
+    export_dir = tmp_path / "exports" / "hermes"
+    eval_dir = tmp_path / "evals"
+    evidence_dir = tmp_path / "evidence"
+    write_manifest(make_manifest(), source_caps)
+    _run_ok(
+        [
+            "capability",
+            "export",
+            "repo_issue_triage",
+            "--target",
+            "hermes",
+            "--target-model",
+            "qwen3.6-27b",
+            "--out",
+            str(export_dir),
+            "--capabilities-dir",
+            str(source_caps),
+        ],
+    )
+    _run_ok(
+        [
+            "capability",
+            "import",
+            str(export_dir),
+            "--runtime",
+            "hermes",
+            "--model",
+            "qwen3.6-27b",
+            "--available-tool",
+            "file_system",
+            "--capabilities-dir",
+            str(target_caps),
+            "--eval-dir",
+            str(eval_dir),
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "capability",
+            "validate",
+            "repo_issue_triage",
+            "--target",
+            "hermes",
+            "--model",
+            "qwen3.6-27b",
+            "--available-tool",
+            "file_system",
+            "--capabilities-dir",
+            str(target_caps),
+            "--eval-dir",
+            str(eval_dir),
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = CapabilityValidateOutput.model_validate_json(result.stdout)
+    assert output.status == "needs_adaptation"
+    assert output.tool_compatibility == "partial"
+    assert output.failure_evidence_id is not None
+    assert Path(output.failure_evidence_path or "").exists()
+
+
+def test_capability_validate_errors_when_not_imported(tmp_path: Path) -> None:
+    capabilities_dir = tmp_path / "capabilities"
+    write_manifest(make_manifest(), capabilities_dir)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "capability",
+            "validate",
+            "repo_issue_triage",
+            "--target",
+            "hermes",
+            "--model",
+            "qwen3.6-27b",
+            "--capabilities-dir",
+            str(capabilities_dir),
+            "--eval-dir",
+            str(tmp_path / "evals"),
+            "--evidence-dir",
+            str(tmp_path / "evidence"),
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "no imported target" in result.stderr
+
+
+def _run_ok(args: list[str]) -> None:
+    result = CliRunner().invoke(app, args)
+    assert result.exit_code == 0, result.stdout
 
 
 class HealthEntriesOutput(BaseModel):

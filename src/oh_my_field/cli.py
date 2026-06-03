@@ -66,9 +66,11 @@ from oh_my_field.orchestrate import (
 from oh_my_field.portability import (
     CapabilityPortabilityExportRequest,
     CapabilityPortabilityImportRequest,
+    CapabilityValidationRequest,
     PortabilityError,
     export_capability_package,
     import_capability_package,
+    validate_capability_package,
 )
 from oh_my_field.promote import PromoteError, PromoteRequest, run_promote_workflow
 from oh_my_field.reflect import ReflectError, ReflectRequest, run_reflect_workflow
@@ -456,6 +458,52 @@ capability_app.command(
     "import",
     help="Import a portable capability package and write a target validation report.",
 )(_capability_import)
+
+
+def _capability_validate(
+    capability_name: Annotated[str, typer.Argument()],
+    target: Annotated[
+        Literal["codex", "claude_code", "hermes", "generic"],
+        typer.Option("--target"),
+    ],
+    model: Annotated[str | None, typer.Option("--model")] = None,
+    project: Annotated[str | None, typer.Option("--project")] = None,
+    available_tool: Annotated[
+        list[str] | None,
+        typer.Option("--available-tool"),
+    ] = None,
+    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
+        "capabilities",
+    ),
+    eval_dir: Annotated[Path, typer.Option("--eval-dir")] = Path(".omf/evals"),
+    evidence_dir: Annotated[Path, typer.Option("--evidence-dir")] = Path(
+        ".omf/evidence",
+    ),
+) -> None:
+    try:
+        summary = validate_capability_package(
+            CapabilityValidationRequest(
+                capability_name=capability_name,
+                capabilities_dir=capabilities_dir,
+                eval_dir=eval_dir,
+                evidence_dir=evidence_dir,
+                target=target,
+                model=model,
+                project=project,
+                available_tools=tuple(available_tool or ()),
+            ),
+        )
+    except (PortabilityError, StorageError, ValidationError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(summary.model_dump_json())
+
+
+capability_app.command(
+    "validate",
+    help="Re-validate an imported capability against its target runtime.",
+)(_capability_validate)
 
 
 def _replay(
