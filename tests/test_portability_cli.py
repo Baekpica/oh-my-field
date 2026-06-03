@@ -71,6 +71,13 @@ class CapabilityValidateOutput(BaseModel):
     manual_run_required: bool
 
 
+class HardenOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    capability_name: str
+    recommended_actions: list[str]
+
+
 def test_capability_export_writes_portability_bundle(tmp_path: Path) -> None:
     capabilities_dir = tmp_path / "capabilities"
     export_dir = tmp_path / "exports" / "repo_issue_triage-hermes"
@@ -968,6 +975,55 @@ def test_capability_import_as_and_namespace(tmp_path: Path) -> None:
     assert package.joinpath("capability.yaml").exists()
     imported = load_manifest("repo_issue_triage_hermes", target_caps / "imported")
     assert imported.name == "repo_issue_triage_hermes"
+
+
+def test_harden_connects_target_validation_failure(tmp_path: Path) -> None:
+    source_caps = tmp_path / "src"
+    target_caps = tmp_path / "tgt"
+    export_dir = tmp_path / "bundle"
+    eval_dir = tmp_path / "evals"
+    evidence_dir = tmp_path / "evidence"
+    _seed_hermes_bundle(source_caps, export_dir)
+    _run_ok(
+        [
+            "capability",
+            "import",
+            str(export_dir),
+            "--runtime",
+            "hermes",
+            "--model",
+            "qwen3.6-27b",
+            "--available-tool",
+            "file_system",
+            "--validate",
+            "--capabilities-dir",
+            str(target_caps),
+            "--eval-dir",
+            str(eval_dir),
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "harden",
+            "repo_issue_triage",
+            "--capabilities-dir",
+            str(target_caps),
+            "--eval-dir",
+            str(eval_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = HardenOutput.model_validate_json(result.stdout)
+    assert any(
+        "omf capability validate repo_issue_triage" in action
+        for action in output.recommended_actions
+    )
+    assert any("omf learn" in action for action in output.recommended_actions)
 
 
 class HealthEntriesOutput(BaseModel):

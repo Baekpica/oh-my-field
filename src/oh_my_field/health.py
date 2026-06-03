@@ -222,8 +222,19 @@ def _harden_actions(entry: CapabilityHealthEntry) -> tuple[str, ...]:
         actions.append(
             f"run `omf eval {entry.name} --eval-set {entry.name}_regression`",
         )
-    if entry.export_status == "not_exported":
+    if entry.export_status == "not_exported" and entry.import_count == 0:
         actions.append("export to Codex, Claude Code, Hermes, or generic target")
+    if entry.validation_status == "needs_adaptation":
+        actions.append(
+            "adapt the failing target import (tools/context), then re-run "
+            f"`omf capability validate {entry.name}`",
+        )
+        actions.append("triage the target failure evidence via `omf learn`")
+    elif entry.import_count and entry.validation_status == "needs_validation":
+        actions.append(
+            f"run `omf capability validate {entry.name} --run-command ...` "
+            "on the imported target",
+        )
     actions.append("review learning patch candidates after `omf learn`")
     return tuple(dict.fromkeys(actions))
 
