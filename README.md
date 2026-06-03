@@ -326,6 +326,8 @@ uv run omf capability export repo_issue_triage \
   --target-model qwen3.6-27b \
   --source-project source-repo \
   --target-project target-repo \
+  --source-context-tokens 64000 \
+  --target-context-tokens 16000 \
   --out /private/tmp/repo_issue_triage-hermes-qwen36 \
   --capabilities-dir /private/tmp/omf-capabilities-smoke
 ```
@@ -357,8 +359,13 @@ uv run omf capability import /private/tmp/repo_issue_triage-hermes-qwen36 \
 Import creates a local package and
 `capabilities/<name>/imports/<runtime-model>/validation_report.yaml`. The report
 records source/target runtime metadata, tool compatibility, context remap needs,
-the regression eval set to run next, and whether the target package needs
-adaptation before validation.
+the regression eval set to run next, portability score, and whether the target
+package needs adaptation before validation. The score starts at `1.0` and
+deducts for runtime, model, project, tool, and context-budget portability risk.
+When `--validate` is used, OMF also writes a target-side eval result; failed
+target validation is captured back into evidence. Model transfer exports include
+compact instructions, and smaller target context budgets create a compressed
+context pack.
 
 ## Hardening Example
 
@@ -727,6 +734,8 @@ uv run omf capability export repo_issue_triage \
   --target-model qwen3.6-27b \
   --source-project source-repo \
   --target-project target-repo \
+  --source-context-tokens 64000 \
+  --target-context-tokens 16000 \
   --out /private/tmp/repo_issue_triage-hermes-qwen36 \
   --capabilities-dir /private/tmp/omf-capabilities-smoke
 ```
@@ -735,6 +744,9 @@ The export writes `portability.yaml`, source runtime metadata, evidence links,
 instructions, context policy, harness metadata, and a target runtime directory.
 Target directories are shaped for Codex, Claude Code, Hermes, or generic skill
 consumers.
+When the target model differs from the source model, export writes
+`instructions/compact.md` and model notes. When the target context budget is
+smaller than the source budget, export writes `context/context.pack.md`.
 
 ### `omf capability import`
 
@@ -748,12 +760,15 @@ uv run omf capability import /private/tmp/repo_issue_triage-hermes-qwen36 \
   --project target-repo \
   --available-tool shell \
   --validate \
-  --capabilities-dir /private/tmp/target-omf-capabilities
+  --capabilities-dir /private/tmp/target-omf-capabilities \
+  --eval-dir /private/tmp/target-omf-evals \
+  --evidence-dir /private/tmp/target-omf-evidence
 ```
 
 The import report records whether tool compatibility is `pass`, `partial`, or
 `unknown`, whether context remapping is required, and the eval set to run before
-marking the target package validated.
+marking the target package validated. With `--validate`, import writes an eval
+record and captures failed target validation as evidence.
 
 ### `omf verify`
 

@@ -361,6 +361,14 @@ def _capability_export(
         str | None,
         typer.Option("--source-reasoning-effort"),
     ] = None,
+    source_context_tokens: Annotated[
+        int | None,
+        typer.Option("--source-context-tokens"),
+    ] = None,
+    target_context_tokens: Annotated[
+        int | None,
+        typer.Option("--target-context-tokens"),
+    ] = None,
     capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
         "capabilities",
     ),
@@ -374,6 +382,8 @@ def _capability_export(
                 target_project=target_project,
                 source_project=source_project,
                 source_reasoning_effort=source_reasoning_effort,
+                source_context_tokens=source_context_tokens,
+                target_context_tokens=target_context_tokens,
                 out=out,
                 capabilities_dir=capabilities_dir,
             ),
@@ -407,17 +417,23 @@ def _capability_import(
     capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
         "capabilities",
     ),
+    eval_dir: Annotated[Path, typer.Option("--eval-dir")] = Path(".omf/evals"),
+    evidence_dir: Annotated[Path, typer.Option("--evidence-dir")] = Path(
+        ".omf/evidence",
+    ),
 ) -> None:
     try:
         summary = import_capability_package(
             CapabilityPortabilityImportRequest(
                 bundle_path=bundle_path,
+                capabilities_dir=capabilities_dir,
+                eval_dir=eval_dir,
+                evidence_dir=evidence_dir,
                 runtime=runtime,
                 model=model,
                 project=project,
                 validate_import=validate,
                 available_tools=tuple(available_tool or ()),
-                capabilities_dir=capabilities_dir,
             ),
         )
     except (PortabilityError, StorageError, ValidationError) as exc:

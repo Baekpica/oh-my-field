@@ -1,19 +1,29 @@
+import secrets
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal, cast
 
 import yaml
 from pydantic import Field
 
+from oh_my_field.integrity import append_integrity_link
 from oh_my_field.models import (
     CAPABILITY_NAME_PATTERN,
     CapabilityManifest,
+    EvalCheck,
+    EvalResult,
+    EvidenceRecord,
+    HarnessResult,
+    RuntimeInfo,
     StrictModel,
 )
 from oh_my_field.storage import (
     DuplicateWriteError,
     load_manifest,
     write_capability_package,
+    write_eval_result,
+    write_evidence,
 )
 
 type ExportTarget = Literal["codex", "claude_code", "hermes", "generic"]
@@ -22,6 +32,8 @@ type ToolCompatibilityStatus = Literal["pass", "partial", "unknown"]
 type YamlValue = (
     str | int | float | bool | None | list["YamlValue"] | dict[str, "YamlValue"]
 )
+
+PORTABILITY_REQUIRED_PASS_RATE = 0.8
 
 
 class PortabilityError(Exception):
@@ -59,11 +71,24 @@ class PortabilityTarget(StrictModel):
     project: str | None = None
 
 
+class PortabilityContextBudget(StrictModel):
+    source_tokens: int | None = Field(default=None, ge=1)
+    target_tokens: int | None = Field(default=None, ge=1)
+
+
 class PortabilityCompatibility(StrictModel):
     required_tools: tuple[str, ...] = ()
     optional_tools: tuple[str, ...] = ()
     unavailable_tools: tuple[str, ...] = ()
+    context_budget: PortabilityContextBudget | None = None
     compression_required: bool = False
+
+
+class PortabilityModelDelta(StrictModel):
+    source_model: str | None = None
+    target_model: str | None = None
+    model_changed: bool = False
+    transfer_type: tuple[str, ...] = ()
 
 
 class PortabilityAdaptation(StrictModel):
@@ -76,7 +101,11 @@ class PortabilityAdaptation(StrictModel):
 
 class PortabilityValidation(StrictModel):
     eval_set: str | None = None
-    required_pass_rate: float = Field(default=0.8, ge=0.0, le=1.0)
+    required_pass_rate: float = Field(
+        default=PORTABILITY_REQUIRED_PASS_RATE,
+        ge=0.0,
+        le=1.0,
+    )
     current_pass_rate: float | None = Field(default=None, ge=0.0, le=1.0)
     status: ValidationStatus = "needs_validation"
 
@@ -102,6 +131,14 @@ class TargetValidationReport(StrictModel):
     context_remap_required: bool = False
     eval_set: str | None = None
     initial_pass_rate: float | None = Field(default=None, ge=0.0, le=1.0)
+    portability_score: float = Field(ge=0.0, le=1.0)
+    model_delta: PortabilityModelDelta
+    eval_id: str | None = None
+    eval_path: str | None = None
+    failure_evidence_id: str | None = None
+    failure_evidence_path: str | None = None
+    compact_instruction_path: str | None = None
+    compressed_context_path: str | None = None
     status: ValidationStatus
     next_action: str = Field(min_length=1)
 
@@ -115,6 +152,8 @@ class CapabilityPortabilityExportRequest(StrictModel):
     target_project: str | None = None
     source_project: str | None = None
     source_reasoning_effort: str | None = None
+    source_context_tokens: int | None = Field(default=None, ge=1)
+    target_context_tokens: int | None = Field(default=None, ge=1)
 
 
 class CapabilityPortabilityExportSummary(StrictModel):
@@ -129,6 +168,8 @@ class CapabilityPortabilityExportSummary(StrictModel):
 class CapabilityPortabilityImportRequest(StrictModel):
     bundle_path: Path
     capabilities_dir: Path
+    eval_dir: Path
+    evidence_dir: Path
     runtime: ExportTarget | None = None
     model: str | None = None
     project: str | None = None
@@ -142,6 +183,11 @@ class CapabilityPortabilityImportSummary(StrictModel):
     validation_report_path: str
     status: ValidationStatus
     tool_compatibility: ToolCompatibilityStatus
+    portability_score: float = Field(ge=0.0, le=1.0)
+    eval_id: str | None = None
+    eval_path: str | None = None
+    failure_evidence_id: str | None = None
+    failure_evidence_path: str | None = None
 
 
 def export_capability_package(
@@ -182,6 +228,27 @@ def import_capability_package(
         portability=portability.model_copy(update={"target": target}),
         available_tools=request.available_tools,
     )
+    if request.validate_import:
+        eval_result, eval_path = _write_target_eval(
+            report=report,
+            manifest=manifest,
+            eval_dir=request.eval_dir,
+        )
+        report = report.model_copy(
+            update={"eval_id": eval_result.id, "eval_path": str(eval_path)},
+        )
+        if eval_result.status == "fail":
+            evidence, evidence_path = _write_failure_evidence(
+                report=report,
+                eval_result=eval_result,
+                evidence_dir=request.evidence_dir,
+            )
+            report = report.model_copy(
+                update={
+                    "failure_evidence_id": evidence.id,
+                    "failure_evidence_path": str(evidence_path),
+                },
+            )
     report_path = (
         imported_path
         / "imports"
@@ -195,6 +262,11 @@ def import_capability_package(
         validation_report_path=str(report_path),
         status=report.status,
         tool_compatibility=report.tool_compatibility,
+        portability_score=report.portability_score,
+        eval_id=report.eval_id,
+        eval_path=report.eval_path,
+        failure_evidence_id=report.failure_evidence_id,
+        failure_evidence_path=report.failure_evidence_path,
     )
 
 
@@ -214,6 +286,11 @@ def _portability_manifest(
     optional_tools = tuple(
         tool for tool in manifest.runtime.tools if tool not in required_tools
     )
+    context_budget = PortabilityContextBudget(
+        source_tokens=request.source_context_tokens,
+        target_tokens=request.target_context_tokens,
+    )
+    compression_required = _compression_required(context_budget)
     source = PortabilitySource(
         runtime=manifest.runtime.name,
         model=manifest.runtime.model,
@@ -234,7 +311,8 @@ def _portability_manifest(
         compatibility=PortabilityCompatibility(
             required_tools=required_tools,
             optional_tools=optional_tools,
-            compression_required=False,
+            context_budget=context_budget,
+            compression_required=compression_required,
         ),
         adaptation=PortabilityAdaptation(
             transfer_type=_transfer_type(source=source, target=target),
@@ -261,6 +339,14 @@ def _transfer_type(
     return tuple(values or ("same_environment",))
 
 
+def _compression_required(context_budget: PortabilityContextBudget) -> bool:
+    return (
+        context_budget.source_tokens is not None
+        and context_budget.target_tokens is not None
+        and context_budget.target_tokens < context_budget.source_tokens
+    )
+
+
 def _write_export_bundle(
     bundle_path: Path,
     manifest: CapabilityManifest,
@@ -273,10 +359,31 @@ def _write_export_bundle(
         bundle_path / "instructions" / "base.md",
         _base_instructions(manifest),
     )
+    if _model_downgrade(portability):
+        _write_text_exclusive(
+            bundle_path / "instructions" / "compact.md",
+            _compact_instructions(manifest),
+        )
+        _write_text_exclusive(
+            bundle_path / "instructions" / _model_notes_file(portability),
+            _model_notes(portability),
+        )
     _write_text_exclusive(
         bundle_path / "context" / "context.policy.yaml",
         _yaml_dump(manifest.context),
     )
+    if portability.compatibility.compression_required:
+        _write_text_exclusive(
+            bundle_path / "context" / "context.pack.md",
+            _compressed_context_pack(manifest, portability),
+        )
+        _write_text_exclusive(
+            bundle_path / "context" / "forbidden.yaml",
+            yaml.safe_dump(
+                {"forbidden": list(manifest.context.forbidden)},
+                sort_keys=False,
+            ),
+        )
     _write_text_exclusive(
         bundle_path / "harness" / "harness.yaml",
         _yaml_dump(manifest.harness),
@@ -397,8 +504,15 @@ def _validation_report(
         available_tools=available_tools,
         unavailable_tools=unavailable_tools,
     )
+    portability_score = _portability_score(
+        portability=portability,
+        unavailable_tools=unavailable_tools,
+    )
     status: ValidationStatus = (
-        "needs_adaptation" if unavailable_tools else "needs_validation"
+        "needs_adaptation"
+        if unavailable_tools
+        or portability_score < portability.validation.required_pass_rate
+        else "needs_validation"
     )
     return TargetValidationReport(
         capability_name=manifest.name,
@@ -409,9 +523,107 @@ def _validation_report(
         context_remap_required=_context_remap_required(portability),
         eval_set=portability.validation.eval_set,
         initial_pass_rate=portability.validation.current_pass_rate,
+        portability_score=portability_score,
+        model_delta=_model_delta(portability),
+        compact_instruction_path=(
+            "instructions/compact.md" if _model_downgrade(portability) else None
+        ),
+        compressed_context_path=(
+            "context/context.pack.md"
+            if portability.compatibility.compression_required
+            else None
+        ),
         status=status,
         next_action=_next_action(status),
     )
+
+
+def _write_target_eval(
+    *,
+    report: TargetValidationReport,
+    manifest: CapabilityManifest,
+    eval_dir: Path,
+) -> tuple[EvalResult, Path]:
+    created_at = datetime.now(UTC)
+    checks = (
+        EvalCheck(
+            name="tool_compatibility",
+            status="pass" if report.tool_compatibility != "partial" else "fail",
+            message=f"tool compatibility: {report.tool_compatibility}",
+        ),
+        EvalCheck(
+            name="context_remap",
+            status="fail" if report.context_remap_required else "pass",
+            message=(
+                "context remap required"
+                if report.context_remap_required
+                else "context remap not required"
+            ),
+        ),
+        EvalCheck(
+            name="portability_score",
+            status=(
+                "pass"
+                if report.portability_score >= PORTABILITY_REQUIRED_PASS_RATE
+                else "fail"
+            ),
+            message=f"portability score {report.portability_score:.2f}",
+        ),
+    )
+    failures = tuple(check.message for check in checks if check.status == "fail")
+    result = EvalResult(
+        id=_new_id(created_at),
+        created_at=created_at,
+        capability_name=manifest.name,
+        source_evidence_id=manifest.source_evidence_id,
+        runtime_profile=_runtime_profile(report.target),
+        eval_set_name=report.eval_set,
+        status="fail" if failures else "pass",
+        checks=checks,
+        failures=failures,
+    )
+    result = append_integrity_link(result, artifact_type="eval", artifact_id=result.id)
+    return result, write_eval_result(result, eval_dir)
+
+
+def _write_failure_evidence(
+    *,
+    report: TargetValidationReport,
+    eval_result: EvalResult,
+    evidence_dir: Path,
+) -> tuple[EvidenceRecord, Path]:
+    created_at = datetime.now(UTC)
+    evidence = EvidenceRecord(
+        id=_new_id(created_at),
+        created_at=created_at,
+        capability_id=report.capability_name,
+        goal=f"portability validation for {report.capability_name}",
+        normalized_goal=f"validate target portability for {report.capability_name}",
+        field=report.target.project or "target_project",
+        runtime=RuntimeInfo(name=report.target.runtime, model=report.target.model),
+        errors=eval_result.failures,
+        feedback=(
+            f"portability score {report.portability_score:.2f}",
+            f"target eval {eval_result.id} failed",
+        ),
+        harness=HarnessResult(
+            status="fail",
+            checks=tuple(check.name for check in eval_result.checks),
+            failures=eval_result.failures,
+            required_checks=("tool_compatibility", "portability_score"),
+            human_review_required=True,
+        ),
+        success_or_failure_label="failure",
+        improvement_notes=(
+            "adapt target runtime tools, context mapping, or compact instructions",
+        ),
+    )
+    evidence = append_integrity_link(
+        evidence,
+        artifact_type="evidence",
+        artifact_id=evidence.id,
+    )
+    return evidence, write_evidence(evidence, evidence_dir)
 
 
 def _unavailable_tools(
@@ -437,6 +649,43 @@ def _tool_compatibility(
     return "pass"
 
 
+def _portability_score(
+    *,
+    portability: PortabilityManifest,
+    unavailable_tools: tuple[str, ...],
+) -> float:
+    score = 1.0
+    if portability.source.runtime != portability.target.runtime:
+        score -= 0.1
+    if portability.source.model != portability.target.model:
+        score -= 0.15
+    if portability.source.project != portability.target.project:
+        score -= 0.1
+    if portability.compatibility.compression_required:
+        score -= 0.1
+    score -= min(0.4, 0.2 * len(unavailable_tools))
+    return max(0.0, round(score, 2))
+
+
+def _model_delta(portability: PortabilityManifest) -> PortabilityModelDelta:
+    return PortabilityModelDelta(
+        source_model=portability.source.model,
+        target_model=portability.target.model,
+        model_changed=portability.source.model != portability.target.model,
+        transfer_type=portability.adaptation.transfer_type,
+    )
+
+
+def _model_downgrade(portability: PortabilityManifest) -> bool:
+    if portability.source.model is None or portability.target.model is None:
+        return False
+    if portability.source.model == portability.target.model:
+        return False
+    target = portability.target.model.casefold()
+    downgrade_markers = ("mini", "small", "local", "qwen", "27b", "7b")
+    return any(marker in target for marker in downgrade_markers)
+
+
 def _context_remap_required(portability: PortabilityManifest) -> bool:
     return (
         portability.target.project is not None
@@ -453,6 +702,16 @@ def _next_action(status: ValidationStatus) -> str:
 def _target_slug(target: PortabilityTarget) -> str:
     model = target.model.replace("/", "_") if target.model else "model_unspecified"
     return f"{target.runtime}-{model}"
+
+
+def _runtime_profile(target: PortabilityTarget) -> str:
+    if target.model is None:
+        return target.runtime
+    return f"{target.runtime}:{target.model}"
+
+
+def _new_id(created_at: datetime) -> str:
+    return f"{created_at:%Y%m%dT%H%M%SZ}-{secrets.token_hex(4)}"
 
 
 def _bundle_readme(portability: PortabilityManifest) -> str:
@@ -481,6 +740,73 @@ def _base_instructions(manifest: CapabilityManifest) -> str:
             "- Apply the context policy before acting.",
             "- Run the harness before accepting the result.",
             "- Record target-specific failures as new evidence.",
+            "",
+        ],
+    )
+
+
+def _compact_instructions(manifest: CapabilityManifest) -> str:
+    required_context = ", ".join(manifest.context.required) or "the required context"
+    required_checks = ", ".join(manifest.harness.required_checks) or "the harness"
+    return "\n".join(
+        [
+            f"# {manifest.name} compact",
+            "",
+            manifest.description,
+            "",
+            "## Compact Procedure",
+            f"- Use only {required_context} unless the harness fails.",
+            "- Prefer direct steps and avoid exploratory branching.",
+            f"- Verify with {required_checks} before accepting the result.",
+            "- Escalate to human review when target tools or context are missing.",
+            "",
+        ],
+    )
+
+
+def _model_notes_file(portability: PortabilityManifest) -> str:
+    target_model = (portability.target.model or "model").replace("/", "_")
+    return f"model_notes.{target_model}.md"
+
+
+def _model_notes(portability: PortabilityManifest) -> str:
+    return "\n".join(
+        [
+            "# Model Transfer Notes",
+            "",
+            f"- Source model: {portability.source.model or 'not recorded'}",
+            f"- Target model: {portability.target.model or 'not recorded'}",
+            f"- Transfer type: {', '.join(portability.adaptation.transfer_type)}",
+            "- Use compact instructions before expanding optional context.",
+            "- Run target eval before treating the import as validated.",
+            "",
+        ],
+    )
+
+
+def _compressed_context_pack(
+    manifest: CapabilityManifest,
+    portability: PortabilityManifest,
+) -> str:
+    required = "\n".join(f"- {item}" for item in manifest.context.required)
+    optional = "\n".join(f"- {item}" for item in manifest.context.optional)
+    budget = portability.compatibility.context_budget
+    source_tokens = None if budget is None else budget.source_tokens
+    target_tokens = None if budget is None else budget.target_tokens
+    return "\n".join(
+        [
+            "# Compressed Context Pack",
+            "",
+            f"- Source token budget: {source_tokens or 'not recorded'}",
+            f"- Target token budget: {target_tokens or 'not recorded'}",
+            "- Include required context first.",
+            "- Drop optional context when the target budget is smaller.",
+            "",
+            "## Required",
+            required or "- No required context recorded.",
+            "",
+            "## Optional",
+            optional or "- No optional context recorded.",
             "",
         ],
     )

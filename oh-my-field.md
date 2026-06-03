@@ -236,6 +236,8 @@
 - portability bundle을 target project capability directory로 import
 - target runtime/model/project metadata를 확정하고 validation report 생성
 - tool compatibility, context remap 필요 여부, target eval set, next action 기록
+- `--validate` 사용 시 target-side eval result를 자동 생성하고, 실패한 target validation을 evidence로 수집
+- validation report에는 portability score, source/target model delta, compact instruction, compressed context path 기록
 
 ## /health
 
