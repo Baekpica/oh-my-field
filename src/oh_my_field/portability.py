@@ -1109,7 +1109,10 @@ def _write_runtime_target(
 ) -> Path:
     runtime_path = bundle_path / "runtime" / portability.target.runtime
     if portability.target.runtime == "codex":
-        _write_text_exclusive(runtime_path / "AGENTS.md", _runtime_memory(manifest))
+        _write_text_exclusive(
+            runtime_path / "AGENTS.md",
+            _codex_agents_markdown(manifest),
+        )
         _write_text_exclusive(
             runtime_path / "capability.md",
             _base_instructions(manifest),
@@ -1134,7 +1137,7 @@ def _write_runtime_target(
         _write_text_exclusive(runtime_path / "SOUL.md", _runtime_memory(manifest))
         _write_text_exclusive(
             runtime_path / "skills" / f"{manifest.name}.md",
-            _base_instructions(manifest),
+            _skill_markdown(manifest),
         )
         _write_text_exclusive(runtime_path / "harness.md", _harness_markdown(manifest))
         _write_text_exclusive(
@@ -1148,7 +1151,7 @@ def _write_runtime_target(
             ),
         )
     else:
-        _write_text_exclusive(runtime_path / "skill.md", _base_instructions(manifest))
+        _write_text_exclusive(runtime_path / "skill.md", _skill_markdown(manifest))
         _write_text_exclusive(
             runtime_path / "context.policy.yaml",
             _yaml_dump(manifest.context),
@@ -1577,6 +1580,9 @@ def _runtime_memory(manifest: CapabilityManifest) -> str:
 
 
 def _claude_memory(manifest: CapabilityManifest) -> str:
+    control = manifest.workflow_control
+    allowed = _join_or(control.allowed_tools, "inherit from runtime")
+    disallowed = _join_or(control.disallowed_tools, "none")
     return "\n".join(
         [
             f"# {manifest.name}",
@@ -1584,16 +1590,104 @@ def _claude_memory(manifest: CapabilityManifest) -> str:
             "Project memory for an imported OMF capability package.",
             "Use this guidance when the current task matches the capability.",
             "",
+            "## Capability",
+            manifest.description,
+            "",
+            "## When To Use",
+            f"- {manifest.normalized_goal}",
+            "",
+            "## Tool Use Policy",
+            f"- Allowed tools: {allowed}.",
+            f"- Disallowed tools: {disallowed}.",
+            "- Request approval before write, destructive, or external commands.",
+            "",
             "## Instructions",
             "- Read capability.md before acting.",
             "- Follow checks.md before marking the result complete.",
             "- Preserve target-specific failures as OMF evidence.",
             "",
-            "## Capability",
-            manifest.description,
+            "## Completion Criteria",
+            _bullets(manifest.harness.required_checks, "Harness checks pass."),
+            "- No unrelated changes.",
             "",
         ],
     )
+
+
+def _skill_markdown(manifest: CapabilityManifest) -> str:
+    return "\n".join(
+        [
+            f"# {manifest.name}",
+            "",
+            "## Trigger",
+            f"Use this skill when the task matches: {manifest.normalized_goal}.",
+            "",
+            "## Inputs",
+            _bullets(manifest.inputs, "No specific inputs recorded."),
+            "",
+            "## Context Policy",
+            "",
+            "### Required",
+            _bullets(manifest.context.required, "No required context recorded."),
+            "",
+            "### Forbidden",
+            _bullets(manifest.context.forbidden, "No forbidden context recorded."),
+            "",
+            "## Procedure",
+            "1. Load the required context before acting.",
+            "2. Identify the smallest relevant surface for the goal.",
+            "3. Make the minimal change or output that satisfies the goal.",
+            "4. Run the harness checks before accepting the result.",
+            "5. Record unresolved failures as evidence.",
+            "",
+            "## Completion Criteria",
+            _bullets(manifest.harness.required_checks, "Harness checks pass."),
+            "- No unrelated changes.",
+            "- Attach a regression case if the failure was novel.",
+            "",
+        ],
+    )
+
+
+def _codex_agents_markdown(manifest: CapabilityManifest) -> str:
+    control = manifest.workflow_control
+    approvals = _join_or(control.approval_required_actions, "none")
+    goal = manifest.normalized_goal
+    return "\n".join(
+        [
+            f"# {manifest.name}",
+            "",
+            "Repository instructions for an imported OMF capability. Use the local",
+            "agent runtime normally; OMF is not the runtime.",
+            "",
+            "## Activation",
+            f"- Apply this capability when the task matches: {goal}.",
+            "",
+            "## Capability",
+            manifest.description,
+            "",
+            "## Verification",
+            "Run the harness checks before accepting a result:",
+            _bullets(manifest.harness.required_checks, "No required checks recorded."),
+            "",
+            "## Safety Boundary",
+            f"- Network policy: {control.network_policy}.",
+            f"- Commands needing approval: {approvals}.",
+            "- Do not read forbidden context:",
+            _bullets(manifest.context.forbidden, "No forbidden context recorded."),
+            "",
+        ],
+    )
+
+
+def _bullets(values: tuple[str, ...], empty: str) -> str:
+    if not values:
+        return f"- {empty}"
+    return "\n".join(f"- {value}" for value in values)
+
+
+def _join_or(values: tuple[str, ...], empty: str) -> str:
+    return ", ".join(values) or empty
 
 
 def _examples_markdown(manifest: CapabilityManifest) -> str:

@@ -749,6 +749,80 @@ def _run_ok(args: list[str]) -> None:
     assert result.exit_code == 0, result.stdout
 
 
+def test_runtime_export_assets_have_native_sections(tmp_path: Path) -> None:
+    caps = tmp_path / "capabilities"
+    write_manifest(make_manifest(), caps)
+    hermes_dir = tmp_path / "exports" / "hermes"
+    codex_dir = tmp_path / "exports" / "codex"
+    generic_dir = tmp_path / "exports" / "generic"
+    _run_ok(
+        [
+            "capability",
+            "export",
+            "repo_issue_triage",
+            "--target",
+            "hermes",
+            "--target-model",
+            "qwen3.6-27b",
+            "--out",
+            str(hermes_dir),
+            "--capabilities-dir",
+            str(caps),
+        ],
+    )
+    _run_ok(
+        [
+            "capability",
+            "export",
+            "repo_issue_triage",
+            "--target",
+            "codex",
+            "--target-model",
+            "gpt-5.5",
+            "--out",
+            str(codex_dir),
+            "--capabilities-dir",
+            str(caps),
+        ],
+    )
+    _run_ok(
+        [
+            "capability",
+            "export",
+            "repo_issue_triage",
+            "--target",
+            "generic",
+            "--target-model",
+            "local",
+            "--out",
+            str(generic_dir),
+            "--capabilities-dir",
+            str(caps),
+        ],
+    )
+
+    skill = (
+        hermes_dir / "runtime" / "hermes" / "skills" / "repo_issue_triage.md"
+    ).read_text(encoding="utf-8")
+    assert "## Trigger" in skill
+    assert "## Context Policy" in skill
+    assert "## Procedure" in skill
+    assert "## Completion Criteria" in skill
+    assert "schema_valid" in skill
+    assert ".env" in skill
+
+    agents = (codex_dir / "runtime" / "codex" / "AGENTS.md").read_text(encoding="utf-8")
+    assert "## Activation" in agents
+    assert "## Safety Boundary" in agents
+    assert "schema_valid" in agents
+
+    generic_skill = (generic_dir / "runtime" / "generic" / "skill.md").read_text(
+        encoding="utf-8"
+    )
+    assert "## Trigger" in generic_skill
+    assert "## Completion Criteria" in generic_skill
+
+
 class HealthEntriesOutput(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
