@@ -67,30 +67,37 @@ The checks used to decide whether a result is acceptable. For code work this is
 usually tests, lint, type checks, or smoke commands. For operational or document
 work it can be checklists, rubrics, schema validation, or human approval.
 
-## Install From Source
+## Install
 
-This repository currently documents the source-based installation path.
+Recommended persistent CLI install:
 
-Requirements:
+```bash
+pipx install oh-my-field
+omf --help
+```
 
-- Python `>=3.12`
-- `uv`
+Try without a persistent install:
 
-Install and run the local CLI:
+```bash
+uvx oh-my-field --help
+```
+
+Development install from source:
 
 ```bash
 git clone https://github.com/Baekpica/oh-my-field.git
 cd oh-my-field
-uv sync
+uv sync --all-extras --dev
 uv run omf --help
 ```
 
 Development checks:
 
 ```bash
-uv run pytest
+uv run ruff format --check .
 uv run ruff check .
 uv run pyright
+uv run pytest
 ```
 
 ## Quick Start
@@ -99,27 +106,29 @@ The first product loop is three commands: import an external agent run, promote
 the evidence into a package, then inspect capability health.
 
 ```bash
-uv run omf import-run codex \
-  --log /private/tmp/codex-run.log \
+mkdir -p /tmp/omf-smoke
+printf "agent run log\n" > /tmp/omf-smoke/codex.log
+printf "pytest passed\n" > /tmp/omf-smoke/pytest.txt
+
+omf import-run codex \
+  --log /tmp/omf-smoke/codex.log \
   --goal "triage repo issue" \
-  --test-result /private/tmp/pytest.txt \
-  --artifact-root /private/tmp/codex-artifacts \
-  --evidence-dir /private/tmp/omf-evidence-smoke
+  --test-result /tmp/omf-smoke/pytest.txt \
+  --evidence-dir /tmp/omf-smoke/evidence \
+  --outcome success
 
-uv run omf promote <evidence_id> \
+omf promote <evidence_id> \
   --name repo_issue_triage \
-  --description "GitHub issue triage capability" \
-  --evidence-dir /private/tmp/omf-evidence-smoke \
-  --capabilities-dir /private/tmp/omf-capabilities-smoke
+  --description "Repository issue triage capability" \
+  --evidence-dir /tmp/omf-smoke/evidence \
+  --capabilities-dir /tmp/omf-smoke/capabilities
 
-uv run omf health repo_issue_triage \
-  --capabilities-dir /private/tmp/omf-capabilities-smoke \
-  --eval-dir /private/tmp/omf-evals-smoke
+omf health repo_issue_triage \
+  --capabilities-dir /tmp/omf-smoke/capabilities
 ```
 
-Use a real agent log when you have one. For a local smoke run, replace
-`/private/tmp/codex-run.log` and `/private/tmp/pytest.txt` with any small text
-files that represent the run log and test result.
+From a source checkout, prefix those commands with `uv run`. Use a real agent
+log when you have one.
 
 ## What You Get
 
@@ -232,6 +241,9 @@ metadata-only.
 ## Learn More
 
 - Full product and feature reference: [oh-my-field.md](oh-my-field.md)
+- Install guide: [docs/install.md](docs/install.md)
+- 5-minute quickstart: [docs/quickstart.md](docs/quickstart.md)
+- Security model: [docs/security.md](docs/security.md)
 - CLI command reference: [Command Interface](oh-my-field.md#command-interface)
 - Capability package shape: [Capability Package](oh-my-field.md#capability-package)
 - Artifact pipeline design:
