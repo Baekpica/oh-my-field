@@ -174,12 +174,20 @@ class ContextItem(StrictModel):
     source: str = Field(min_length=1)
     reason: str = Field(min_length=1)
     token_estimate: int = Field(ge=0)
+    source_type: ContextSourceType | None = None
+    freshness: str | None = None
+    priority: int = Field(default=100, ge=0)
+    matched_query: bool = False
+    compressed: bool = False
 
 
 class ExcludedContextItem(StrictModel):
     path: str = Field(min_length=1)
     source: str = Field(min_length=1)
     reason: str = Field(min_length=1)
+    source_type: ContextSourceType | None = None
+    freshness: str | None = None
+    priority: int = Field(default=100, ge=0)
 
 
 class ContextPackPlan(StrictModel):
@@ -189,6 +197,7 @@ class ContextPackPlan(StrictModel):
     token_estimate: int = Field(ge=0)
     compression_strategy: str = Field(min_length=1)
     source_priority: tuple[str, ...] = ()
+    recall_notes: tuple[str, ...] = ()
 
 
 class ArtifactIntegrityLink(StrictModel):

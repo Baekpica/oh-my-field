@@ -10,6 +10,7 @@ from oh_my_field.models import (
     CapturedTextFile,
     ContextBundle,
     ContextPolicy,
+    ContextSource,
     EvidenceRecord,
     HarnessResult,
     PromotionCriteria,
@@ -77,7 +78,17 @@ def make_manifest() -> CapabilityManifest:
             required=("repo.md",),
             optional=("prompt.md", "secrets/token.txt"),
             forbidden=("secrets/",),
+            sources=(
+                ContextSource(
+                    name="repo_doc",
+                    type="docs",
+                    location="repo.md",
+                    freshness="captured",
+                    priority=1,
+                ),
+            ),
             source_priority=("evidence", "repository"),
+            evidence_recall_strategy="prefer prior successful evidence",
         ),
         workflow=WorkflowManifest(graph="langgraph", nodes=("collect_context",)),
         harness=HarnessResult(status="pass", checks=("schema_valid",)),
@@ -127,6 +138,12 @@ def test_context_builds_context_bundle_from_capability_policy(
     assert bundle.optional_context[0].path == "prompt.md"
     assert bundle.pack_plan is not None
     assert bundle.pack_plan.token_estimate > 0
+    assert bundle.pack_plan.required[0].source == "repo_doc"
+    assert bundle.pack_plan.required[0].source_type == "docs"
+    assert bundle.pack_plan.required[0].priority == 1
+    assert bundle.pack_plan.recall_notes == (
+        "evidence_recall: prefer prior successful evidence",
+    )
     assert bundle.pack_plan.excluded[0].path == "secrets/token.txt"
     assert bundle.pack_plan.excluded[0].reason == (
         "forbidden by capability context policy"
@@ -173,3 +190,6 @@ def test_context_filters_optional_context_and_writes_compressed_copy(
     assert output.optional_count == 1
     assert bundle.summaries
     assert [file.content for file in bundle.compressed_context] == ["Repo", "Find"]
+    assert bundle.pack_plan is not None
+    assert bundle.pack_plan.required[0].compressed
+    assert bundle.pack_plan.optional[0].matched_query

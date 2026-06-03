@@ -19,6 +19,7 @@ from oh_my_field.models import (
     ContextBundle,
     ContextItem,
     ContextPackPlan,
+    ContextSource,
     EvidenceRecord,
     ExcludedContextItem,
     StrictModel,
@@ -177,21 +178,40 @@ def _select_context(state: ContextState) -> ContextState:
     max_chars = _max_chars(request, manifest)
     pack_plan = ContextPackPlan(
         required=tuple(
-            _context_item(file, "required by capability context policy")
+            _context_item(
+                file,
+                "required by capability context policy",
+                manifest,
+                request.query,
+                max_chars,
+            )
             for file in required_context
         ),
         optional=tuple(
-            _context_item(file, "optional context selected by query")
+            _context_item(
+                file,
+                "optional context selected by query",
+                manifest,
+                request.query,
+                max_chars,
+            )
             for file in optional_context
         ),
         excluded=tuple(
-            _excluded_context_item(file, forbidden, request.query)
+            _excluded_context_item(
+                file,
+                forbidden,
+                request.query,
+                manifest,
+                request.include_optional,
+            )
             for file in evidence.files
             if file not in selected_context
         ),
         token_estimate=sum(_token_estimate(file.content) for file in selected_context),
         compression_strategy=_compression_strategy(request, manifest),
         source_priority=manifest.context.source_priority,
+        recall_notes=_recall_notes(manifest, evidence),
     )
     bundle = ContextBundle(
         id=f"{created_at:%Y%m%dT%H%M%SZ}-{dependencies.token_factory()}",
@@ -256,12 +276,24 @@ def _is_forbidden(path: str, forbidden: tuple[str, ...]) -> bool:
     return any(rule in path for rule in forbidden)
 
 
-def _context_item(file: CapturedTextFile, reason: str) -> ContextItem:
+def _context_item(
+    file: CapturedTextFile,
+    reason: str,
+    manifest: CapabilityManifest,
+    query: str | None,
+    max_chars: int | None,
+) -> ContextItem:
+    source = _source_for_file(file, manifest)
     return ContextItem(
         path=file.path,
-        source="source_evidence",
+        source=source.name,
         reason=reason,
         token_estimate=_token_estimate(file.content),
+        source_type=source.type,
+        freshness=source.freshness,
+        priority=source.priority,
+        matched_query=query is not None and _matches_query(file, query),
+        compressed=max_chars is not None and len(file.content) > max_chars,
     )
 
 
@@ -269,17 +301,62 @@ def _excluded_context_item(
     file: CapturedTextFile,
     forbidden: tuple[str, ...],
     query: str | None,
+    manifest: CapabilityManifest,
+    include_optional: bool,
 ) -> ExcludedContextItem:
-    reason = "not selected"
+    source = _source_for_file(file, manifest)
+    reason = "not selected by capability context policy"
     if _is_forbidden(file.path, forbidden):
         reason = "forbidden by capability context policy"
+    elif file.path in manifest.context.optional and not include_optional:
+        reason = "optional context was not requested"
     elif query is not None and not _matches_query(file, query):
         reason = "optional context did not match query"
     return ExcludedContextItem(
         path=file.path,
-        source="source_evidence",
+        source=source.name,
         reason=reason,
+        source_type=source.type,
+        freshness=source.freshness,
+        priority=source.priority,
     )
+
+
+def _source_for_file(
+    file: CapturedTextFile,
+    manifest: CapabilityManifest,
+) -> ContextSource:
+    for source in manifest.context.sources:
+        if file.path in _source_locations(source):
+            return source
+    for source in manifest.context.sources:
+        if source.type == "evidence":
+            return source
+    return ContextSource(
+        name="source_evidence",
+        type="evidence",
+        location=manifest.source_evidence_id,
+        freshness="captured",
+        priority=100,
+    )
+
+
+def _source_locations(source: ContextSource) -> tuple[str, ...]:
+    return tuple(item.strip() for item in source.location.split(",") if item.strip())
+
+
+def _recall_notes(
+    manifest: CapabilityManifest,
+    evidence: EvidenceRecord,
+) -> tuple[str, ...]:
+    notes: list[str] = []
+    if manifest.context.evidence_recall_strategy is not None:
+        notes.append(f"evidence_recall: {manifest.context.evidence_recall_strategy}")
+    if manifest.field is not None and manifest.field.failure_history.recall_strategy:
+        notes.append(f"field_recall: {manifest.field.failure_history.recall_strategy}")
+    notes.extend(f"source_failure: {failure}" for failure in evidence.harness.failures)
+    notes.extend(f"source_error: {error}" for error in evidence.errors)
+    return tuple(notes)
 
 
 def _token_estimate(content: str) -> int:

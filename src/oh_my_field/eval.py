@@ -32,6 +32,7 @@ from oh_my_field.models import (
     CommandExecution,
     EvalCheck,
     EvalChecklistItem,
+    EvalExpectedCheck,
     EvalResult,
     EvalRubricScore,
     EvalSet,
@@ -193,7 +194,7 @@ def _build_eval(state: EvalState) -> EvalState:
     checks.extend(_rubric_checks(request.rubric_scores))
     eval_set = state.get("eval_set")
     if eval_set is not None:
-        checks.extend(_eval_set_checks(eval_set))
+        checks.extend(_eval_set_checks(eval_set, tuple(checks)))
     created_at = dependencies.clock().astimezone(UTC)
     failures = tuple(check.message for check in checks if check.status == "fail")
     result = EvalResult(
@@ -330,7 +331,10 @@ def _rubric_checks(
     )
 
 
-def _eval_set_checks(eval_set: EvalSet) -> tuple[EvalCheck, ...]:
+def _eval_set_checks(
+    eval_set: EvalSet,
+    observed_checks: tuple[EvalCheck, ...],
+) -> tuple[EvalCheck, ...]:
     checks: list[EvalCheck] = [
         EvalCheck(
             name=f"eval_set_{eval_set.name}_loaded",
@@ -349,19 +353,52 @@ def _eval_set_checks(eval_set: EvalSet) -> tuple[EvalCheck, ...]:
             ),
         )
         checks.extend(
-            EvalCheck(
-                name=f"eval_case_{case.id}_{_check_name(expected.name)}",
-                status="pass",
-                message=_expected_check_message(case.id, expected.name, expected.flaky),
+            _eval_expected_check(
+                case_id=case.id,
+                expected=expected,
+                observed_checks=observed_checks,
             )
             for expected in case.expected_checks
         )
     return tuple(checks)
 
 
-def _expected_check_message(case_id: str, check_name: str, flaky: bool) -> str:
-    suffix = " (flaky)" if flaky else ""
-    return f"eval case {case_id!r} expects check {check_name!r}{suffix}"
+def _eval_expected_check(
+    *,
+    case_id: str,
+    expected: EvalExpectedCheck,
+    observed_checks: tuple[EvalCheck, ...],
+) -> EvalCheck:
+    matched = _expected_check_observed(expected.name, observed_checks)
+    if matched:
+        return EvalCheck(
+            name=f"eval_case_{case_id}_{_check_name(expected.name)}",
+            status="pass",
+            message=f"eval case {case_id!r} observed check {expected.name!r}",
+        )
+    if expected.flaky:
+        return EvalCheck(
+            name=f"eval_case_{case_id}_{_check_name(expected.name)}",
+            status="pass",
+            message=f"flaky eval check {expected.name!r} was not observed",
+        )
+    return EvalCheck(
+        name=f"eval_case_{case_id}_{_check_name(expected.name)}",
+        status="fail",
+        message=f"eval case {case_id!r} missing expected check {expected.name!r}",
+    )
+
+
+def _expected_check_observed(
+    expected_name: str,
+    observed_checks: tuple[EvalCheck, ...],
+) -> bool:
+    needle = _check_name(expected_name)
+    return any(
+        needle in _check_name(check.name)
+        or expected_name.casefold() in check.message.casefold()
+        for check in observed_checks
+    )
 
 
 def _check_name(value: str) -> str:
