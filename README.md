@@ -297,7 +297,7 @@ uv run omf promote <evidence_id> \
   --evidence-dir /private/tmp/omf-evidence-smoke \
   --capabilities-dir /private/tmp/omf-capabilities-smoke
 
-uv run omf registry repo_issue_triage \
+uv run omf health repo_issue_triage \
   --capabilities-dir /private/tmp/omf-capabilities-smoke \
   --eval-dir /private/tmp/omf-evals-smoke
 ```
@@ -305,6 +305,16 @@ uv run omf registry repo_issue_triage \
 `promote` creates `capabilities/<name>/capability.yaml`, `instructions.md`,
 `harness.yaml`, and `README.md`. The package is the canonical source of truth;
 runtime-specific files are export targets, not the capability itself.
+
+## Command Groups
+
+- Create: `import-run`, `capture`, `promote`
+- Harden: `harden`, `regression-case`, `eval`, `learn`, `learn-patch`
+- Port: `capability export`, `capability import`
+- Operate: `health`, `registry`, `dashboard`, `verify`
+- Review: `approve`, `reject`, `revise`, `review`
+- Advanced: `replay`, `context`, `reflect`, `inspect`, `rollback`, `resume`,
+  `run`, `export`
 
 ## Portability Loop
 
@@ -670,6 +680,40 @@ uv run omf import-run codex \
   --test-result /private/tmp/pytest.txt \
   --artifact-root /private/tmp/codex-artifacts \
   --evidence-dir /private/tmp/omf-evidence-smoke
+```
+
+### `omf health`
+
+Summarize capability health and the next recommended action.
+
+```bash
+uv run omf health repo_issue_triage \
+  --capabilities-dir /private/tmp/omf-capabilities-smoke \
+  --eval-dir /private/tmp/omf-evals-smoke
+```
+
+### `omf harden`
+
+Recommend hardening actions without requiring the user to remember every
+advanced command.
+
+```bash
+uv run omf harden repo_issue_triage \
+  --capabilities-dir /private/tmp/omf-capabilities-smoke \
+  --eval-dir /private/tmp/omf-evals-smoke
+```
+
+### `omf card`
+
+Read the generated capability card, or rewrite it from the current package
+metadata.
+
+```bash
+uv run omf card repo_issue_triage \
+  --capabilities-dir /private/tmp/omf-capabilities-smoke
+
+uv run omf card repo_issue_triage --write \
+  --capabilities-dir /private/tmp/omf-capabilities-smoke
 ```
 
 ### `omf capability export`

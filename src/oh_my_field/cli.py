@@ -32,6 +32,13 @@ from oh_my_field.eval_set import (
     upsert_regression_case,
 )
 from oh_my_field.export import ExportError, ExportRequest, run_export_workflow
+from oh_my_field.health import (
+    CapabilityHealthRequest,
+    HealthError,
+    run_card_workflow,
+    run_harden_workflow,
+    run_health_workflow,
+)
 from oh_my_field.inspection import InspectRequest, inspect_artifact
 from oh_my_field.learn import LearnError, LearnRequest, run_learn_workflow
 from oh_my_field.learning_patch import (
@@ -263,6 +270,81 @@ def _promote(
 app.command("promote", help="Promote evidence or an evidence set into a capability.")(
     _promote,
 )
+
+
+def _health(
+    capability_name: Annotated[str | None, typer.Argument()] = None,
+    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
+        "capabilities",
+    ),
+    eval_dir: Annotated[Path, typer.Option("--eval-dir")] = Path(".omf/evals"),
+) -> None:
+    try:
+        summary = run_health_workflow(
+            CapabilityHealthRequest(
+                capability_name=capability_name,
+                capabilities_dir=capabilities_dir,
+                eval_dir=eval_dir,
+            ),
+        )
+    except (HealthError, StorageError, ValidationError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(summary.model_dump_json())
+
+
+app.command("health", help="Summarize capability health and next action.")(_health)
+
+
+def _harden(
+    capability_name: Annotated[str, typer.Argument()],
+    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
+        "capabilities",
+    ),
+    eval_dir: Annotated[Path, typer.Option("--eval-dir")] = Path(".omf/evals"),
+) -> None:
+    try:
+        summary = run_harden_workflow(
+            CapabilityHealthRequest(
+                capability_name=capability_name,
+                capabilities_dir=capabilities_dir,
+                eval_dir=eval_dir,
+            ),
+        )
+    except (HealthError, StorageError, ValidationError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(summary.model_dump_json())
+
+
+app.command("harden", help="Recommend the next hardening actions for a capability.")(
+    _harden,
+)
+
+
+def _card(
+    capability_name: Annotated[str, typer.Argument()],
+    write: Annotated[bool, typer.Option("--write")] = False,
+    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
+        "capabilities",
+    ),
+) -> None:
+    try:
+        summary = run_card_workflow(
+            capability_name=capability_name,
+            capabilities_dir=capabilities_dir,
+            write=write,
+        )
+    except (HealthError, StorageError, ValidationError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(summary.model_dump_json())
+
+
+app.command("card", help="Read or rewrite a capability card.")(_card)
 
 
 def _capability_export(

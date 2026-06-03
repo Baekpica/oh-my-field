@@ -237,6 +237,30 @@
 - target runtime/model/project metadata를 확정하고 validation report 생성
 - tool compatibility, context remap 필요 여부, target eval set, next action 기록
 
+## /health
+
+- capability 상태, evidence/eval/integrity/portability 요약과 next action 표시
+- `registry`보다 운영자가 읽기 쉬운 health surface 제공
+
+## /harden
+
+- regression case, eval, learning patch, runtime export 등 다음 hardening action 추천
+- 사용자가 advanced command를 모두 외우지 않아도 capability 강화 루프를 진행할 수 있게 함
+
+## /card
+
+- capability package의 `README.md` Capability Card를 읽거나 재생성
+- 사람이 읽는 capability 요약을 CLI에서 바로 확인 가능
+
+## Command Grouping
+
+- Create: `import-run`, `capture`, `promote`
+- Harden: `harden`, `regression-case`, `eval`, `learn`, `learn-patch`
+- Port: `capability export`, `capability import`
+- Operate: `health`, `registry`, `dashboard`, `verify`
+- Review: `approve`, `reject`, `revise`, `review`
+- Advanced: `replay`, `context`, `reflect`, `inspect`, `rollback`, `resume`, `run`, `export`
+
 # Capability Package
 
 - capability는 단일 manifest가 아니라 폴더 단위 package로 정의

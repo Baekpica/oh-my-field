@@ -5,14 +5,16 @@ from pathlib import Path
 
 from pydantic import Field
 
-from oh_my_field.integrity import model_sha256
+from oh_my_field.health import (
+    manifest_integrity_status,
+    next_action_for_capability,
+)
 from oh_my_field.models import (
     CAPABILITY_NAME_PATTERN,
     CapabilityManifest,
     CapabilityRegistry,
     CapabilityRegistryEntry,
     EvalResult,
-    IntegrityVerificationStatus,
     StrictModel,
 )
 from oh_my_field.storage import list_eval_results, list_manifests
@@ -144,19 +146,15 @@ def _entry_from_manifest(
             if manifest.promotion_metrics is None
             else manifest.promotion_metrics.criteria_met
         ),
-        integrity_status=_manifest_integrity_status(manifest),
+        integrity_status=manifest_integrity_status(manifest),
+        next_action=next_action_for_capability(
+            manifest=manifest,
+            eval_results=capability_evals,
+            integrity_status=manifest_integrity_status(manifest),
+            portability_status="not_exported",
+        ),
         manifest_path=str(manifest_path),
     )
-
-
-def _manifest_integrity_status(
-    manifest: CapabilityManifest,
-) -> IntegrityVerificationStatus:
-    if not manifest.integrity_chain:
-        return "fail"
-    if model_sha256(manifest) == manifest.integrity_chain[-1].sha256:
-        return "pass"
-    return "fail"
 
 
 def _runtime_compatibility(manifest: CapabilityManifest) -> tuple[str, ...]:

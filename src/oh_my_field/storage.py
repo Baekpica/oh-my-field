@@ -190,7 +190,7 @@ def write_capability_package(
         _capability_instructions_markdown(manifest),
     )
     _write_text_exclusive(paths.harness_path, _capability_harness_yaml(manifest))
-    _write_text_exclusive(paths.card_path, _capability_card_markdown(manifest))
+    _write_text_exclusive(paths.card_path, render_capability_card(manifest))
     return paths
 
 
@@ -202,7 +202,7 @@ def update_manifest(manifest: CapabilityManifest, capabilities_dir: Path) -> Pat
         _capability_instructions_markdown(manifest),
     )
     _write_text_atomic(paths.harness_path, _capability_harness_yaml(manifest))
-    _write_text_atomic(paths.card_path, _capability_card_markdown(manifest))
+    _write_text_atomic(paths.card_path, render_capability_card(manifest))
     return paths.capability_path
 
 
@@ -714,7 +714,7 @@ def _capability_harness_yaml(manifest: CapabilityManifest) -> str:
     return yaml_text
 
 
-def _capability_card_markdown(manifest: CapabilityManifest) -> str:
+def render_capability_card(manifest: CapabilityManifest) -> str:
     lines = [
         f"# {manifest.name}",
         "",
