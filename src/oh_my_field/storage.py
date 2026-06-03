@@ -16,6 +16,7 @@ from oh_my_field.models import (
     EvidenceRecord,
     HumanReviewRecord,
     LearningExport,
+    LearningPatchDecision,
     ReflectionReport,
     ReplayRecord,
     WorkflowRunRecord,
@@ -169,6 +170,12 @@ def write_manifest(manifest: CapabilityManifest, capabilities_dir: Path) -> Path
     return target_path
 
 
+def update_manifest(manifest: CapabilityManifest, capabilities_dir: Path) -> Path:
+    target_path = capabilities_dir / manifest.name / "manifest.yaml"
+    _write_text_atomic(target_path, _manifest_yaml(manifest))
+    return target_path
+
+
 def load_manifest(capability_name: str, capabilities_dir: Path) -> CapabilityManifest:
     manifest_path = capabilities_dir / capability_name / "manifest.yaml"
     if not manifest_path.exists():
@@ -317,6 +324,39 @@ def write_learning_export(export: LearningExport, learning_dir: Path) -> Path:
     target_path = learning_dir / f"{export.id}.json"
     _write_text_exclusive(target_path, export.model_dump_json(indent=2) + "\n")
     return target_path
+
+
+def write_learning_patch_decision(
+    decision: LearningPatchDecision,
+    learning_patch_dir: Path,
+) -> Path:
+    target_path = learning_patch_dir / f"{decision.id}.json"
+    _write_text_exclusive(target_path, decision.model_dump_json(indent=2) + "\n")
+    return target_path
+
+
+def load_learning_patch_decision(
+    decision_id: str,
+    learning_patch_dir: Path,
+) -> LearningPatchDecision:
+    decision_path = _artifact_path(decision_id, learning_patch_dir)
+    return _load_artifact(
+        "learning patch decision",
+        decision_id,
+        learning_patch_dir,
+        decision_path,
+        LearningPatchDecision,
+    )
+
+
+def list_learning_patch_decisions(
+    learning_patch_dir: Path,
+) -> tuple[LearningPatchDecision, ...]:
+    return _list_artifacts(
+        "learning patch decision",
+        learning_patch_dir,
+        LearningPatchDecision,
+    )
 
 
 def write_context_bundle(bundle: ContextBundle, context_dir: Path) -> Path:

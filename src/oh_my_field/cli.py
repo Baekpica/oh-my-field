@@ -4,6 +4,12 @@ from typing import Annotated, Literal, cast
 import typer
 from pydantic import ValidationError
 
+from oh_my_field.adapters import (
+    AdapterError,
+    AgentArtifactInput,
+    AgentImportRequest,
+    import_agent_run,
+)
 from oh_my_field.capture import (
     CaptureError,
     CaptureFileInput,
@@ -28,11 +34,17 @@ from oh_my_field.eval_set import (
 from oh_my_field.export import ExportError, ExportRequest, run_export_workflow
 from oh_my_field.inspection import InspectRequest, inspect_artifact
 from oh_my_field.learn import LearnError, LearnRequest, run_learn_workflow
+from oh_my_field.learning_patch import (
+    LearningPatchError,
+    LearningPatchRequest,
+    apply_learning_patch,
+)
 from oh_my_field.models import (
     CapturedFileRole,
     EvalChecklistItem,
     EvalRubricScore,
     HumanReviewAction,
+    PatchDecisionStatus,
     ReviewTargetType,
     StrictModel,
 )
@@ -670,6 +682,123 @@ def _learn(
 
 
 app.command("learn")(_learn)
+
+
+def _import_run(
+    adapter: Annotated[
+        Literal["codex", "claude_code", "hermes"],
+        typer.Argument(),
+    ],
+    log_path: Annotated[Path, typer.Option("--log")],
+    goal: Annotated[str, typer.Option("--goal")],
+    diff: Annotated[list[Path] | None, typer.Option("--diff")] = None,
+    test_result: Annotated[
+        list[Path] | None,
+        typer.Option("--test-result"),
+    ] = None,
+    artifact: Annotated[list[Path] | None, typer.Option("--artifact")] = None,
+    field: Annotated[str, typer.Option("--field")] = "local",
+    model: Annotated[str | None, typer.Option("--model")] = None,
+    evidence_dir: Annotated[Path, typer.Option("--evidence-dir")] = Path(
+        ".omf/evidence",
+    ),
+) -> None:
+    try:
+        summary = import_agent_run(
+            AgentImportRequest(
+                adapter=adapter,
+                log_path=log_path,
+                goal=goal,
+                field=field,
+                model=model,
+                evidence_dir=evidence_dir,
+                artifacts=(
+                    *_agent_artifacts("diff", diff),
+                    *_agent_artifacts("test_result", test_result),
+                    *_agent_artifacts("artifact", artifact),
+                ),
+            ),
+        )
+    except (AdapterError, StorageError, ValidationError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(summary.model_dump_json())
+
+
+def _agent_artifacts(
+    role: CapturedFileRole,
+    paths: list[Path] | None,
+) -> tuple[AgentArtifactInput, ...]:
+    return tuple(AgentArtifactInput(role=role, path=path) for path in paths or ())
+
+
+app.command("import-run")(_import_run)
+
+
+def _learn_patch(
+    capability_name: Annotated[str, typer.Argument()],
+    learning_id: Annotated[str, typer.Option("--learning-id")],
+    patch_index: Annotated[int, typer.Option("--patch-index")],
+    decision: Annotated[
+        Literal["accept", "reject", "accepted", "rejected"],
+        typer.Option("--decision"),
+    ],
+    reviewer: Annotated[str | None, typer.Option("--reviewer")] = None,
+    note: Annotated[list[str] | None, typer.Option("--note")] = None,
+    before_eval_id: Annotated[
+        str | None,
+        typer.Option("--before-eval-id"),
+    ] = None,
+    after_eval_id: Annotated[str | None, typer.Option("--after-eval-id")] = None,
+    pass_rate_delta: Annotated[
+        float | None,
+        typer.Option("--pass-rate-delta"),
+    ] = None,
+    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
+        "capabilities",
+    ),
+    learning_dir: Annotated[Path, typer.Option("--learning-dir")] = Path(
+        ".omf/learning",
+    ),
+    learning_patch_dir: Annotated[
+        Path,
+        typer.Option("--learning-patch-dir"),
+    ] = Path(".omf/learning_patches"),
+) -> None:
+    try:
+        summary = apply_learning_patch(
+            LearningPatchRequest(
+                capability_name=capability_name,
+                learning_id=learning_id,
+                patch_index=patch_index,
+                decision=_patch_decision(decision),
+                reviewer=reviewer,
+                notes=tuple(note or ()),
+                before_eval_id=before_eval_id,
+                after_eval_id=after_eval_id,
+                pass_rate_delta=pass_rate_delta,
+                capabilities_dir=capabilities_dir,
+                learning_dir=learning_dir,
+                learning_patch_dir=learning_patch_dir,
+            ),
+        )
+    except (LearningPatchError, StorageError, ValidationError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(summary.model_dump_json())
+
+
+def _patch_decision(
+    decision: Literal["accept", "reject", "accepted", "rejected"],
+) -> PatchDecisionStatus:
+    if decision in {"accept", "accepted"}:
+        return "accepted"
+    return "rejected"
+
+
+app.command("learn-patch")(_learn_patch)
 
 
 def _context(

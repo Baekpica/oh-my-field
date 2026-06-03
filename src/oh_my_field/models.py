@@ -21,6 +21,7 @@ type EvalStatus = Literal["pass", "fail"]
 type CapabilityStatus = Literal["candidate", "validated", "stable", "deprecated"]
 type WorkflowGraph = Literal["langgraph"]
 type SuccessLabel = Literal["success", "failure", "unknown"]
+type RuntimeAdapterName = Literal["codex", "claude_code", "hermes"]
 type ContextSourceType = Literal[
     "repo",
     "docs",
@@ -64,6 +65,7 @@ type HumanReviewStatus = Literal[
 ]
 type WorkflowRunStatus = Literal["running", "completed", "failed", "pending_review"]
 type WorkflowNodeStatus = Literal["pending", "pass", "fail", "skipped"]
+type PatchDecisionStatus = Literal["accepted", "rejected"]
 
 COMMAND_RISK_CATEGORIES: Final[tuple[CommandRiskCategory, ...]] = (
     "write",
@@ -84,6 +86,19 @@ class RuntimeInfo(StrictModel):
     model: str | None = None
     preferred_models: tuple[str, ...] = ()
     tools: tuple[str, ...] = ()
+
+
+class RuntimeRunSource(StrictModel):
+    adapter: RuntimeAdapterName
+    path: str = Field(min_length=1)
+
+
+class RuntimeAdapterSpec(StrictModel):
+    name: RuntimeAdapterName
+    display_name: str = Field(min_length=1)
+    captures: tuple[str, ...] = ()
+    replays: tuple[str, ...] = ()
+    artifact_roles: tuple[CapturedFileRole, ...] = ()
 
 
 class ToolCallRecord(StrictModel):
@@ -294,6 +309,12 @@ class PromotionCriteria(StrictModel):
     min_runtime_profiles: tuple[str, ...] = ()
 
 
+class CapabilityPatchSet(StrictModel):
+    prompt: tuple[str, ...] = ()
+    context: tuple[str, ...] = ()
+    harness: tuple[str, ...] = ()
+
+
 class CapabilityManifest(StrictModel):
     name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
     version: str = Field(min_length=1)
@@ -316,6 +337,7 @@ class CapabilityManifest(StrictModel):
     workflow_control: WorkflowControl = Field(default_factory=WorkflowControl)
     human_review: HumanReview = Field(default_factory=HumanReview)
     promotion_criteria: PromotionCriteria
+    patches: CapabilityPatchSet = Field(default_factory=CapabilityPatchSet)
     integrity_chain: tuple[ArtifactIntegrityLink, ...] = ()
 
 
@@ -418,7 +440,27 @@ class LearningExport(StrictModel):
     prompt_patches: tuple[str, ...] = ()
     eval_set_candidates: tuple[str, ...] = ()
     fine_tuning_candidates: tuple[str, ...] = ()
+    fine_tuning_export_format: str = "jsonl"
     preference_dataset_candidates: tuple[str, ...] = ()
+    preference_dataset_schema: str = (
+        "prompt,accepted_output,rejected_output,source_evidence_id"
+    )
+    integrity_chain: tuple[ArtifactIntegrityLink, ...] = ()
+
+
+class LearningPatchDecision(StrictModel):
+    id: str = Field(pattern=EVIDENCE_ID_PATTERN)
+    created_at: datetime
+    capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
+    learning_id: str = Field(pattern=EVIDENCE_ID_PATTERN)
+    patch: str = Field(min_length=1)
+    decision: PatchDecisionStatus
+    reviewer: str | None = None
+    notes: tuple[str, ...] = ()
+    manifest_path: str | None = None
+    before_eval_id: str | None = Field(default=None, pattern=EVIDENCE_ID_PATTERN)
+    after_eval_id: str | None = Field(default=None, pattern=EVIDENCE_ID_PATTERN)
+    pass_rate_delta: float | None = None
     integrity_chain: tuple[ArtifactIntegrityLink, ...] = ()
 
 

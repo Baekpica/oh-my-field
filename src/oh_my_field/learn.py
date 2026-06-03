@@ -9,8 +9,10 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from pydantic import Field
 
+from oh_my_field.integrity import append_integrity_link, integrity_link
 from oh_my_field.models import (
     CAPABILITY_NAME_PATTERN,
+    ArtifactIntegrityLink,
     CapabilityManifest,
     CapturedTextFile,
     EvidenceRecord,
@@ -172,6 +174,15 @@ def _build_learning_export(state: LearnState) -> LearnState:
         fine_tuning_candidates=few_shot_examples,
         preference_dataset_candidates=preference_signals,
     )
+    export = export.model_copy(
+        update={"integrity_chain": (_evidence_integrity_link(evidence),)},
+    )
+    export = append_integrity_link(
+        export,
+        artifact_type="learning",
+        artifact_id=export.id,
+        previous_sha256=export.integrity_chain[-1].sha256,
+    )
     return LearnState(export=export)
 
 
@@ -233,6 +244,16 @@ def _eval_set_candidates(
     return tuple(
         f"goal: {goal}\nregression: {candidate}"
         for candidate in regression_eval_candidates
+    )
+
+
+def _evidence_integrity_link(evidence: EvidenceRecord) -> ArtifactIntegrityLink:
+    if evidence.integrity_chain:
+        return evidence.integrity_chain[-1]
+    return integrity_link(
+        artifact_type="evidence",
+        artifact_id=evidence.id,
+        model=evidence,
     )
 
 
