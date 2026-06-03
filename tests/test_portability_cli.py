@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytest
 import yaml
 from pydantic import BaseModel, ConfigDict
 from typer.testing import CliRunner
@@ -148,6 +149,79 @@ def test_capability_import_writes_validation_report(tmp_path: Path) -> None:
     assert report["target"]["model"] == "small-local"
     assert report["context_remap_required"]
     assert report["unavailable_tools"] == ["shell"]
+
+
+@pytest.mark.parametrize(
+    ("target", "expected_files"),
+    [
+        (
+            "codex",
+            (
+                "AGENTS.md",
+                "capability.md",
+                "context.policy.md",
+                "harness.md",
+            ),
+        ),
+        (
+            "claude_code",
+            (
+                "CLAUDE.md",
+                "capability.md",
+                "examples.md",
+                "checks.md",
+            ),
+        ),
+        (
+            "hermes",
+            (
+                "SOUL.md",
+                "skills/repo_issue_triage.md",
+                "profile.patch.yaml",
+                "harness.md",
+            ),
+        ),
+        (
+            "generic",
+            (
+                "skill.md",
+                "context.policy.yaml",
+                "harness.yaml",
+                "eval_set.yaml",
+            ),
+        ),
+    ],
+)
+def test_capability_export_writes_runtime_specific_skill_assets(
+    tmp_path: Path,
+    target: str,
+    expected_files: tuple[str, ...],
+) -> None:
+    capabilities_dir = tmp_path / f"{target}-capabilities"
+    export_dir = tmp_path / "exports" / target
+    write_manifest(make_manifest(), capabilities_dir)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "capability",
+            "export",
+            "repo_issue_triage",
+            "--target",
+            target,
+            "--target-model",
+            "target-model",
+            "--out",
+            str(export_dir),
+            "--capabilities-dir",
+            str(capabilities_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    runtime_dir = export_dir / "runtime" / target
+    for expected_file in expected_files:
+        assert runtime_dir.joinpath(expected_file).exists()
 
 
 def make_manifest() -> CapabilityManifest:

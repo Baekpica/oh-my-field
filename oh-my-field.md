@@ -226,7 +226,10 @@
 
 - canonical capability package를 target runtime/model/project용 portability bundle로 export
 - `portability.yaml`, source runtime/model/project metadata, evidence links, context policy, harness metadata 생성
-- Codex, Claude Code, Hermes, generic target directory를 생성하여 target runtime 주입물을 분리
+- Codex target은 `AGENTS.md`, `capability.md`, `context.policy.md`, `harness.md` 생성
+- Claude Code target은 `CLAUDE.md`, `capability.md`, `examples.md`, `checks.md` 생성
+- Hermes target은 `SOUL.md`, `skills/<capability>.md`, `profile.patch.yaml`, `harness.md` 생성
+- generic target은 `skill.md`, `context.policy.yaml`, `harness.yaml`, `eval_set.yaml` 생성
 
 ## /capability import
 

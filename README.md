@@ -323,6 +323,14 @@ uv run omf capability export repo_issue_triage \
 The bundle includes `capability.yaml`, `portability.yaml`, runtime export
 assets, instructions, context policy, harness, and provenance metadata.
 
+Runtime-specific assets include:
+
+- Codex: `AGENTS.md`, `capability.md`, `context.policy.md`, `harness.md`
+- Claude Code: `CLAUDE.md`, `capability.md`, `examples.md`, `checks.md`
+- Hermes: `SOUL.md`, `skills/<capability>.md`, `profile.patch.yaml`,
+  `harness.md`
+- Generic: `skill.md`, `context.policy.yaml`, `harness.yaml`, `eval_set.yaml`
+
 Import the bundle in the target project and write an initial validation report:
 
 ```bash
@@ -681,6 +689,8 @@ uv run omf capability export repo_issue_triage \
 
 The export writes `portability.yaml`, source runtime metadata, evidence links,
 instructions, context policy, harness metadata, and a target runtime directory.
+Target directories are shaped for Codex, Claude Code, Hermes, or generic skill
+consumers.
 
 ### `omf capability import`
 

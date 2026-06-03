@@ -312,20 +312,32 @@ def _write_runtime_target(
             _context_markdown(manifest),
         )
     elif portability.target.runtime == "claude_code":
-        _write_text_exclusive(runtime_path / "CLAUDE.md", _runtime_memory(manifest))
+        _write_text_exclusive(runtime_path / "CLAUDE.md", _claude_memory(manifest))
         _write_text_exclusive(
             runtime_path / "capability.md",
             _base_instructions(manifest),
         )
+        _write_text_exclusive(
+            runtime_path / "examples.md",
+            _examples_markdown(manifest),
+        )
+        _write_text_exclusive(runtime_path / "checks.md", _harness_markdown(manifest))
     elif portability.target.runtime == "hermes":
         _write_text_exclusive(runtime_path / "SOUL.md", _runtime_memory(manifest))
         _write_text_exclusive(
             runtime_path / "skills" / f"{manifest.name}.md",
             _base_instructions(manifest),
         )
+        _write_text_exclusive(runtime_path / "harness.md", _harness_markdown(manifest))
         _write_text_exclusive(
-            runtime_path / "profile.yaml",
-            yaml.safe_dump({"capabilities": [manifest.name]}, sort_keys=False),
+            runtime_path / "profile.patch.yaml",
+            yaml.safe_dump(
+                {
+                    "skills": [f"skills/{manifest.name}.md"],
+                    "harness": "harness.md",
+                },
+                sort_keys=False,
+            ),
         )
     else:
         _write_text_exclusive(runtime_path / "skill.md", _base_instructions(manifest))
@@ -336,6 +348,17 @@ def _write_runtime_target(
         _write_text_exclusive(
             runtime_path / "harness.yaml",
             _yaml_dump(manifest.harness),
+        )
+        _write_text_exclusive(
+            runtime_path / "eval_set.yaml",
+            yaml.safe_dump(
+                {
+                    "name": f"{manifest.name}_regression",
+                    "capability_name": manifest.name,
+                    "cases": [],
+                },
+                sort_keys=False,
+            ),
         )
     return runtime_path
 
@@ -473,6 +496,41 @@ def _runtime_memory(manifest: CapabilityManifest) -> str:
             "",
             "## Capability",
             manifest.description,
+            "",
+        ],
+    )
+
+
+def _claude_memory(manifest: CapabilityManifest) -> str:
+    return "\n".join(
+        [
+            f"# {manifest.name}",
+            "",
+            "Project memory for an imported OMF capability package.",
+            "Use this guidance when the current task matches the capability.",
+            "",
+            "## Instructions",
+            "- Read capability.md before acting.",
+            "- Follow checks.md before marking the result complete.",
+            "- Preserve target-specific failures as OMF evidence.",
+            "",
+            "## Capability",
+            manifest.description,
+            "",
+        ],
+    )
+
+
+def _examples_markdown(manifest: CapabilityManifest) -> str:
+    return "\n".join(
+        [
+            "# Examples",
+            "",
+            "## Success",
+            f"- A target run satisfies `{manifest.normalized_goal}` and passes checks.",
+            "",
+            "## Failure",
+            "- Missing context, unavailable tools, or failed checks require evidence.",
             "",
         ],
     )
