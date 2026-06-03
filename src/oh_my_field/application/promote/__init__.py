@@ -1,10 +1,4 @@
-"""Compatibility shim: promote moved to oh_my_field.application.promote.
-
-Importing from ``oh_my_field.promote`` keeps working while internal callers
-migrate to the application layer path.
-"""
-
-from oh_my_field.application.promote import (
+from oh_my_field.application.promote.workflow import (
     EvidenceSetParseError,
     PromoteError,
     PromoteEvidenceSourceError,

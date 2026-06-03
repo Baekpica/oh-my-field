@@ -1,6 +1,4 @@
-"""Compatibility shim: replay moved to oh_my_field.application.replay."""
-
-from oh_my_field.application.replay import (
+from oh_my_field.application.replay.workflow import (
     CapabilityNameMismatchError,
     ReplayDependencies,
     ReplayError,

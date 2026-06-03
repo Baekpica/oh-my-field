@@ -3,15 +3,15 @@ from typing import Annotated
 
 import typer
 
-from oh_my_field.cli.errors import cli_errors
-from oh_my_field.cli.output import emit_json
-from oh_my_field.health import (
+from oh_my_field.application.health import (
     CapabilityHealthRequest,
     HealthError,
     run_card_workflow,
     run_harden_workflow,
     run_health_workflow,
 )
+from oh_my_field.cli.errors import cli_errors
+from oh_my_field.cli.output import emit_json
 
 
 def health(

@@ -1,6 +1,4 @@
-"""Compatibility shim: capture moved to oh_my_field.application.capture."""
-
-from oh_my_field.application.capture import (
+from oh_my_field.application.capture.workflow import (
     CaptureDependencies,
     CaptureError,
     CaptureFileInput,

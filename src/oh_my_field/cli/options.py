@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from oh_my_field.capture import CaptureFileInput
+from oh_my_field.application.capture import CaptureFileInput
 from oh_my_field.models import CapturedFileRole, EvalChecklistItem, EvalRubricScore
 
 RUBRIC_SCORE_REQUIRED_PARTS = 4

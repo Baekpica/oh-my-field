@@ -1,6 +1,4 @@
-"""Compatibility shim: health moved to oh_my_field.application.health."""
-
-from oh_my_field.application.health import (
+from oh_my_field.application.health.workflow import (
     CapabilityCardSummary,
     CapabilityHardenSummary,
     CapabilityHealthEntry,

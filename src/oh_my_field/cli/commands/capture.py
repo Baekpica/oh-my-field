@@ -3,7 +3,11 @@ from typing import Annotated, Literal
 
 import typer
 
-from oh_my_field.capture import CaptureError, CaptureRequest, run_capture_workflow
+from oh_my_field.application.capture import (
+    CaptureError,
+    CaptureRequest,
+    run_capture_workflow,
+)
 from oh_my_field.cli.errors import cli_errors
 from oh_my_field.cli.options import capture_file_inputs
 from oh_my_field.cli.output import emit_json

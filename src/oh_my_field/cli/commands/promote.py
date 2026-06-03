@@ -3,9 +3,13 @@ from typing import Annotated
 
 import typer
 
+from oh_my_field.application.promote import (
+    PromoteError,
+    PromoteRequest,
+    run_promote_workflow,
+)
 from oh_my_field.cli.errors import cli_errors
 from oh_my_field.cli.output import emit_json
-from oh_my_field.promote import PromoteError, PromoteRequest, run_promote_workflow
 
 
 def promote(

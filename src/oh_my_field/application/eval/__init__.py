@@ -1,6 +1,4 @@
-"""Compatibility shim: eval moved to oh_my_field.application.eval."""
-
-from oh_my_field.application.eval import (
+from oh_my_field.application.eval.workflow import (
     EvalError,
     EvalRequest,
     EvalSummary,
