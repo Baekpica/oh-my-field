@@ -392,6 +392,7 @@ class ReplayRecord(StrictModel):
     workflow: WorkflowManifest
     harness: HarnessResult
     runtime: RuntimeInfo
+    runtime_profile: str | None = None
     command_executions: tuple[CommandExecution, ...] = ()
     human_review: HumanReview = Field(default_factory=HumanReview)
     integrity_chain: tuple[ArtifactIntegrityLink, ...] = ()

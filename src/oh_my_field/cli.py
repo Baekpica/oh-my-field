@@ -90,6 +90,18 @@ class EvalMatrixSummary(StrictModel):
     results: tuple[EvalMatrixItem, ...]
 
 
+class ReplayMatrixItem(StrictModel):
+    runtime_profile: str
+    replay_id: str
+    replay_path: str
+    harness_status: str
+
+
+class ReplayMatrixSummary(StrictModel):
+    capability_name: str
+    results: tuple[ReplayMatrixItem, ...]
+
+
 def _main() -> None:
     pass
 
@@ -262,19 +274,33 @@ def _replay(
         bool,
         typer.Option("--approve-command-risk"),
     ] = False,
+    matrix: Annotated[list[str] | None, typer.Option("--matrix")] = None,
 ) -> None:
     try:
+        request = ReplayRequest(
+            capability_name=capability_name,
+            capabilities_dir=capabilities_dir,
+            evidence_dir=evidence_dir,
+            replay_dir=replay_dir,
+            execute_commands=execute,
+            command_cwd=command_cwd,
+            command_timeout_seconds=command_timeout_seconds,
+            approve_command_risk=approve_command_risk,
+        )
+        profiles = _matrix_profiles(matrix)
+        if profiles:
+            results = tuple(
+                _replay_matrix_item(request, profile) for profile in profiles
+            )
+            typer.echo(
+                ReplayMatrixSummary(
+                    capability_name=capability_name,
+                    results=results,
+                ).model_dump_json(),
+            )
+            return
         summary = run_replay_workflow(
-            ReplayRequest(
-                capability_name=capability_name,
-                capabilities_dir=capabilities_dir,
-                evidence_dir=evidence_dir,
-                replay_dir=replay_dir,
-                execute_commands=execute,
-                command_cwd=command_cwd,
-                command_timeout_seconds=command_timeout_seconds,
-                approve_command_risk=approve_command_risk,
-            ),
+            request,
         )
     except (ReplayError, StorageError, ValidationError) as exc:
         typer.echo(str(exc), err=True)
@@ -286,6 +312,21 @@ def _replay(
 app.command("replay", help="Replay a capability against its source evidence.")(
     _replay,
 )
+
+
+def _replay_matrix_item(
+    request: ReplayRequest,
+    runtime_profile: str,
+) -> ReplayMatrixItem:
+    summary = run_replay_workflow(
+        request.model_copy(update={"runtime_profile": runtime_profile}),
+    )
+    return ReplayMatrixItem(
+        runtime_profile=runtime_profile,
+        replay_id=summary.replay_id,
+        replay_path=summary.replay_path,
+        harness_status=summary.harness_status,
+    )
 
 
 def _eval(
@@ -713,7 +754,15 @@ def _import_run(
         list[Path] | None,
         typer.Option("--test-result"),
     ] = None,
+    command_output: Annotated[
+        list[Path] | None,
+        typer.Option("--command-output"),
+    ] = None,
     artifact: Annotated[list[Path] | None, typer.Option("--artifact")] = None,
+    artifact_root: Annotated[
+        list[Path] | None,
+        typer.Option("--artifact-root"),
+    ] = None,
     field: Annotated[str, typer.Option("--field")] = "local",
     model: Annotated[str | None, typer.Option("--model")] = None,
     evidence_dir: Annotated[Path, typer.Option("--evidence-dir")] = Path(
@@ -732,8 +781,10 @@ def _import_run(
                 artifacts=(
                     *_agent_artifacts("diff", diff),
                     *_agent_artifacts("test_result", test_result),
+                    *_agent_artifacts("command_output", command_output),
                     *_agent_artifacts("artifact", artifact),
                 ),
+                artifact_roots=tuple(artifact_root or ()),
             ),
         )
     except (AdapterError, StorageError, ValidationError) as exc:

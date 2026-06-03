@@ -26,6 +26,22 @@ class ReplayOutput(BaseModel):
     harness_status: str
 
 
+class ReplayMatrixItemOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    runtime_profile: str
+    replay_id: str
+    replay_path: str
+    harness_status: str
+
+
+class ReplayMatrixOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    capability_name: str
+    results: tuple[ReplayMatrixItemOutput, ...]
+
+
 def make_evidence_record() -> EvidenceRecord:
     return EvidenceRecord(
         id="20260602T010203Z-deadbeef",
@@ -150,6 +166,45 @@ def test_replay_execute_reruns_stored_commands(tmp_path: Path) -> None:
     assert replay.command_executions[0].stdout == "replayed"
     assert replay.harness.status == "pass"
     assert "commands_replayed" in replay.harness.checks
+
+
+def test_replay_matrix_creates_runtime_profile_replays(tmp_path: Path) -> None:
+    evidence_dir = tmp_path / "evidence"
+    capabilities_dir = tmp_path / "capabilities"
+    replay_dir = tmp_path / "replays"
+    evidence = make_evidence_record()
+    manifest = make_manifest()
+    write_evidence(evidence, evidence_dir)
+    write_manifest(manifest, capabilities_dir)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "replay",
+            manifest.name,
+            "--matrix",
+            "codex,claude_code,hermes",
+            "--capabilities-dir",
+            str(capabilities_dir),
+            "--evidence-dir",
+            str(evidence_dir),
+            "--replay-dir",
+            str(replay_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = ReplayMatrixOutput.model_validate_json(result.stdout)
+    assert [item.runtime_profile for item in output.results] == [
+        "codex",
+        "claude_code",
+        "hermes",
+    ]
+    for item in output.results:
+        replay = load_replay(item.replay_id, replay_dir)
+        assert replay.runtime_profile == item.runtime_profile
+        assert replay.runtime.name == item.runtime_profile
+        assert replay.integrity_chain[-1].artifact_type == "replay"
 
 
 def test_replay_blocks_risky_stored_command_without_approval(tmp_path: Path) -> None:

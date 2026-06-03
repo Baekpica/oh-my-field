@@ -30,21 +30,21 @@ ADAPTER_SPECS: tuple[RuntimeAdapterSpec, ...] = (
     RuntimeAdapterSpec(
         name="codex",
         display_name="Codex",
-        captures=("run log", "diff", "test result", "artifact"),
+        captures=("run log", "diff", "test result", "command output", "artifact"),
         replays=("capability eval",),
         artifact_roles=("artifact", "diff", "test_result"),
     ),
     RuntimeAdapterSpec(
         name="claude_code",
         display_name="Claude Code",
-        captures=("run log", "diff", "test result", "artifact"),
+        captures=("run log", "diff", "test result", "command output", "artifact"),
         replays=("capability eval",),
         artifact_roles=("artifact", "diff", "test_result"),
     ),
     RuntimeAdapterSpec(
         name="hermes",
         display_name="Hermes",
-        captures=("run log", "diff", "test result", "artifact"),
+        captures=("run log", "diff", "test result", "command output", "artifact"),
         replays=("capability eval",),
         artifact_roles=("artifact", "diff", "test_result"),
     ),
@@ -83,6 +83,7 @@ class AgentImportRequest(StrictModel):
     model: str | None = None
     evidence_dir: Path
     artifacts: tuple[AgentArtifactInput, ...] = ()
+    artifact_roots: tuple[Path, ...] = ()
 
 
 class AgentImportSummary(StrictModel):
@@ -99,10 +100,14 @@ def import_agent_run(
     dependencies = dependencies or _default_dependencies()
     created_at = dependencies.clock().astimezone(UTC)
     evidence_id = f"{created_at:%Y%m%dT%H%M%SZ}-{dependencies.token_factory()}"
-    files = (
-        _read_artifact(AgentArtifactInput(role="artifact", path=request.log_path)),
-        *tuple(_read_artifact(artifact) for artifact in request.artifacts),
+    artifact_inputs = _dedupe_artifacts(
+        (
+            AgentArtifactInput(role="artifact", path=request.log_path),
+            *request.artifacts,
+            *_discover_artifacts(request.artifact_roots, request.log_path),
+        ),
     )
+    files = tuple(_read_artifact(artifact) for artifact in artifact_inputs)
     evidence = EvidenceRecord(
         id=evidence_id,
         session_id=evidence_id,
@@ -113,7 +118,7 @@ def import_agent_run(
         runtime=RuntimeInfo(
             name=request.adapter,
             model=request.model,
-            tools=("external_agent_log",),
+            tools=("external_agent_log", f"adapter:{request.adapter}"),
         ),
         input_context=tuple(file.path for file in files if file.role == "artifact"),
         files=files,
@@ -179,6 +184,44 @@ def _read_artifact(artifact: AgentArtifactInput) -> CapturedTextFile:
         size_bytes=len(raw_content),
         sha256=hashlib.sha256(raw_content).hexdigest(),
     )
+
+
+def _discover_artifacts(
+    roots: tuple[Path, ...],
+    log_path: Path,
+) -> tuple[AgentArtifactInput, ...]:
+    discovered: list[AgentArtifactInput] = []
+    for root in roots:
+        paths = (root,) if root.is_file() else tuple(sorted(root.rglob("*")))
+        discovered.extend(
+            AgentArtifactInput(role=_infer_artifact_role(path), path=path)
+            for path in paths
+            if path.is_file() and path != log_path
+        )
+    return tuple(discovered)
+
+
+def _infer_artifact_role(path: Path) -> CapturedFileRole:
+    name = path.name.casefold()
+    suffix = path.suffix.casefold()
+    if suffix in {".diff", ".patch"}:
+        return "diff"
+    if "pytest" in name or "test" in name or "junit" in name or "coverage" in name:
+        return "test_result"
+    if "stdout" in name or "stderr" in name or "output" in name or suffix == ".log":
+        return "command_output"
+    if "tool" in name:
+        return "tool_call"
+    return "artifact"
+
+
+def _dedupe_artifacts(
+    artifacts: tuple[AgentArtifactInput, ...],
+) -> tuple[AgentArtifactInput, ...]:
+    deduped: dict[Path, AgentArtifactInput] = {}
+    for artifact in artifacts:
+        deduped.setdefault(artifact.path, artifact)
+    return tuple(deduped.values())
 
 
 def _normalize_goal(goal: str) -> str:
