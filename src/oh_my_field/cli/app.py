@@ -10,6 +10,7 @@ from oh_my_field.cli.commands import (
     export,
     health,
     import_run,
+    init_field,
     inspect_artifact,
     learn,
     orchestrate,
@@ -40,6 +41,7 @@ app.callback()(_main)
 
 diagnostics.register(app)
 capture.register(app)
+init_field.register(app)
 import_run.register(app)
 promote.register(app)
 health.register(app)

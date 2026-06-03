@@ -133,8 +133,9 @@ omf health repo_issue_triage \
   --capabilities-dir /tmp/omf-smoke/capabilities
 ```
 
-From a source checkout, prefix those commands with `uv run`. Use a real agent
-log when you have one.
+For a repo-local field, run `omf init` first to create `.omf/config.yaml`, the
+default artifact directories, and `.omfignore`. From a source checkout, prefix
+those commands with `uv run`. Use a real agent log when you have one.
 
 ## What You Get
 
