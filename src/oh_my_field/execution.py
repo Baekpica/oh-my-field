@@ -76,6 +76,8 @@ class CommandExecutionRequest:
     timeout_seconds: int
     approve_risk: bool = False
     allow_env: tuple[str, ...] = ()
+    argv: tuple[str, ...] | None = None
+    require_cwd_inside_project: bool = False
     project_root: Path | None = None
     approval_required_categories: tuple[CommandRiskCategory, ...] = (
         COMMAND_RISK_CATEGORIES
@@ -105,6 +107,14 @@ def execute_shell_command(request: CommandExecutionRequest) -> CommandExecution:
     cwd = request.cwd.resolve()
     project_root = (request.project_root or Path.cwd()).resolve()
     cwd_inside_project = _is_relative_to(cwd, project_root)
+    use_shell = request.argv is None
+    if request.require_cwd_inside_project and not cwd_inside_project:
+        return _contained_execution(
+            request,
+            risk,
+            environment=environment,
+            cwd=cwd,
+        )
     if risk.approval_required and not request.approve_risk:
         return _blocked_execution(
             request,
@@ -113,14 +123,17 @@ def execute_shell_command(request: CommandExecutionRequest) -> CommandExecution:
             cwd=cwd,
             cwd_inside_project=cwd_inside_project,
         )
+    # When argv is provided the command runs without a shell, so metacharacters
+    # are literal and no shell injection surface exists. Legacy command strings
+    # still execute through the shell; risk and env/cwd metadata are recorded
+    # either way so public users can audit the boundary.
+    args: str | list[str] = request.command if use_shell else list(request.argv or ())
     try:
-        # Legacy command strings intentionally execute through the shell; risk and
-        # env/cwd metadata are recorded so public users can audit the boundary.
-        completed = subprocess.run(  # noqa: S602
-            request.command,
+        completed = subprocess.run(  # noqa: S603
+            args,
             cwd=cwd,
             env=environment.values,
-            shell=True,
+            shell=use_shell,
             text=True,
             capture_output=True,
             timeout=request.timeout_seconds,
@@ -139,6 +152,7 @@ def execute_shell_command(request: CommandExecutionRequest) -> CommandExecution:
             risk_categories=risk.categories,
             approval_required=risk.approval_required,
             approved=request.approve_risk and risk.approval_required,
+            shell=use_shell,
             allowed_env=environment.allowed,
             blocked_env=environment.blocked,
             cwd_inside_project=cwd_inside_project,
@@ -156,6 +170,7 @@ def execute_shell_command(request: CommandExecutionRequest) -> CommandExecution:
         risk_categories=risk.categories,
         approval_required=risk.approval_required,
         approved=request.approve_risk and risk.approval_required,
+        shell=use_shell,
         allowed_env=environment.allowed,
         blocked_env=environment.blocked,
         cwd_inside_project=cwd_inside_project,
@@ -215,9 +230,33 @@ def _blocked_execution(
         risk_categories=risk.categories,
         approval_required=True,
         approved=False,
+        shell=request.argv is None,
         allowed_env=environment.allowed,
         blocked_env=environment.blocked,
         cwd_inside_project=cwd_inside_project,
+    )
+
+
+def _contained_execution(
+    request: CommandExecutionRequest,
+    risk: CommandRiskAssessment,
+    *,
+    environment: CommandEnvironment,
+    cwd: Path,
+) -> CommandExecution:
+    return CommandExecution(
+        command=request.command,
+        cwd=str(cwd),
+        exit_code=126,
+        stderr=f"command working directory escapes the project root: {cwd}",
+        duration_ms=0,
+        risk_categories=risk.categories,
+        approval_required=risk.approval_required,
+        approved=False,
+        shell=request.argv is None,
+        allowed_env=environment.allowed,
+        blocked_env=environment.blocked,
+        cwd_inside_project=False,
     )
 
 

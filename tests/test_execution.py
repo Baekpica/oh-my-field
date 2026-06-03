@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from oh_my_field.execution import (
+    DANGEROUS_ENV_NAMES,
     CommandExecutionRequest,
     assess_command_risk,
     execute_shell_command,
@@ -75,6 +76,8 @@ def test_execute_shell_command_records_blocked_dangerous_environment(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    for name in DANGEROUS_ENV_NAMES:
+        monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("OPENAI_API_KEY", "secret")
 
     execution = execute_shell_command(
@@ -101,6 +104,57 @@ def test_execute_shell_command_records_timeout(tmp_path: Path) -> None:
 
     assert execution.exit_code == 124
     assert "command timed out after 1 seconds" in execution.stderr
+
+
+def test_execute_command_argv_treats_metacharacters_literally(
+    tmp_path: Path,
+) -> None:
+    redirect_target = tmp_path / "redirected.txt"
+    argv = (
+        sys.executable,
+        "-c",
+        "import sys; print(sys.argv[1:])",
+        ">",
+        str(redirect_target),
+    )
+
+    execution = execute_shell_command(
+        CommandExecutionRequest(
+            command=shlex.join(argv),
+            argv=argv,
+            cwd=tmp_path,
+            timeout_seconds=10,
+            approve_risk=True,
+        ),
+    )
+
+    assert execution.exit_code == 0
+    assert execution.shell is False
+    assert not redirect_target.exists()
+    assert ">" in execution.stdout
+
+
+def test_execute_command_blocks_cwd_outside_project_root(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+
+    execution = execute_shell_command(
+        CommandExecutionRequest(
+            command="printf ok",
+            cwd=outside,
+            timeout_seconds=5,
+            project_root=project_root,
+            require_cwd_inside_project=True,
+        ),
+    )
+
+    assert execution.exit_code == 126
+    assert execution.shell is True
+    assert execution.cwd_inside_project is False
+    assert execution.stdout == ""
+    assert "escapes the project root" in execution.stderr
 
 
 def _env_probe_command(name: str) -> str:

@@ -6,15 +6,31 @@ accidental execution and accidental capture.
 
 ## Command Execution
 
-Commands are risk-assessed before execution. Risky commands are recorded but not
-executed unless `--approve-command-risk` is provided.
+OMF is not an arbitrary shell runner. Commands are captured and risk-assessed as
+evidence, and risky commands are recorded but not executed unless
+`--approve-command-risk` is provided.
 
-Command strings are shell strings. Treat `--command`, `--harness-command`, and
-`--run-command` as shell execution surfaces. OMF records cwd, shell mode, risk
-categories, approval state, and environment policy in each execution record.
+There are two execution forms:
 
-Commands run with a minimal environment by default. Use `--allow-env NAME` only
-when a command needs that variable.
+- **argv (preferred)**: `--run-argv` runs a command without a shell, so shell
+  metacharacters (`>`, `|`, `;`, `$()`) are literal arguments and there is no
+  shell-injection surface. Pass one token per flag, e.g.
+  `--run-argv pytest --run-argv -q`.
+- **shell string (legacy)**: `--command`, `--harness-command`, and
+  `--run-command` are shell execution surfaces. They run through the shell, so
+  treat their contents as code.
+
+`--run-command` and `--run-argv` are mutually exclusive. OMF records cwd, shell
+mode (`shell: true|false`), risk categories, approval state, and environment
+policy in each execution record.
+
+Commands run with a minimal environment by default (`PATH`, `HOME`, `TMPDIR`);
+known secret-bearing variables are stripped and recorded as blocked. Use
+`--allow-env NAME` only when a command needs that variable.
+
+`--require-cwd-inside-project` blocks execution (recording it, not running it)
+when the resolved working directory escapes the project root. The working
+directory is resolved through symlinks before the check.
 
 ## Artifact Import
 
