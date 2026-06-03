@@ -823,6 +823,153 @@ def test_runtime_export_assets_have_native_sections(tmp_path: Path) -> None:
     assert "## Completion Criteria" in generic_skill
 
 
+def _seed_hermes_bundle(source_caps: Path, export_dir: Path) -> None:
+    write_manifest(make_manifest(), source_caps)
+    _run_ok(
+        [
+            "capability",
+            "export",
+            "repo_issue_triage",
+            "--target",
+            "hermes",
+            "--target-model",
+            "qwen3.6-27b",
+            "--out",
+            str(export_dir),
+            "--capabilities-dir",
+            str(source_caps),
+        ],
+    )
+
+
+def test_capability_import_fails_on_existing_by_default(tmp_path: Path) -> None:
+    source_caps = tmp_path / "src"
+    target_caps = tmp_path / "tgt"
+    export_dir = tmp_path / "bundle"
+    _seed_hermes_bundle(source_caps, export_dir)
+    import_args = [
+        "capability",
+        "import",
+        str(export_dir),
+        "--runtime",
+        "hermes",
+        "--model",
+        "qwen3.6-27b",
+        "--capabilities-dir",
+        str(target_caps),
+        "--eval-dir",
+        str(tmp_path / "evals"),
+        "--evidence-dir",
+        str(tmp_path / "evidence"),
+    ]
+    _run_ok(import_args)
+
+    second = CliRunner().invoke(app, import_args)
+
+    assert second.exit_code == 1
+    assert "already exists" in second.stderr
+
+
+def test_capability_import_versions_on_collision(tmp_path: Path) -> None:
+    source_caps = tmp_path / "src"
+    target_caps = tmp_path / "tgt"
+    export_dir = tmp_path / "bundle"
+    _seed_hermes_bundle(source_caps, export_dir)
+    import_args = [
+        "capability",
+        "import",
+        str(export_dir),
+        "--runtime",
+        "hermes",
+        "--model",
+        "qwen3.6-27b",
+        "--capabilities-dir",
+        str(target_caps),
+        "--eval-dir",
+        str(tmp_path / "evals"),
+        "--evidence-dir",
+        str(tmp_path / "evidence"),
+    ]
+    _run_ok(import_args)
+
+    result = CliRunner().invoke(app, [*import_args, "--if-exists", "version"])
+
+    assert result.exit_code == 0
+    output = CapabilityImportOutput.model_validate_json(result.stdout)
+    assert output.capability_name == "repo_issue_triage_v2"
+    assert Path(output.imported_package_path).name == "repo_issue_triage_v2"
+    assert (target_caps / "repo_issue_triage" / "capability.yaml").exists()
+    assert (target_caps / "repo_issue_triage_v2" / "capability.yaml").exists()
+
+
+def test_capability_import_overwrite_allows_reimport(tmp_path: Path) -> None:
+    source_caps = tmp_path / "src"
+    target_caps = tmp_path / "tgt"
+    export_dir = tmp_path / "bundle"
+    _seed_hermes_bundle(source_caps, export_dir)
+    import_args = [
+        "capability",
+        "import",
+        str(export_dir),
+        "--runtime",
+        "hermes",
+        "--model",
+        "qwen3.6-27b",
+        "--capabilities-dir",
+        str(target_caps),
+        "--eval-dir",
+        str(tmp_path / "evals"),
+        "--evidence-dir",
+        str(tmp_path / "evidence"),
+    ]
+    _run_ok(import_args)
+
+    result = CliRunner().invoke(app, [*import_args, "--if-exists", "overwrite"])
+
+    assert result.exit_code == 0
+    output = CapabilityImportOutput.model_validate_json(result.stdout)
+    assert output.capability_name == "repo_issue_triage"
+    assert (target_caps / "repo_issue_triage" / "capability.yaml").exists()
+
+
+def test_capability_import_as_and_namespace(tmp_path: Path) -> None:
+    source_caps = tmp_path / "src"
+    target_caps = tmp_path / "tgt"
+    export_dir = tmp_path / "bundle"
+    _seed_hermes_bundle(source_caps, export_dir)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "capability",
+            "import",
+            str(export_dir),
+            "--runtime",
+            "hermes",
+            "--model",
+            "qwen3.6-27b",
+            "--as",
+            "repo_issue_triage_hermes",
+            "--namespace",
+            "imported",
+            "--capabilities-dir",
+            str(target_caps),
+            "--eval-dir",
+            str(tmp_path / "evals"),
+            "--evidence-dir",
+            str(tmp_path / "evidence"),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = CapabilityImportOutput.model_validate_json(result.stdout)
+    assert output.capability_name == "repo_issue_triage_hermes"
+    package = target_caps / "imported" / "repo_issue_triage_hermes"
+    assert package.joinpath("capability.yaml").exists()
+    imported = load_manifest("repo_issue_triage_hermes", target_caps / "imported")
+    assert imported.name == "repo_issue_triage_hermes"
+
+
 class HealthEntriesOutput(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 

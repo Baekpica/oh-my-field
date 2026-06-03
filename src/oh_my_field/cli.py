@@ -425,6 +425,12 @@ def _capability_import(
         list[str] | None,
         typer.Option("--available-tool"),
     ] = None,
+    as_name: Annotated[str | None, typer.Option("--as")] = None,
+    namespace: Annotated[str | None, typer.Option("--namespace")] = None,
+    if_exists: Annotated[
+        Literal["fail", "merge", "version", "overwrite"],
+        typer.Option("--if-exists"),
+    ] = "fail",
     capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
         "capabilities",
     ),
@@ -445,6 +451,9 @@ def _capability_import(
                 project=project,
                 validate_import=validate,
                 available_tools=tuple(available_tool or ()),
+                as_name=as_name,
+                namespace=namespace,
+                if_exists=if_exists,
             ),
         )
     except (PortabilityError, StorageError, ValidationError) as exc:

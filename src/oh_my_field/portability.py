@@ -31,6 +31,8 @@ from oh_my_field.storage import (
     capability_package_paths,
     load_evidence,
     load_manifest,
+    manifest_path_for_capability,
+    update_manifest,
     write_capability_package,
     write_eval_result,
     write_evidence,
@@ -40,6 +42,7 @@ type ExportTarget = Literal["codex", "claude_code", "hermes", "generic"]
 type ValidationStatus = Literal["needs_validation", "needs_adaptation", "validated"]
 type ToolCompatibilityStatus = Literal["pass", "partial", "unknown"]
 type EvidenceInclusionMode = Literal["none", "summary", "redacted", "full"]
+type ImportCollisionPolicy = Literal["fail", "merge", "version", "overwrite"]
 type YamlValue = (
     str | int | float | bool | None | list["YamlValue"] | dict[str, "YamlValue"]
 )
@@ -92,6 +95,18 @@ class PortabilityAmbiguousTargetError(PortabilityError):
         return (
             f"multiple imported targets for runtime {self.runtime!r} on capability "
             f"{self.capability!r}; pass --model to disambiguate"
+        )
+
+
+@dataclass
+class PortabilityImportExistsError(PortabilityError):
+    capability: str
+    capabilities_dir: Path
+
+    def __str__(self) -> str:
+        return (
+            f"capability {self.capability!r} already exists in "
+            f"{self.capabilities_dir}; pass --if-exists overwrite|version|merge"
         )
 
 
@@ -299,6 +314,9 @@ class CapabilityPortabilityImportRequest(StrictModel):
     project: str | None = None
     validate_import: bool = False
     available_tools: tuple[str, ...] = ()
+    as_name: str | None = Field(default=None, pattern=CAPABILITY_NAME_PATTERN)
+    namespace: str | None = Field(default=None, pattern=CAPABILITY_NAME_PATTERN)
+    if_exists: ImportCollisionPolicy = "fail"
 
 
 class CapabilityPortabilityImportSummary(StrictModel):
@@ -417,10 +435,18 @@ def import_capability_package(
         },
     )
     resolved = portability.model_copy(update={"target": target})
-    imported_path = write_capability_package(
-        manifest,
-        request.capabilities_dir,
-    ).package_dir
+    target_caps = (
+        request.capabilities_dir / request.namespace
+        if request.namespace
+        else request.capabilities_dir
+    )
+    if request.as_name is not None:
+        manifest = manifest.model_copy(update={"name": request.as_name})
+    manifest, imported_path, overwrite_target = _materialize_package(
+        manifest=manifest,
+        capabilities_dir=target_caps,
+        if_exists=request.if_exists,
+    )
     report = _validation_report(
         manifest=manifest,
         portability=resolved,
@@ -454,8 +480,9 @@ def import_capability_package(
         report=report,
         portability=resolved,
         manifest=manifest,
+        overwrite=overwrite_target,
     )
-    _write_text_exclusive(report_path, _yaml_dump(report))
+    _write_text(report_path, _yaml_dump(report), overwrite=overwrite_target)
     return CapabilityPortabilityImportSummary(
         capability_name=manifest.name,
         imported_package_path=str(imported_path),
@@ -469,6 +496,46 @@ def import_capability_package(
         failure_evidence_id=report.failure_evidence_id,
         failure_evidence_path=report.failure_evidence_path,
     )
+
+
+def _materialize_package(
+    *,
+    manifest: CapabilityManifest,
+    capabilities_dir: Path,
+    if_exists: ImportCollisionPolicy,
+) -> tuple[CapabilityManifest, Path, bool]:
+    exists = manifest_path_for_capability(manifest.name, capabilities_dir) is not None
+    if if_exists == "version" and exists:
+        manifest = manifest.model_copy(
+            update={"name": _next_versioned_name(manifest.name, capabilities_dir)},
+        )
+        exists = False
+    package_dir = capability_package_paths(
+        manifest.name,
+        capabilities_dir,
+    ).package_dir
+    if not exists:
+        write_capability_package(manifest, capabilities_dir)
+        return manifest, package_dir, False
+    if if_exists == "fail":
+        raise PortabilityImportExistsError(
+            capability=manifest.name,
+            capabilities_dir=capabilities_dir,
+        )
+    if if_exists == "overwrite":
+        update_manifest(manifest, capabilities_dir)
+    # "merge" keeps the existing canonical package and only rewrites the
+    # target import directory below.
+    return manifest, package_dir, True
+
+
+def _next_versioned_name(name: str, capabilities_dir: Path) -> str:
+    index = 2
+    while True:
+        candidate = f"{name}_v{index}"
+        if manifest_path_for_capability(candidate, capabilities_dir) is None:
+            return candidate
+        index += 1
 
 
 def validate_capability_package(
