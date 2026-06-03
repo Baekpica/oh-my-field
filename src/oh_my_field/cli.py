@@ -56,6 +56,13 @@ from oh_my_field.orchestrate import (
     run_orchestrate_workflow,
     run_resume_workflow,
 )
+from oh_my_field.portability import (
+    CapabilityPortabilityExportRequest,
+    CapabilityPortabilityImportRequest,
+    PortabilityError,
+    export_capability_package,
+    import_capability_package,
+)
 from oh_my_field.promote import PromoteError, PromoteRequest, run_promote_workflow
 from oh_my_field.reflect import ReflectError, ReflectRequest, run_reflect_workflow
 from oh_my_field.registry import RegistryError, RegistryRequest, run_registry_workflow
@@ -69,6 +76,11 @@ app = typer.Typer(
     help="oh-my-field turns tacit know-how into reusable capabilities.",
     no_args_is_help=True,
 )
+capability_app = typer.Typer(
+    help="Export and import portable capability packages.",
+    no_args_is_help=True,
+)
+app.add_typer(capability_app, name="capability")
 RUBRIC_SCORE_REQUIRED_PARTS = 4
 RUBRIC_SCORE_SPLIT_MAX = 4
 
@@ -251,6 +263,92 @@ def _promote(
 app.command("promote", help="Promote evidence or an evidence set into a capability.")(
     _promote,
 )
+
+
+def _capability_export(
+    capability_name: Annotated[str, typer.Argument()],
+    target: Annotated[
+        Literal["codex", "claude_code", "hermes", "generic"],
+        typer.Option("--target"),
+    ],
+    out: Annotated[Path, typer.Option("--out")],
+    target_model: Annotated[str | None, typer.Option("--target-model")] = None,
+    target_project: Annotated[str | None, typer.Option("--target-project")] = None,
+    source_project: Annotated[str | None, typer.Option("--source-project")] = None,
+    source_reasoning_effort: Annotated[
+        str | None,
+        typer.Option("--source-reasoning-effort"),
+    ] = None,
+    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
+        "capabilities",
+    ),
+) -> None:
+    try:
+        summary = export_capability_package(
+            CapabilityPortabilityExportRequest(
+                capability_name=capability_name,
+                target=target,
+                target_model=target_model,
+                target_project=target_project,
+                source_project=source_project,
+                source_reasoning_effort=source_reasoning_effort,
+                out=out,
+                capabilities_dir=capabilities_dir,
+            ),
+        )
+    except (PortabilityError, StorageError, ValidationError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(summary.model_dump_json())
+
+
+capability_app.command(
+    "export",
+    help="Export a capability package for a target runtime/model.",
+)(_capability_export)
+
+
+def _capability_import(
+    bundle_path: Annotated[Path, typer.Argument()],
+    runtime: Annotated[
+        Literal["codex", "claude_code", "hermes", "generic"] | None,
+        typer.Option("--runtime"),
+    ] = None,
+    model: Annotated[str | None, typer.Option("--model")] = None,
+    project: Annotated[str | None, typer.Option("--project")] = None,
+    validate: Annotated[bool, typer.Option("--validate")] = False,
+    available_tool: Annotated[
+        list[str] | None,
+        typer.Option("--available-tool"),
+    ] = None,
+    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
+        "capabilities",
+    ),
+) -> None:
+    try:
+        summary = import_capability_package(
+            CapabilityPortabilityImportRequest(
+                bundle_path=bundle_path,
+                runtime=runtime,
+                model=model,
+                project=project,
+                validate_import=validate,
+                available_tools=tuple(available_tool or ()),
+                capabilities_dir=capabilities_dir,
+            ),
+        )
+    except (PortabilityError, StorageError, ValidationError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(summary.model_dump_json())
+
+
+capability_app.command(
+    "import",
+    help="Import a portable capability package and write a target validation report.",
+)(_capability_import)
 
 
 def _replay(

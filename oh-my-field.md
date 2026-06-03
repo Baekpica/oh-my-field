@@ -222,6 +222,18 @@
 - capability의 성능, 안정성, 비용, 재현성, 사용자 개입률 평가
 - 여러 모델 또는 runtime 간 비교 지원
 
+## /capability export
+
+- canonical capability package를 target runtime/model/project용 portability bundle로 export
+- `portability.yaml`, source runtime/model/project metadata, evidence links, context policy, harness metadata 생성
+- Codex, Claude Code, Hermes, generic target directory를 생성하여 target runtime 주입물을 분리
+
+## /capability import
+
+- portability bundle을 target project capability directory로 import
+- target runtime/model/project metadata를 확정하고 validation report 생성
+- tool compatibility, context remap 필요 여부, target eval set, next action 기록
+
 # Capability Package
 
 - capability는 단일 manifest가 아니라 폴더 단위 package로 정의

@@ -306,6 +306,42 @@ uv run omf registry repo_issue_triage \
 `harness.yaml`, and `README.md`. The package is the canonical source of truth;
 runtime-specific files are export targets, not the capability itself.
 
+## Portability Loop
+
+Export a capability package for another runtime/model/project:
+
+```bash
+uv run omf capability export repo_issue_triage \
+  --target hermes \
+  --target-model qwen3.6-27b \
+  --source-project source-repo \
+  --target-project target-repo \
+  --out /private/tmp/repo_issue_triage-hermes-qwen36 \
+  --capabilities-dir /private/tmp/omf-capabilities-smoke
+```
+
+The bundle includes `capability.yaml`, `portability.yaml`, runtime export
+assets, instructions, context policy, harness, and provenance metadata.
+
+Import the bundle in the target project and write an initial validation report:
+
+```bash
+uv run omf capability import /private/tmp/repo_issue_triage-hermes-qwen36 \
+  --runtime hermes \
+  --model qwen3.6-27b \
+  --project target-repo \
+  --available-tool shell \
+  --available-tool file_system \
+  --validate \
+  --capabilities-dir /private/tmp/target-omf-capabilities
+```
+
+Import creates a local package and
+`capabilities/<name>/imports/<runtime-model>/validation_report.yaml`. The report
+records source/target runtime metadata, tool compatibility, context remap needs,
+the regression eval set to run next, and whether the target package needs
+adaptation before validation.
+
 ## Hardening Example
 
 After the package exists, replay and evaluate it when you are ready to harden
@@ -627,6 +663,43 @@ uv run omf import-run codex \
   --artifact-root /private/tmp/codex-artifacts \
   --evidence-dir /private/tmp/omf-evidence-smoke
 ```
+
+### `omf capability export`
+
+Export a canonical capability package into a target runtime/model portability
+bundle.
+
+```bash
+uv run omf capability export repo_issue_triage \
+  --target hermes \
+  --target-model qwen3.6-27b \
+  --source-project source-repo \
+  --target-project target-repo \
+  --out /private/tmp/repo_issue_triage-hermes-qwen36 \
+  --capabilities-dir /private/tmp/omf-capabilities-smoke
+```
+
+The export writes `portability.yaml`, source runtime metadata, evidence links,
+instructions, context policy, harness metadata, and a target runtime directory.
+
+### `omf capability import`
+
+Import a portability bundle into a target project capability directory and write
+a target-side validation report.
+
+```bash
+uv run omf capability import /private/tmp/repo_issue_triage-hermes-qwen36 \
+  --runtime hermes \
+  --model qwen3.6-27b \
+  --project target-repo \
+  --available-tool shell \
+  --validate \
+  --capabilities-dir /private/tmp/target-omf-capabilities
+```
+
+The import report records whether tool compatibility is `pass`, `partial`, or
+`unknown`, whether context remapping is required, and the eval set to run before
+marking the target package validated.
 
 ### `omf verify`
 
