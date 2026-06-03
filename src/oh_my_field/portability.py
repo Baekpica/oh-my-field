@@ -434,6 +434,24 @@ class CapabilityRemapSummary(StrictModel):
     complete: bool
 
 
+class CapabilityAdaptRequest(StrictModel):
+    capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
+    capabilities_dir: Path
+    target: ExportTarget
+    model: str | None = None
+    instruction_variant: Literal["base", "compact"] | None = None
+    context_variant: Literal["full", "compressed"] | None = None
+    require_human_review: bool | None = None
+
+
+class CapabilityAdaptSummary(StrictModel):
+    capability_name: str
+    overlay_path: str
+    instruction_variant: str
+    context_variant: str
+    required_human_review: bool
+
+
 def export_capability_package(
     request: CapabilityPortabilityExportRequest,
 ) -> CapabilityPortabilityExportSummary:
@@ -550,7 +568,7 @@ def import_capability_package(
     report_path = target_dir / "validation_report.yaml"
     overlay_path = _write_target_overlay(
         target_dir=target_dir,
-        report=report,
+        overlay=_build_overlay(report, resolved),
         portability=resolved,
         manifest=manifest,
         overwrite=overwrite_target,
@@ -674,7 +692,7 @@ def validate_capability_package(
     _write_text(report_path, _yaml_dump(report), overwrite=True)
     overlay_path = _write_target_overlay(
         target_dir=target_dir,
-        report=report,
+        overlay=_build_overlay(report, portability, overrides=overlay.overrides),
         portability=portability,
         manifest=manifest,
         overwrite=True,
@@ -724,6 +742,46 @@ def remap_capability_package(
         binding_count=len(plan.bindings),
         unresolved=plan.unresolved,
         complete=not plan.unresolved,
+    )
+
+
+def adapt_capability_package(
+    request: CapabilityAdaptRequest,
+) -> CapabilityAdaptSummary:
+    manifest = load_manifest(request.capability_name, request.capabilities_dir)
+    package_dir = capability_package_paths(
+        request.capability_name,
+        request.capabilities_dir,
+    ).package_dir
+    overlay = _find_overlay(package_dir, runtime=request.target, model=request.model)
+    portability = _portability_from_overlay(manifest, overlay, overlay.target)
+    review_required = (
+        overlay.overrides.required_human_review
+        if request.require_human_review is None
+        else request.require_human_review
+    )
+    overrides = TargetOverrides(
+        instruction_variant=(
+            request.instruction_variant or overlay.overrides.instruction_variant
+        ),
+        context_variant=request.context_variant or overlay.overrides.context_variant,
+        required_human_review=review_required,
+    )
+    new_overlay = overlay.model_copy(update={"overrides": overrides})
+    target_dir = package_dir / "imports" / _target_slug(overlay.target)
+    overlay_path = _write_target_overlay(
+        target_dir=target_dir,
+        overlay=new_overlay,
+        portability=portability,
+        manifest=manifest,
+        overwrite=True,
+    )
+    return CapabilityAdaptSummary(
+        capability_name=manifest.name,
+        overlay_path=str(overlay_path),
+        instruction_variant=overrides.instruction_variant,
+        context_variant=overrides.context_variant,
+        required_human_review=overrides.required_human_review,
     )
 
 
@@ -878,12 +936,11 @@ def _validated_status(
 def _write_target_overlay(
     *,
     target_dir: Path,
-    report: TargetValidationReport,
+    overlay: TargetOverlay,
     portability: PortabilityManifest,
     manifest: CapabilityManifest,
     overwrite: bool = False,
 ) -> Path:
-    overlay = _build_overlay(report, portability)
     overlay_path = target_dir / "target.overlay.yaml"
     _write_text(overlay_path, _yaml_dump(overlay), overwrite=overwrite)
     _write_text(target_dir / "README.md", _target_readme(overlay), overwrite=overwrite)
@@ -908,6 +965,7 @@ def _write_target_overlay(
 def _build_overlay(
     report: TargetValidationReport,
     portability: PortabilityManifest,
+    overrides: TargetOverrides | None = None,
 ) -> TargetOverlay:
     return TargetOverlay(
         capability_name=report.capability_name,
@@ -917,7 +975,8 @@ def _build_overlay(
         tool_compatibility=report.tool_compatibility,
         portability_readiness_score=report.readiness.score,
         transfer_type=portability.adaptation.transfer_type,
-        overrides=TargetOverrides(
+        overrides=overrides
+        or TargetOverrides(
             instruction_variant="compact" if _model_downgrade(portability) else "base",
             context_variant=(
                 "compressed"

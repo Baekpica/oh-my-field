@@ -64,11 +64,13 @@ from oh_my_field.orchestrate import (
     run_resume_workflow,
 )
 from oh_my_field.portability import (
+    CapabilityAdaptRequest,
     CapabilityPortabilityExportRequest,
     CapabilityPortabilityImportRequest,
     CapabilityRemapRequest,
     CapabilityValidationRequest,
     PortabilityError,
+    adapt_capability_package,
     export_capability_package,
     import_capability_package,
     remap_capability_package,
@@ -584,6 +586,54 @@ capability_app.command(
     "remap",
     help="Record a context remap plan for an imported target.",
 )(_capability_remap)
+
+
+def _capability_adapt(
+    capability_name: Annotated[str, typer.Argument()],
+    target: Annotated[
+        Literal["codex", "claude_code", "hermes", "generic"],
+        typer.Option("--target"),
+    ],
+    model: Annotated[str | None, typer.Option("--model")] = None,
+    instruction_variant: Annotated[
+        Literal["base", "compact"] | None,
+        typer.Option("--instruction-variant"),
+    ] = None,
+    context_variant: Annotated[
+        Literal["full", "compressed"] | None,
+        typer.Option("--context-variant"),
+    ] = None,
+    require_human_review: Annotated[
+        bool | None,
+        typer.Option("--require-human-review/--no-require-human-review"),
+    ] = None,
+    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
+        "capabilities",
+    ),
+) -> None:
+    try:
+        summary = adapt_capability_package(
+            CapabilityAdaptRequest(
+                capability_name=capability_name,
+                capabilities_dir=capabilities_dir,
+                target=target,
+                model=model,
+                instruction_variant=instruction_variant,
+                context_variant=context_variant,
+                require_human_review=require_human_review,
+            ),
+        )
+    except (PortabilityError, StorageError, ValidationError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(summary.model_dump_json())
+
+
+capability_app.command(
+    "adapt",
+    help="Apply instruction/context/review overrides to an imported target.",
+)(_capability_adapt)
 
 
 def _replay(

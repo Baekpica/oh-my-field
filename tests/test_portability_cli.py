@@ -89,6 +89,16 @@ class CapabilityRemapOutput(BaseModel):
     complete: bool
 
 
+class CapabilityAdaptOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    capability_name: str
+    overlay_path: str
+    instruction_variant: str
+    context_variant: str
+    required_human_review: bool
+
+
 def test_capability_export_writes_portability_bundle(tmp_path: Path) -> None:
     capabilities_dir = tmp_path / "capabilities"
     export_dir = tmp_path / "exports" / "repo_issue_triage-hermes"
@@ -1236,6 +1246,70 @@ def test_validation_report_compares_eval_pass_rate(tmp_path: Path) -> None:
     assert comparison["source_pass_rate"] == 0.8
     assert comparison["target_pass_rate"] == 1.0
     assert comparison["delta"] == 0.2
+
+
+def test_capability_adapt_updates_and_persists_overrides(tmp_path: Path) -> None:
+    target_caps, eval_dir, evidence_dir = _seed_project_transfer_import(tmp_path)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "capability",
+            "adapt",
+            "repo_issue_triage",
+            "--target",
+            "codex",
+            "--model",
+            "gpt-5.5",
+            "--instruction-variant",
+            "compact",
+            "--context-variant",
+            "compressed",
+            "--require-human-review",
+            "--capabilities-dir",
+            str(target_caps),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = CapabilityAdaptOutput.model_validate_json(result.stdout)
+    assert output.instruction_variant == "compact"
+    assert output.context_variant == "compressed"
+    assert output.required_human_review
+    target_dir = Path(output.overlay_path).parent
+    instructions = (target_dir / "instructions.md").read_text(encoding="utf-8")
+    assert "compact" in instructions.lower()
+    assert "Compressed Context Pack" in (target_dir / "context.pack.md").read_text(
+        encoding="utf-8"
+    )
+
+    # A subsequent validate preserves the adapted overrides instead of
+    # recomputing them.
+    _run_ok(
+        [
+            "capability",
+            "validate",
+            "repo_issue_triage",
+            "--target",
+            "codex",
+            "--model",
+            "gpt-5.5",
+            "--available-tool",
+            "shell",
+            "--run-command",
+            "true",
+            "--capabilities-dir",
+            str(target_caps),
+            "--eval-dir",
+            str(eval_dir),
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
+    )
+    overlay = yaml.safe_load(Path(output.overlay_path).read_text(encoding="utf-8"))
+    assert overlay["overrides"]["instruction_variant"] == "compact"
+    assert overlay["overrides"]["context_variant"] == "compressed"
+    assert overlay["overrides"]["required_human_review"] is True
 
 
 def test_model_profile_marks_downgrade(tmp_path: Path) -> None:
