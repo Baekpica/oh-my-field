@@ -132,6 +132,62 @@ The package is the source of truth. Runtime-specific files such as Codex
 instructions, Claude Code memory, Hermes profile assets, or generic skill
 bundles are export targets.
 
+## Portability Lifecycle
+
+A capability moves across runtimes through four distinct states. Keep them
+separate — "can be exported" is not the same as "works on the target":
+
+- **Exported**: the capability has been converted into a target runtime
+  bundle (`omf capability export`).
+- **Imported**: the bundle has been materialized in a target project
+  (`omf capability import`).
+- **Validated**: target-side checks have passed with the target
+  runtime/model/project recorded (`omf capability import --validate`).
+- **Portable**: the capability has at least one validated target import.
+
+`omf health` reports `export_status`, `import_status`, and
+`validation_status` separately so these never get conflated, and lists each
+imported target with its own status.
+
+### Cross-runtime example: Codex/gpt-5.5 → Hermes/qwen3.6-27B
+
+```bash
+# Source project: Codex / gpt-5.5 / xhigh
+uv run omf import-run codex \
+  --log .agent/codex.log \
+  --goal "triage repo issue" \
+  --test-result .agent/pytest.txt \
+  --artifact-root .agent/artifacts \
+  --model gpt-5.5
+
+uv run omf promote <evidence_id> \
+  --name repo_issue_triage \
+  --description "Repository issue triage capability"
+
+uv run omf capability export repo_issue_triage \
+  --target hermes \
+  --target-model qwen3.6-27b \
+  --source-reasoning-effort xhigh \
+  --source-context-tokens 64000 \
+  --target-context-tokens 16000 \
+  --include-evidence redacted \
+  --out .omf/exports/repo_issue_triage-hermes-qwen36
+
+# Target project: Hermes / qwen3.6-27B
+uv run omf capability import .omf/exports/repo_issue_triage-hermes-qwen36 \
+  --runtime hermes \
+  --model qwen3.6-27b \
+  --project target-repo \
+  --available-tool file_system \
+  --validate
+```
+
+The export records the bundle under the source package's `exports/`, and the
+import writes a target overlay under
+`capabilities/repo_issue_triage/imports/hermes-qwen3.6-27b/`. Using
+`--include-evidence redacted` carries content-stripped source evidence so the
+target project can verify capability lineage offline.
+
 ## Safety Model
 
 OMF records command intent and risk. Commands classified as write, destructive,
@@ -150,6 +206,8 @@ execute. Export bundles are also gated by explicit approval.
   [LangGraph-based Artifact Pipeline Design](oh-my-field.md#langgraph-based-artifact-pipeline-design)
 - Runtime portability and export/import:
   [Runtime Exporter](oh-my-field.md#runtime-exporter)
+- Portability state definitions:
+  [Portability Lifecycle](oh-my-field.md#portability-lifecycle)
 - Security and permission model:
   [Security / Permission Boundary](oh-my-field.md#security--permission-boundary)
 

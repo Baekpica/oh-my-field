@@ -231,10 +231,27 @@
 - capability의 성능, 안정성, 비용, 재현성, 사용자 개입률 평가
 - 여러 모델 또는 runtime 간 비교 지원
 
+## Portability Lifecycle
+
+capability의 portability 상태는 네 단계로 구분한다. "export 가능"과 "target에서 실제로
+동작"을 섞지 않기 위함이다.
+
+- **exported**: capability가 target runtime용 bundle로 변환된 상태 (`/capability export`)
+- **imported**: bundle이 target project에 materialized된 상태 (`/capability import`)
+- **validated**: target runtime/model/project metadata 기준 target-side 검증을 통과한
+  상태 (`/capability import --validate`)
+- **portable**: 최소 하나 이상의 target import가 validated된 상태
+
+`/health`는 export_status, import_status, validation_status를 분리해 보고하므로 위
+상태가 혼동되지 않는다. export는 source package의 `exports/`에, import는
+`imports/<target>/target.overlay.yaml`에 흔적을 남긴다.
+
 ## /capability export
 
 - canonical capability package를 target runtime/model/project용 portability bundle로 export
 - `portability.yaml`, source runtime/model/project metadata, evidence links, context policy, harness metadata 생성
+- `provenance/`에 integrity proof와 source evidence pack 생성. `--include-evidence`로 `none|summary|redacted|full` 모드 선택(기본 `summary`)
+- source package의 `exports/<target>/export.yaml`에 export 흔적 기록
 - Codex target은 `AGENTS.md`, `capability.md`, `context.policy.md`, `harness.md` 생성
 - Claude Code target은 `CLAUDE.md`, `capability.md`, `examples.md`, `checks.md` 생성
 - Hermes target은 `SOUL.md`, `skills/<capability>.md`, `profile.patch.yaml`, `harness.md` 생성
@@ -242,9 +259,9 @@
 
 ## /capability import
 
-- portability bundle을 target project capability directory로 import
-- target runtime/model/project metadata를 확정하고 validation report 생성
-- tool compatibility, context remap 필요 여부, target eval set, next action 기록
+- portability bundle을 target project capability directory로 import (canonical `capability.yaml`은 source 기준 유지)
+- target 상태는 `imports/<target>/`에 분리 기록: `target.overlay.yaml`, `validation_report.yaml`, target용 `README.md`/`instructions.md`/`context.pack.md`
+- target.overlay에는 status, tool compatibility, portability score, instruction/context variant, human review override 기록
 - `--validate` 사용 시 target-side eval result를 자동 생성하고, 실패한 target validation을 evidence로 수집
 - validation report에는 portability score, source/target model delta, compact instruction, compressed context path 기록
 
