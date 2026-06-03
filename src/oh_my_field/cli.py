@@ -1148,6 +1148,11 @@ def _import_run(
     ] = None,
     field: Annotated[str, typer.Option("--field")] = "local",
     model: Annotated[str | None, typer.Option("--model")] = None,
+    max_artifact_bytes: Annotated[
+        int | None,
+        typer.Option("--max-artifact-bytes"),
+    ] = None,
+    redact_secrets: Annotated[bool, typer.Option("--redact-secrets")] = False,
     evidence_dir: Annotated[Path, typer.Option("--evidence-dir")] = Path(
         ".omf/evidence",
     ),
@@ -1168,6 +1173,8 @@ def _import_run(
                     *_agent_artifacts("artifact", artifact),
                 ),
                 artifact_roots=tuple(artifact_root or ()),
+                max_artifact_bytes=max_artifact_bytes,
+                redact_secrets=redact_secrets,
             ),
         )
     except (AdapterError, StorageError, ValidationError) as exc:

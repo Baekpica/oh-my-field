@@ -69,6 +69,7 @@ type WorkflowNodeStatus = Literal["pending", "pass", "fail", "skipped"]
 type PatchDecisionStatus = Literal["accepted", "rejected"]
 type PatchKind = Literal["prompt", "context", "harness"]
 type IntegrityVerificationStatus = Literal["pass", "fail"]
+type ArtifactStorageMode = Literal["inline", "external"]
 type ExportStatus = Literal["not_exported", "exported"]
 type ImportStatus = Literal["not_imported", "imported"]
 type TargetValidationStatus = Literal[
@@ -280,6 +281,9 @@ class CapturedTextFile(StrictModel):
     content: str
     size_bytes: int = Field(ge=0)
     sha256: str = Field(pattern=SHA256_PATTERN)
+    mime_type: str | None = None
+    storage_mode: ArtifactStorageMode = "inline"
+    redacted: bool = False
 
 
 class HarnessResult(StrictModel):

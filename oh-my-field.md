@@ -208,6 +208,8 @@
 
 - Codex, Claude Code, Hermes 등 외부 agent runtime의 run log를 evidence로 import
 - log, diff, test result, command output, artifact root를 읽어 EvidenceRecord 생성
+- 바이너리/비-UTF-8 artifact는 실패 대신 메타데이터(mime_type, size, sha256)만 기록하고 storage_mode=external로 외부화
+- `--max-artifact-bytes`로 큰 artifact를 외부화하고, `--redact-secrets`로 stdout/로그의 api key/token/password/bearer/AWS key를 [REDACTED]로 치환
 - OMF가 agent를 실행하는 것이 아니라, 외부 agent가 만든 artifact를 OMF evidence로 가져오는 명령
 
 ## /capture

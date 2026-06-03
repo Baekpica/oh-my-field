@@ -1,9 +1,12 @@
 import hashlib
+import mimetypes
+import re
 import secrets
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Final
 
 from pydantic import Field
 
@@ -89,6 +92,8 @@ class AgentImportRequest(StrictModel):
     evidence_dir: Path
     artifacts: tuple[AgentArtifactInput, ...] = ()
     artifact_roots: tuple[Path, ...] = ()
+    max_artifact_bytes: int | None = Field(default=None, ge=1)
+    redact_secrets: bool = False
 
 
 class AgentImportSummary(StrictModel):
@@ -113,7 +118,14 @@ def import_agent_run(
             *_discover_artifacts(request.artifact_roots, request.log_path),
         ),
     )
-    files = tuple(_read_artifact(artifact) for artifact in artifact_inputs)
+    files = tuple(
+        _read_artifact(
+            artifact,
+            max_bytes=request.max_artifact_bytes,
+            redact_secrets=request.redact_secrets,
+        )
+        for artifact in artifact_inputs
+    )
     evidence = EvidenceRecord(
         id=evidence_id,
         session_id=evidence_id,
@@ -177,19 +189,67 @@ def _token_suffix() -> str:
     return secrets.token_hex(4)
 
 
-def _read_artifact(artifact: AgentArtifactInput) -> CapturedTextFile:
+def _read_artifact(
+    artifact: AgentArtifactInput,
+    *,
+    max_bytes: int | None,
+    redact_secrets: bool,
+) -> CapturedTextFile:
     try:
-        content = artifact.path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError) as exc:
+        raw = artifact.path.read_bytes()
+    except OSError as exc:
         raise AgentArtifactReadError(path=artifact.path, reason=str(exc)) from exc
-    raw_content = content.encode("utf-8")
+    sha256 = hashlib.sha256(raw).hexdigest()
+    size_bytes = len(raw)
+    mime_type, _ = mimetypes.guess_type(str(artifact.path))
+    too_large = max_bytes is not None and size_bytes > max_bytes
+    text = None if too_large else _decode_utf8(raw)
+    if text is None:
+        # Binary or oversized: record metadata only, keep content external.
+        return CapturedTextFile(
+            role=artifact.role,
+            path=str(artifact.path),
+            content="",
+            size_bytes=size_bytes,
+            sha256=sha256,
+            mime_type=mime_type,
+            storage_mode="external",
+        )
+    redacted = False
+    if redact_secrets:
+        text, redacted = _redact_secrets(text)
     return CapturedTextFile(
         role=artifact.role,
         path=str(artifact.path),
-        content=content,
-        size_bytes=len(raw_content),
-        sha256=hashlib.sha256(raw_content).hexdigest(),
+        content=text,
+        size_bytes=size_bytes,
+        sha256=sha256,
+        mime_type=mime_type,
+        storage_mode="inline",
+        redacted=redacted,
     )
+
+
+def _decode_utf8(raw: bytes) -> str | None:
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+
+
+_SECRET_KEY_VALUE: Final = re.compile(
+    r"(?i)(\b(?:api[_-]?key|secret|token|password|passwd|pwd)\b\s*[:=]\s*)(\S+)",
+)
+_AWS_ACCESS_KEY: Final = re.compile(r"\bAKIA[0-9A-Z]{16}\b")
+_BEARER_TOKEN: Final = re.compile(r"(?i)(bearer\s+)\S+")
+_REDACTED: Final = "[REDACTED]"
+
+
+def _redact_secrets(text: str) -> tuple[str, bool]:
+    redacted, key_value = _SECRET_KEY_VALUE.subn(rf"\1{_REDACTED}", text)
+    redacted, aws = _AWS_ACCESS_KEY.subn(_REDACTED, redacted)
+    redacted, bearer = _BEARER_TOKEN.subn(rf"\1{_REDACTED}", redacted)
+    return redacted, bool(key_value + aws + bearer)
 
 
 def _discover_artifacts(
