@@ -63,6 +63,7 @@ from oh_my_field.replay import ReplayError, ReplayRequest, run_replay_workflow
 from oh_my_field.review import ReviewError, ReviewRequest, run_review_workflow
 from oh_my_field.rollback import RollbackError, RollbackRequest, rollback_workflow
 from oh_my_field.storage import StorageError
+from oh_my_field.verify import VerifyError, VerifyRequest, verify_artifact
 
 app = typer.Typer(
     help="oh-my-field turns tacit know-how into reusable capabilities.",
@@ -752,6 +753,76 @@ def _agent_artifacts(
 app.command("import-run", help="Import an external agent run log as evidence.")(
     _import_run,
 )
+
+
+def _verify(
+    target_type: Annotated[
+        Literal[
+            "evidence",
+            "capability",
+            "replay",
+            "eval",
+            "context",
+            "learning",
+            "learning_patch",
+            "reflection",
+            "review",
+            "export",
+        ],
+        typer.Argument(),
+    ],
+    target_id: Annotated[str, typer.Argument()],
+    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
+        "capabilities",
+    ),
+    evidence_dir: Annotated[Path, typer.Option("--evidence-dir")] = Path(
+        ".omf/evidence",
+    ),
+    replay_dir: Annotated[Path, typer.Option("--replay-dir")] = Path(
+        ".omf/replays",
+    ),
+    eval_dir: Annotated[Path, typer.Option("--eval-dir")] = Path(".omf/evals"),
+    context_dir: Annotated[Path, typer.Option("--context-dir")] = Path(".omf/context"),
+    learning_dir: Annotated[Path, typer.Option("--learning-dir")] = Path(
+        ".omf/learning",
+    ),
+    learning_patch_dir: Annotated[
+        Path,
+        typer.Option("--learning-patch-dir"),
+    ] = Path(".omf/learning_patches"),
+    reflection_dir: Annotated[Path, typer.Option("--reflection-dir")] = Path(
+        ".omf/reflections",
+    ),
+    review_dir: Annotated[Path, typer.Option("--review-dir")] = Path(".omf/reviews"),
+    export_dir: Annotated[Path, typer.Option("--export-dir")] = Path(".omf/exports"),
+) -> None:
+    try:
+        result = verify_artifact(
+            VerifyRequest(
+                target_type=target_type,
+                target_id=target_id,
+                capabilities_dir=capabilities_dir,
+                evidence_dir=evidence_dir,
+                replay_dir=replay_dir,
+                eval_dir=eval_dir,
+                context_dir=context_dir,
+                learning_dir=learning_dir,
+                learning_patch_dir=learning_patch_dir,
+                reflection_dir=reflection_dir,
+                review_dir=review_dir,
+                export_dir=export_dir,
+            ),
+        )
+    except (VerifyError, StorageError, ValidationError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(result.model_dump_json())
+    if result.status == "fail":
+        raise typer.Exit(code=1)
+
+
+app.command("verify", help="Verify artifact integrity chain hashes.")(_verify)
 
 
 def _learn_patch(

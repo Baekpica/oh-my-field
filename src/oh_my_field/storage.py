@@ -320,6 +320,21 @@ def write_human_review(record: HumanReviewRecord, review_dir: Path) -> Path:
     return target_path
 
 
+def load_human_review(review_id: str, review_dir: Path) -> HumanReviewRecord:
+    review_path = _artifact_path(review_id, review_dir)
+    return _load_artifact(
+        "review",
+        review_id,
+        review_dir,
+        review_path,
+        HumanReviewRecord,
+    )
+
+
+def list_human_reviews(review_dir: Path) -> tuple[HumanReviewRecord, ...]:
+    return _list_artifacts("review", review_dir, HumanReviewRecord)
+
+
 def write_learning_export(export: LearningExport, learning_dir: Path) -> Path:
     target_path = learning_dir / f"{export.id}.json"
     _write_text_exclusive(target_path, export.model_dump_json(indent=2) + "\n")
@@ -423,6 +438,16 @@ def write_export_bundle(bundle: CapabilityExportBundle, export_dir: Path) -> Pat
     target_path = export_dir / bundle.capability_name / f"{bundle.id}.json"
     _write_text_exclusive(target_path, bundle.model_dump_json(indent=2) + "\n")
     return target_path
+
+
+def load_export_bundle(export_id: str, export_dir: Path) -> CapabilityExportBundle:
+    for export_path in sorted(export_dir.glob(f"*/{export_id}.json")):
+        return _load_artifact_path("export", export_path, CapabilityExportBundle)
+    raise ArtifactNotFoundError(
+        artifact_type="export",
+        artifact_id=export_id,
+        artifact_dir=export_dir,
+    )
 
 
 def write_workflow_run(record: WorkflowRunRecord, workflow_dir: Path) -> Path:

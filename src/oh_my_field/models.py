@@ -66,6 +66,7 @@ type HumanReviewStatus = Literal[
 type WorkflowRunStatus = Literal["running", "completed", "failed", "pending_review"]
 type WorkflowNodeStatus = Literal["pending", "pass", "fail", "skipped"]
 type PatchDecisionStatus = Literal["accepted", "rejected"]
+type IntegrityVerificationStatus = Literal["pass", "fail"]
 
 COMMAND_RISK_CATEGORIES: Final[tuple[CommandRiskCategory, ...]] = (
     "write",
@@ -205,6 +206,22 @@ class ArtifactIntegrityLink(StrictModel):
     artifact_id: str = Field(min_length=1)
     sha256: str = Field(pattern=SHA256_PATTERN)
     previous_sha256: str | None = Field(default=None, pattern=SHA256_PATTERN)
+
+
+class IntegrityVerificationCheck(StrictModel):
+    artifact_type: str = Field(min_length=1)
+    artifact_id: str = Field(min_length=1)
+    status: IntegrityVerificationStatus
+    message: str = Field(min_length=1)
+    expected_sha256: str | None = Field(default=None, pattern=SHA256_PATTERN)
+    actual_sha256: str | None = Field(default=None, pattern=SHA256_PATTERN)
+
+
+class IntegrityVerificationResult(StrictModel):
+    target_type: str = Field(min_length=1)
+    target_id: str = Field(min_length=1)
+    status: IntegrityVerificationStatus
+    checks: tuple[IntegrityVerificationCheck, ...]
 
 
 class HumanReview(StrictModel):
