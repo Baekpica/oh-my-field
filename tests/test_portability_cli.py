@@ -1169,6 +1169,45 @@ def test_capability_remap_resolves_context_for_validation(tmp_path: Path) -> Non
     )
 
 
+def test_model_profile_marks_downgrade(tmp_path: Path) -> None:
+    source_caps = tmp_path / "src"
+    target_caps = tmp_path / "tgt"
+    export_dir = tmp_path / "bundle"
+    _seed_hermes_bundle(source_caps, export_dir)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "capability",
+            "import",
+            str(export_dir),
+            "--runtime",
+            "hermes",
+            "--model",
+            "qwen3.6-27b",
+            "--available-tool",
+            "file_system",
+            "--capabilities-dir",
+            str(target_caps),
+            "--eval-dir",
+            str(tmp_path / "evals"),
+            "--evidence-dir",
+            str(tmp_path / "evidence"),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = CapabilityImportOutput.model_validate_json(result.stdout)
+    report = yaml.safe_load(
+        Path(output.validation_report_path).read_text(encoding="utf-8"),
+    )
+    delta = report["model_delta"]
+    assert delta["downgrade"]
+    assert delta["source_profile"]["model_class"] == "frontier"
+    assert delta["target_profile"]["model_class"] == "local"
+    assert delta["target_profile"]["context_tokens"] == 32768
+
+
 class HealthEntriesOutput(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 

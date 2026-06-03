@@ -43,6 +43,8 @@ type ValidationStatus = Literal["needs_validation", "needs_adaptation", "validat
 type ToolCompatibilityStatus = Literal["pass", "partial", "unknown"]
 type EvidenceInclusionMode = Literal["none", "summary", "redacted", "full"]
 type ImportCollisionPolicy = Literal["fail", "merge", "version", "overwrite"]
+type ModelClass = Literal["frontier", "standard", "local"]
+type CapabilityTier = Literal["high", "medium", "low"]
 type YamlValue = (
     str | int | float | bool | None | list["YamlValue"] | dict[str, "YamlValue"]
 )
@@ -137,11 +139,41 @@ class PortabilityCompatibility(StrictModel):
     compression_required: bool = False
 
 
+class ModelProfile(StrictModel):
+    model_class: ModelClass = "standard"
+    context_tokens: int | None = Field(default=None, ge=1)
+    tool_use: CapabilityTier = "medium"
+    reasoning: CapabilityTier = "medium"
+
+
+DEFAULT_MODEL_PROFILES: dict[str, ModelProfile] = {
+    "gpt-5.5": ModelProfile(
+        model_class="frontier",
+        context_tokens=256000,
+        tool_use="high",
+        reasoning="high",
+    ),
+    "qwen3.6-27b": ModelProfile(
+        model_class="local",
+        context_tokens=32768,
+        tool_use="medium",
+        reasoning="medium",
+    ),
+}
+_LOCAL_MODEL_MARKERS = ("mini", "small", "local", "qwen", "7b", "13b", "27b")
+_FRONTIER_MODEL_MARKERS = ("gpt-5", "opus", "sonnet", "gemini-2", "frontier")
+_CLASS_RANK: dict[ModelClass, int] = {"local": 1, "standard": 2, "frontier": 3}
+_TIER_RANK: dict[CapabilityTier, int] = {"low": 1, "medium": 2, "high": 3}
+
+
 class PortabilityModelDelta(StrictModel):
     source_model: str | None = None
     target_model: str | None = None
     model_changed: bool = False
     transfer_type: tuple[str, ...] = ()
+    source_profile: ModelProfile | None = None
+    target_profile: ModelProfile | None = None
+    downgrade: bool = False
 
 
 class PortabilityAdaptation(StrictModel):
@@ -1565,22 +1597,49 @@ def _portability_readiness(
 
 
 def _model_delta(portability: PortabilityManifest) -> PortabilityModelDelta:
+    source_model = portability.source.model
+    target_model = portability.target.model
     return PortabilityModelDelta(
-        source_model=portability.source.model,
-        target_model=portability.target.model,
-        model_changed=portability.source.model != portability.target.model,
+        source_model=source_model,
+        target_model=target_model,
+        model_changed=source_model != target_model,
         transfer_type=portability.adaptation.transfer_type,
+        source_profile=None if source_model is None else _model_profile(source_model),
+        target_profile=None if target_model is None else _model_profile(target_model),
+        downgrade=_model_downgrade(portability),
     )
 
 
 def _model_downgrade(portability: PortabilityManifest) -> bool:
-    if portability.source.model is None or portability.target.model is None:
+    source = portability.source.model
+    target = portability.target.model
+    if source is None or target is None or source == target:
         return False
-    if portability.source.model == portability.target.model:
-        return False
-    target = portability.target.model.casefold()
-    downgrade_markers = ("mini", "small", "local", "qwen", "27b", "7b")
-    return any(marker in target for marker in downgrade_markers)
+    return _profile_rank(_model_profile(target)) < _profile_rank(_model_profile(source))
+
+
+def _model_profile(model: str) -> ModelProfile:
+    profile = DEFAULT_MODEL_PROFILES.get(model.casefold())
+    if profile is not None:
+        return profile
+    return _infer_model_profile(model)
+
+
+def _infer_model_profile(model: str) -> ModelProfile:
+    name = model.casefold()
+    if any(marker in name for marker in _LOCAL_MODEL_MARKERS):
+        return ModelProfile(model_class="local", tool_use="medium", reasoning="medium")
+    if any(marker in name for marker in _FRONTIER_MODEL_MARKERS):
+        return ModelProfile(model_class="frontier", tool_use="high", reasoning="high")
+    return ModelProfile()
+
+
+def _profile_rank(profile: ModelProfile) -> tuple[int, int, int]:
+    return (
+        _CLASS_RANK[profile.model_class],
+        _TIER_RANK[profile.reasoning],
+        _TIER_RANK[profile.tool_use],
+    )
 
 
 def _context_remap_required(portability: PortabilityManifest) -> bool:
