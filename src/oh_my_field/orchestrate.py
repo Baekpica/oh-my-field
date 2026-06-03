@@ -103,6 +103,7 @@ class OrchestrateRequest(StrictModel):
     command_cwd: Path = Path()
     command_timeout_seconds: int = Field(default=60, ge=1)
     approve_command_risk: bool = False
+    allow_env: tuple[str, ...] = ()
     harness_commands: tuple[str, ...] = ()
     checklist_items: tuple[EvalChecklistItem, ...] = ()
     rubric_scores: tuple[EvalRubricScore, ...] = ()
@@ -275,6 +276,7 @@ def _run_capture_node(record: WorkflowRunRecord) -> WorkflowRunRecord:
             command_cwd=Path(config.command_cwd),
             command_timeout_seconds=config.command_timeout_seconds,
             approve_command_risk=config.approve_command_risk,
+            allow_env=config.allow_env,
         ),
     )
     status = "pass"
@@ -353,6 +355,7 @@ def _run_replay_node(record: WorkflowRunRecord) -> WorkflowRunRecord:
             command_cwd=Path(config.command_cwd),
             command_timeout_seconds=config.command_timeout_seconds,
             approve_command_risk=config.approve_command_risk,
+            allow_env=config.allow_env,
         ),
     )
     status = "pass" if summary.harness_status == "pass" else "fail"
@@ -387,6 +390,7 @@ def _run_eval_node(record: WorkflowRunRecord) -> WorkflowRunRecord:
             command_cwd=Path(config.command_cwd),
             command_timeout_seconds=config.command_timeout_seconds,
             approve_command_risk=config.approve_command_risk,
+            allow_env=config.allow_env,
         ),
     )
     return _record_node(
@@ -439,6 +443,7 @@ def _config_from_request(request: OrchestrateRequest) -> WorkflowRunConfig:
         command_cwd=str(request.command_cwd),
         command_timeout_seconds=request.command_timeout_seconds,
         approve_command_risk=request.approve_command_risk,
+        allow_env=request.allow_env,
         harness_commands=request.harness_commands,
         checklist_items=request.checklist_items,
         rubric_scores=request.rubric_scores,

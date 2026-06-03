@@ -182,6 +182,8 @@ def test_capture_blocks_write_command_without_explicit_approval(
     assert execution.risk_categories == ("write",)
     assert execution.approval_required
     assert not execution.approved
+    assert execution.env_policy == "minimal"
+    assert execution.cwd_inside_project is False
 
 
 def test_capture_executes_write_command_with_explicit_approval(

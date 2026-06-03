@@ -1,3 +1,4 @@
+import os
 import shlex
 import subprocess
 import time
@@ -51,6 +52,17 @@ PRODUCTION_COMMANDS: Final = frozenset(
     {"aws", "docker", "helm", "kubectl", "terraform"}
 )
 PAID_COMMANDS: Final = frozenset({"aws", "gcloud", "openai", "stripe"})
+DEFAULT_ENV_ALLOWLIST: Final = ("PATH", "HOME", "TMPDIR")
+DANGEROUS_ENV_NAMES: Final = frozenset(
+    {
+        "ANTHROPIC_API_KEY",
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "GITHUB_TOKEN",
+        "OPENAI_API_KEY",
+        "SLACK_BOT_TOKEN",
+    },
+)
 
 
 class CommandExecutionError(Exception):
@@ -63,6 +75,8 @@ class CommandExecutionRequest:
     cwd: Path
     timeout_seconds: int
     approve_risk: bool = False
+    allow_env: tuple[str, ...] = ()
+    project_root: Path | None = None
     approval_required_categories: tuple[CommandRiskCategory, ...] = (
         COMMAND_RISK_CATEGORIES
     )
@@ -74,18 +88,38 @@ class CommandRiskAssessment:
     approval_required: bool
 
 
+@dataclass(frozen=True, slots=True)
+class CommandEnvironment:
+    values: dict[str, str]
+    allowed: tuple[str, ...]
+    blocked: tuple[str, ...]
+
+
 def execute_shell_command(request: CommandExecutionRequest) -> CommandExecution:
     started = time.perf_counter()
     risk = assess_command_risk(
         request.command,
         approval_required_categories=request.approval_required_categories,
     )
+    environment = _command_environment(request.allow_env)
+    cwd = request.cwd.resolve()
+    project_root = (request.project_root or Path.cwd()).resolve()
+    cwd_inside_project = _is_relative_to(cwd, project_root)
     if risk.approval_required and not request.approve_risk:
-        return _blocked_execution(request, risk)
+        return _blocked_execution(
+            request,
+            risk,
+            environment=environment,
+            cwd=cwd,
+            cwd_inside_project=cwd_inside_project,
+        )
     try:
+        # Legacy command strings intentionally execute through the shell; risk and
+        # env/cwd metadata are recorded so public users can audit the boundary.
         completed = subprocess.run(  # noqa: S602
             request.command,
-            cwd=request.cwd,
+            cwd=cwd,
+            env=environment.values,
             shell=True,
             text=True,
             capture_output=True,
@@ -96,7 +130,7 @@ def execute_shell_command(request: CommandExecutionRequest) -> CommandExecution:
         duration_ms = _elapsed_ms(started)
         return CommandExecution(
             command=request.command,
-            cwd=str(request.cwd),
+            cwd=str(cwd),
             exit_code=124,
             stdout=_optional_text(exc.stdout),
             stderr=_optional_text(exc.stderr)
@@ -105,13 +139,16 @@ def execute_shell_command(request: CommandExecutionRequest) -> CommandExecution:
             risk_categories=risk.categories,
             approval_required=risk.approval_required,
             approved=request.approve_risk and risk.approval_required,
+            allowed_env=environment.allowed,
+            blocked_env=environment.blocked,
+            cwd_inside_project=cwd_inside_project,
         )
     except OSError as exc:
         raise CommandExecutionError(str(exc)) from exc
 
     return CommandExecution(
         command=request.command,
-        cwd=str(request.cwd),
+        cwd=str(cwd),
         exit_code=completed.returncode,
         stdout=completed.stdout,
         stderr=completed.stderr,
@@ -119,6 +156,9 @@ def execute_shell_command(request: CommandExecutionRequest) -> CommandExecution:
         risk_categories=risk.categories,
         approval_required=risk.approval_required,
         approved=request.approve_risk and risk.approval_required,
+        allowed_env=environment.allowed,
+        blocked_env=environment.blocked,
+        cwd_inside_project=cwd_inside_project,
     )
 
 
@@ -160,18 +200,48 @@ def assess_command_risk(
 def _blocked_execution(
     request: CommandExecutionRequest,
     risk: CommandRiskAssessment,
+    *,
+    environment: CommandEnvironment,
+    cwd: Path,
+    cwd_inside_project: bool,
 ) -> CommandExecution:
     categories = ", ".join(risk.categories)
     return CommandExecution(
         command=request.command,
-        cwd=str(request.cwd),
+        cwd=str(cwd),
         exit_code=126,
         stderr=f"command requires approval for risk categories: {categories}",
         duration_ms=0,
         risk_categories=risk.categories,
         approval_required=True,
         approved=False,
+        allowed_env=environment.allowed,
+        blocked_env=environment.blocked,
+        cwd_inside_project=cwd_inside_project,
     )
+
+
+def _command_environment(allow_env: tuple[str, ...]) -> CommandEnvironment:
+    requested = _normalize_env_names(allow_env)
+    names = (*DEFAULT_ENV_ALLOWLIST, *requested)
+    values = {
+        name: os.environ[name] for name in dict.fromkeys(names) if name in os.environ
+    }
+    blocked = tuple(
+        name
+        for name in sorted(DANGEROUS_ENV_NAMES)
+        if name in os.environ and name not in requested
+    )
+    allowed = tuple(name for name in requested if name in values)
+    return CommandEnvironment(values=values, allowed=allowed, blocked=blocked)
+
+
+def _normalize_env_names(names: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(dict.fromkeys(name for name in names if name))
+
+
+def _is_relative_to(path: Path, root: Path) -> bool:
+    return path == root or root in path.parents
 
 
 def _shell_tokens(command: str) -> tuple[str, ...]:

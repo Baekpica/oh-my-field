@@ -386,6 +386,7 @@ class CapabilityValidationRequest(StrictModel):
     command_cwd: Path = Path()
     command_timeout_seconds: int = Field(default=600, ge=1)
     approve_command_risk: bool = False
+    allow_env: tuple[str, ...] = ()
 
 
 class CapabilityValidationSummary(StrictModel):
@@ -827,6 +828,7 @@ def _run_target_hook(
             cwd=request.command_cwd,
             timeout_seconds=request.command_timeout_seconds,
             approve_risk=request.approve_command_risk,
+            allow_env=request.allow_env,
         ),
     )
     plan = TargetRunPlan(

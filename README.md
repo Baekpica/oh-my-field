@@ -210,7 +210,17 @@ external, credential, production, or paid risk are recorded but not executed
 unless the command receives explicit approval.
 
 Use `--approve-command-risk` only when you intentionally want a risky command to
-execute. Export bundles are also gated by explicit approval.
+execute. Command strings are legacy shell strings, so treat `--command`,
+`--harness-command`, and `--run-command` as shell execution surfaces. OMF records
+the cwd, risk categories, approval state, shell mode, and environment policy for
+each command execution.
+
+Commands run with a minimal environment by default. OMF keeps `PATH`, `HOME`,
+and `TMPDIR`, blocks common secret-bearing variables such as `OPENAI_API_KEY`,
+`ANTHROPIC_API_KEY`, `AWS_SECRET_ACCESS_KEY`, and `GITHUB_TOKEN`, and records
+blocked variable names in the execution record. Pass a variable explicitly with
+`--allow-env NAME` only when the command needs it. Export bundles are also gated
+by explicit approval.
 
 ## Learn More
 

@@ -255,6 +255,7 @@ def _execute_command(
                 cwd=request.command_cwd,
                 timeout_seconds=request.command_timeout_seconds,
                 approve_risk=request.approve_command_risk,
+                allow_env=request.allow_env,
                 approval_required_categories=(
                     manifest.workflow_control.approval_required_actions
                 ),

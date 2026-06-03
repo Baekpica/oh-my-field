@@ -159,6 +159,7 @@ def _capture(
         bool,
         typer.Option("--approve-command-risk"),
     ] = False,
+    allow_env: Annotated[list[str] | None, typer.Option("--allow-env")] = None,
     feedback: Annotated[list[str] | None, typer.Option("--feedback")] = None,
     user_intervention: Annotated[
         list[str] | None,
@@ -208,6 +209,7 @@ def _capture(
         command_cwd=command_cwd,
         command_timeout_seconds=command_timeout_seconds,
         approve_command_risk=approve_command_risk,
+        allow_env=tuple(allow_env or ()),
         retries=retries,
         feedback=tuple(feedback or ()),
         user_interventions=tuple(user_intervention or ()),
@@ -499,6 +501,7 @@ def _capability_validate(
         bool,
         typer.Option("--approve-command-risk"),
     ] = False,
+    allow_env: Annotated[list[str] | None, typer.Option("--allow-env")] = None,
     capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
         "capabilities",
     ),
@@ -523,6 +526,7 @@ def _capability_validate(
                 command_cwd=command_cwd,
                 command_timeout_seconds=command_timeout_seconds,
                 approve_command_risk=approve_command_risk,
+                allow_env=tuple(allow_env or ()),
             ),
         )
     except (PortabilityError, StorageError, ValidationError) as exc:
@@ -657,6 +661,7 @@ def _replay(
         bool,
         typer.Option("--approve-command-risk"),
     ] = False,
+    allow_env: Annotated[list[str] | None, typer.Option("--allow-env")] = None,
     matrix: Annotated[list[str] | None, typer.Option("--matrix")] = None,
 ) -> None:
     try:
@@ -669,6 +674,7 @@ def _replay(
             command_cwd=command_cwd,
             command_timeout_seconds=command_timeout_seconds,
             approve_command_risk=approve_command_risk,
+            allow_env=tuple(allow_env or ()),
         )
         profiles = _matrix_profiles(matrix)
         if profiles:
@@ -757,6 +763,7 @@ def _eval(
         bool,
         typer.Option("--approve-command-risk"),
     ] = False,
+    allow_env: Annotated[list[str] | None, typer.Option("--allow-env")] = None,
 ) -> None:
     try:
         request = EvalRequest(
@@ -777,6 +784,7 @@ def _eval(
             command_cwd=command_cwd,
             command_timeout_seconds=command_timeout_seconds,
             approve_command_risk=approve_command_risk,
+            allow_env=tuple(allow_env or ()),
         )
         profiles = _matrix_profiles(matrix)
         if profiles:
@@ -1425,6 +1433,7 @@ def _run(
         bool,
         typer.Option("--approve-command-risk"),
     ] = False,
+    allow_env: Annotated[list[str] | None, typer.Option("--allow-env")] = None,
     field: Annotated[str, typer.Option("--field")] = "local",
     runtime: Annotated[str, typer.Option("--runtime")] = "codex",
     model: Annotated[str | None, typer.Option("--model")] = None,
@@ -1485,6 +1494,7 @@ def _run(
         command_cwd=command_cwd,
         command_timeout_seconds=command_timeout_seconds,
         approve_command_risk=approve_command_risk,
+        allow_env=tuple(allow_env or ()),
         harness_commands=tuple(harness_command or ()),
         checklist_items=_eval_checklist_items(
             passes=checklist_pass,

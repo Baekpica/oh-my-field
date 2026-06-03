@@ -41,6 +41,7 @@ type CommandRiskCategory = Literal[
     "production_write",
     "paid_operation",
 ]
+type CommandEnvPolicy = Literal["minimal"]
 type NetworkPolicy = Literal["disabled", "internal_only", "allowed"]
 type ReviewTargetType = Literal["evidence", "capability", "replay", "eval"]
 type HumanReviewAction = Literal[
@@ -140,6 +141,11 @@ class CommandExecution(StrictModel):
     risk_categories: tuple[CommandRiskCategory, ...] = ()
     approval_required: bool = False
     approved: bool = False
+    shell: bool = True
+    env_policy: CommandEnvPolicy = "minimal"
+    allowed_env: tuple[str, ...] = ()
+    blocked_env: tuple[str, ...] = ()
+    cwd_inside_project: bool = True
 
 
 class CostMetrics(StrictModel):
@@ -584,6 +590,7 @@ class WorkflowRunConfig(StrictModel):
     command_cwd: str = Field(min_length=1)
     command_timeout_seconds: int = Field(ge=1)
     approve_command_risk: bool = False
+    allow_env: tuple[str, ...] = ()
     harness_commands: tuple[str, ...] = ()
     checklist_items: tuple[EvalChecklistItem, ...] = ()
     rubric_scores: tuple[EvalRubricScore, ...] = ()
