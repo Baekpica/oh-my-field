@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from oh_my_field.execution import (
+    DANGEROUS_ENV_NAMES,
     CommandExecutionRequest,
     assess_command_risk,
     execute_shell_command,
@@ -75,6 +76,8 @@ def test_execute_shell_command_records_blocked_dangerous_environment(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    for name in DANGEROUS_ENV_NAMES:
+        monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("OPENAI_API_KEY", "secret")
 
     execution = execute_shell_command(
