@@ -137,7 +137,7 @@ def make_manifest() -> CapabilityManifest:
         source_evidence_id="20260602T010203Z-deadbeef",
         normalized_goal="triage repo issue",
         inputs=("goal",),
-        workflow=WorkflowManifest(graph="langgraph", nodes=("parse_goal",)),
+        workflow=WorkflowManifest(graph="langgraph", nodes=("import_evidence",)),
         harness=HarnessResult(status="pass", checks=("schema_valid",)),
         runtime=RuntimeInfo(name="codex", model="gpt-5.5"),
         promotion_criteria=PromotionCriteria(

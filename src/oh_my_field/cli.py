@@ -1314,7 +1314,10 @@ def _run(
     typer.echo(summary.model_dump_json())
 
 
-app.command("run", help="Run capture, promotion, context, replay, eval, and learn.")(
+app.command(
+    "run",
+    help="Process local OMF artifacts through the advanced pipeline.",
+)(
     _run,
 )
 
@@ -1603,15 +1606,15 @@ app.command("export", help="Export a capability bundle after explicit approval."
 def _rollback(
     run_id: Annotated[str, typer.Argument()],
     to_node: Annotated[
-        Literal[
-            "observe_capture",
-            "structure_promote",
-            "context_pack",
-            "execute_replay",
-            "evaluate_harness",
-            "learn_export",
-        ],
-        typer.Option("--to-node"),
+        str,
+        typer.Option(
+            "--to-node",
+            help=(
+                "Pipeline node: import_evidence, promote_capability, "
+                "pack_context, run_verification, evaluate_capability, or "
+                "record_learning_patch."
+            ),
+        ),
     ],
     reason: Annotated[str, typer.Option("--reason")] = "manual rollback",
     workflow_dir: Annotated[Path, typer.Option("--workflow-dir")] = Path(

@@ -21,7 +21,8 @@ type EvalStatus = Literal["pass", "fail"]
 type CapabilityStatus = Literal["candidate", "validated", "stable", "deprecated"]
 type WorkflowGraph = Literal["langgraph"]
 type SuccessLabel = Literal["success", "failure", "unknown"]
-type RuntimeAdapterName = Literal["codex", "claude_code", "hermes"]
+type AgentImporterName = Literal["codex", "claude_code", "hermes"]
+type RuntimeAdapterName = AgentImporterName
 type ContextSourceType = Literal[
     "repo",
     "docs",
@@ -95,12 +96,21 @@ class RuntimeRunSource(StrictModel):
     path: str = Field(min_length=1)
 
 
-class RuntimeAdapterSpec(StrictModel):
-    name: RuntimeAdapterName
+class AgentRunSource(StrictModel):
+    importer: AgentImporterName
+    path: str = Field(min_length=1)
+
+
+class AgentImporterSpec(StrictModel):
+    name: AgentImporterName
     display_name: str = Field(min_length=1)
     captures: tuple[str, ...] = ()
     replays: tuple[str, ...] = ()
     artifact_roles: tuple[CapturedFileRole, ...] = ()
+
+
+class RuntimeAdapterSpec(AgentImporterSpec):
+    pass
 
 
 class ToolCallRecord(StrictModel):

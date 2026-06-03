@@ -88,7 +88,7 @@ def make_manifest() -> CapabilityManifest:
         source_evidence_id="20260602T010203Z-deadbeef",
         normalized_goal="triage repo issue",
         inputs=("goal",),
-        workflow=WorkflowManifest(graph="langgraph", nodes=("parse_goal",)),
+        workflow=WorkflowManifest(graph="langgraph", nodes=("import_evidence",)),
         harness=HarnessResult(status="pass", checks=("schema_valid",)),
         runtime=RuntimeInfo(name="codex", model="gpt-5.5"),
         promotion_criteria=PromotionCriteria(
@@ -99,7 +99,7 @@ def make_manifest() -> CapabilityManifest:
     )
 
 
-def test_learn_exports_evidence_as_learning_assets(tmp_path: Path) -> None:
+def test_record_learning_patchs_evidence_as_learning_assets(tmp_path: Path) -> None:
     evidence_dir = tmp_path / "evidence"
     capabilities_dir = tmp_path / "capabilities"
     learning_dir = tmp_path / "learning"

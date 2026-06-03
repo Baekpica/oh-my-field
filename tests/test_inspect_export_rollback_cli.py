@@ -162,7 +162,7 @@ def test_rollback_resets_workflow_to_requested_node(tmp_path: Path) -> None:
             "rollback",
             run.id,
             "--to-node",
-            "execute_replay",
+            "run_verification",
             "--reason",
             "rerun command with approval",
             "--workflow-dir",
@@ -174,17 +174,46 @@ def test_rollback_resets_workflow_to_requested_node(tmp_path: Path) -> None:
     output = RollbackOutput.model_validate_json(result.stdout)
     rolled_back = load_workflow_run(run.id, workflow_dir)
     assert output.status == "pending_review"
-    assert output.current_node == "execute_replay"
+    assert output.current_node == "run_verification"
     assert output.completed_nodes == (
-        "observe_capture",
-        "structure_promote",
-        "context_pack",
+        "import_evidence",
+        "promote_capability",
+        "pack_context",
     )
     assert output.cleared_artifacts == ("replay_id", "eval_id", "learning_id")
     assert rolled_back.replay_id is None
     assert rolled_back.eval_id is None
     assert rolled_back.learning_id is None
     assert rolled_back.context_id == "20260602T010207Z-facefeed"
+
+
+def test_rollback_accepts_legacy_node_alias(tmp_path: Path) -> None:
+    workflow_dir = tmp_path / "workflows"
+    run = make_workflow_run()
+    write_workflow_run(run, workflow_dir)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "rollback",
+            run.id,
+            "--to-node",
+            "execute_replay",
+            "--reason",
+            "legacy alias",
+            "--workflow-dir",
+            str(workflow_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = RollbackOutput.model_validate_json(result.stdout)
+    assert output.current_node == "run_verification"
+    assert output.completed_nodes == (
+        "import_evidence",
+        "promote_capability",
+        "pack_context",
+    )
 
 
 class ArtifactDirs(BaseModel):
@@ -258,7 +287,7 @@ def make_manifest() -> CapabilityManifest:
         source_evidence_id="20260602T010203Z-deadbeef",
         normalized_goal="triage repo issue",
         inputs=("goal",),
-        workflow=WorkflowManifest(graph="langgraph", nodes=("parse_goal",)),
+        workflow=WorkflowManifest(graph="langgraph", nodes=("import_evidence",)),
         harness=HarnessResult(status="pass", checks=("schema_valid",)),
         runtime=RuntimeInfo(name="codex", model="gpt-5.5"),
         promotion_criteria=PromotionCriteria(
@@ -329,12 +358,12 @@ def make_workflow_run() -> WorkflowRunRecord:
         goal="triage repo issue",
         status="completed",
         completed_nodes=(
-            "observe_capture",
-            "structure_promote",
-            "context_pack",
-            "execute_replay",
-            "evaluate_harness",
-            "learn_export",
+            "import_evidence",
+            "promote_capability",
+            "pack_context",
+            "run_verification",
+            "evaluate_capability",
+            "record_learning_patch",
         ),
         config=WorkflowRunConfig(
             capability_name="repo_issue_triage",
@@ -352,12 +381,16 @@ def make_workflow_run() -> WorkflowRunRecord:
             learning_dir=".omf/learning",
         ),
         nodes=(
-            WorkflowNodeResult(name="observe_capture", status="pass", message="ok"),
-            WorkflowNodeResult(name="structure_promote", status="pass", message="ok"),
-            WorkflowNodeResult(name="context_pack", status="pass", message="ok"),
-            WorkflowNodeResult(name="execute_replay", status="pass", message="ok"),
-            WorkflowNodeResult(name="evaluate_harness", status="pass", message="ok"),
-            WorkflowNodeResult(name="learn_export", status="pass", message="ok"),
+            WorkflowNodeResult(name="import_evidence", status="pass", message="ok"),
+            WorkflowNodeResult(name="promote_capability", status="pass", message="ok"),
+            WorkflowNodeResult(name="pack_context", status="pass", message="ok"),
+            WorkflowNodeResult(name="run_verification", status="pass", message="ok"),
+            WorkflowNodeResult(name="evaluate_capability", status="pass", message="ok"),
+            WorkflowNodeResult(
+                name="record_learning_patch",
+                status="pass",
+                message="ok",
+            ),
         ),
         evidence_id="20260602T010203Z-deadbeef",
         capability_name="repo_issue_triage",

@@ -201,6 +201,15 @@
 
 # Command Interface
 
+이 섹션은 전체 CLI 기능 레퍼런스다. README는 제품 소개, 설치, quick start만
+담고, 상세 기능 표면은 이 문서를 기준으로 관리한다.
+
+## /import-run
+
+- Codex, Claude Code, Hermes 등 외부 agent runtime의 run log를 evidence로 import
+- log, diff, test result, command output, artifact root를 읽어 EvidenceRecord 생성
+- OMF가 agent를 실행하는 것이 아니라, 외부 agent가 만든 artifact를 OMF evidence로 가져오는 명령
+
 ## /capture
 
 - 현재 agent 작업 세션의 로그, 프롬프트, 결과, 사용자 수정사항을 evidence로 저장
@@ -253,6 +262,68 @@
 
 - capability package의 `README.md` Capability Card를 읽거나 재생성
 - 사람이 읽는 capability 요약을 CLI에서 바로 확인 가능
+
+## /regression-case
+
+- 과거 실패나 중요한 기대 행동을 versioned eval set의 regression case로 기록
+- eval set은 이후 `/eval --eval-set`에서 재발 방지 기준으로 사용
+
+## /approve, /reject, /revise, /review
+
+- evidence, capability, replay, eval 대상에 human review signal 기록
+- approve/reject/revise는 자주 쓰는 action shortcut
+- review는 add_context, change_goal, mark_unsafe, create_regression_case 등 구조화된 review action 처리
+
+## /learn
+
+- capability와 누적 evidence에서 prompt/context/harness 개선 후보를 learning export로 생성
+- 자동으로 capability를 수정하지 않고, patch 후보를 검토 가능한 artifact로 남김
+
+## /learn-patch
+
+- learning export의 prompt/context/harness patch 후보를 accept/reject
+- accepted patch는 capability package metadata에 기록하고, rejected patch도 decision record로 보존
+
+## /verify
+
+- evidence, capability, replay, eval, context, learning, review, export artifact의 integrity link 검증
+- capability가 참조하는 source evidence lineage가 변조되지 않았는지 확인
+
+## /registry
+
+- capability registry를 조회하고 상태, eval count, pass rate, runtime coverage, integrity status 요약
+- 여러 capability를 운영할 때 health surface의 목록형 보기로 사용
+
+## /reflect
+
+- capability evidence와 eval result에서 failure category, retry strategy, patch 후보를 reflection report로 생성
+- 실패한 run을 다음 hardening action으로 연결하기 위한 분석 surface
+
+## /run
+
+- local OMF artifact pipeline을 한 번에 처리하는 advanced/dev 명령
+- capture, promote, context pack, replay, eval, learn artifact를 생성하지만 agent runtime을 대체하지 않음
+- 제품 quick start의 main flow는 `/import-run → /promote → /health`
+
+## /status, /resume, /rollback
+
+- advanced local artifact pipeline run의 상태를 확인, 재개, 특정 artifact node로 rollback
+- rollback node는 capability asset lifecycle 기준 이름을 사용: import_evidence, promote_capability, pack_context, run_verification, evaluate_capability, record_learning_patch
+
+## /dashboard
+
+- local HTML dashboard와 JSON snapshot API 제공
+- workflow state, approval request, review, eval, registry health를 한 화면에 요약
+
+## /inspect
+
+- evidence, capability, replay, eval, workflow, context, learning, reflection artifact를 read-only로 조회
+- 디버깅과 audit 확인을 위한 low-level inspection surface
+
+## /export
+
+- capability와 관련 evidence/eval/context/learning/reflection artifact를 approval-gated bundle로 export
+- runtime-specific portability export는 `/capability export`를 사용
 
 ## Command Grouping
 
@@ -550,10 +621,10 @@ promotion_criteria:
 - test, eval, rubric, schema validation, human approval gate 실행
 - capability 품질 측정 및 regression 관리
 
-## Runtime Adapter
+## Agent Importer
 
 - Codex, Claude Code, Hermes 등 외부 agent runtime의 run artifact import 담당
-- Codex / Claude Code / Hermes 같은 외부 agent runtime은 직접 재구현하지 않고, run log, diff, test result, command output, artifact를 evidence로 import하는 adapter를 제공
+- Codex / Claude Code / Hermes 같은 외부 agent runtime은 직접 재구현하지 않고, run log, diff, test result, command output, artifact를 evidence로 import하는 importer를 제공
 - runtime matrix replay/eval은 capability portability를 검증하기 위한 artifact를 생성하며, agent 자체의 장시간 실행 loop를 대체하지 않음
 
 ## Runtime Exporter
@@ -698,7 +769,7 @@ promotion_criteria:
 - Python 기반 API 및 artifact processing runtime 우선
 - FastAPI, Litestar 등 ASGI framework 사용 가능
 - CLI, MCP server, local API server, web dashboard가 동일한 capability registry와 evidence store를 공유하는 구조 지향
-- 업무 도메인별 tool adapter는 독립 모듈로 분리
+- 업무 도메인별 tool connector는 독립 모듈로 분리
 - agent runtime import/export, evidence storage, harness verification은 느슨하게 결합
 
 # Database / Storage
@@ -790,7 +861,7 @@ promotion_criteria:
   - database connector
 
 - MCP 기반 tool integration을 우선 고려
-- tool adapter는 capability package metadata에 명시되어야 함
+- tool connector는 capability package metadata에 명시되어야 함
 - 각 tool은 권한 수준과 실행 조건을 가져야 함
 - destructive action, external API call, credential access, production write, paid operation 등은 approval gate를 통해 제어
 
@@ -819,7 +890,7 @@ promotion_criteria:
   - external network disabled
   - local model only
   - local artifact store only
-  - internal tool adapter only
+  - internal tool connectors only
   - manual approval required for export
 
 - 이 구조는 보안, 규제, 사내망, 고객사 온프레미스 환경에서 agent workflow를 재현하기 위한 기반이 됨
@@ -828,21 +899,15 @@ promotion_criteria:
 
 - 초기 제품은 CLI-first
 - CLI는 사람과 agent가 모두 호출하기 쉬운 command surface 제공
-- 주요 명령은 다음을 중심으로 구성
-  - capture
-  - import-run
-  - promote
-  - context
-  - replay
-  - eval
-  - review
-  - learn
-  - learn-patch
-  - verify
-  - inspect
-  - rollback
-  - export
-  - dashboard
+- 사용자-facing 문서는 다음 mental model 기준으로 명령을 그룹화
+  - Create: import-run, capture, promote
+  - Harden: harden, regression-case, eval, learn, learn-patch
+  - Port: capability export, capability import
+  - Operate: health, registry, dashboard, verify
+  - Review: approve, reject, revise, review
+  - Advanced: replay, context, reflect, inspect, rollback, resume, run, export
+- 첫 사용자 흐름은 import-run → promote → health를 기본 quick start로 제시
+- context, verify, learn-patch, regression-case, run은 advanced/hardening surface에서 설명
 
 - 이후 web dashboard 또는 desktop workbench를 통해 다음 기능 제공 가능
   - capability registry 조회
@@ -889,7 +954,7 @@ promotion_criteria:
 # Configuration Philosophy
 
 - omf의 선호 환경은 “agent가 자유롭게 모든 것을 하도록 허용하는 환경”이 아님
-- omf는 agent의 작업을 capture, structure, verify, replay, improve할 수 있는 controlled reproducible runtime을 선호
+- omf는 agent가 만든 artifact를 capture, structure, verify, replay, improve할 수 있는 controlled reproducible artifact environment를 선호
 - 좋은 환경 구성은 agent의 자유도를 무한히 넓히는 것이 아니라, 업무 기준에 맞게 실행 경계를 명시하고 재현성을 높이는 것
 - 따라서 omf의 환경 구성 원칙은 다음과 같음
   - CLI-first

@@ -184,7 +184,7 @@ def make_workflow_run(status: WorkflowRunStatus = "running") -> WorkflowRunRecor
         updated_at=datetime(2026, 6, 2, 1, 2, 8, tzinfo=UTC),
         goal="triage repo issue",
         status=status,
-        current_node=None if status == "completed" else "observe_capture",
+        current_node=None if status == "completed" else "import_evidence",
         config=WorkflowRunConfig(
             capability_name="repo_issue",
             description="GitHub issue triage capability",

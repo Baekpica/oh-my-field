@@ -90,7 +90,7 @@ def make_manifest() -> CapabilityManifest:
             source_priority=("evidence", "repository"),
             evidence_recall_strategy="prefer prior successful evidence",
         ),
-        workflow=WorkflowManifest(graph="langgraph", nodes=("collect_context",)),
+        workflow=WorkflowManifest(graph="langgraph", nodes=("pack_context",)),
         harness=HarnessResult(status="pass", checks=("schema_valid",)),
         runtime=RuntimeInfo(name="codex", model="gpt-5.5"),
         promotion_criteria=PromotionCriteria(

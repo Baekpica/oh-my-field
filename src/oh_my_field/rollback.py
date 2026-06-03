@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final, Literal
+from typing import Final
 
 from pydantic import Field
 
@@ -13,21 +13,21 @@ from oh_my_field.models import (
 from oh_my_field.storage import load_workflow_run, write_workflow_run
 
 ROLLBACK_NODES: Final = (
-    "observe_capture",
-    "structure_promote",
-    "context_pack",
-    "execute_replay",
-    "evaluate_harness",
-    "learn_export",
+    "import_evidence",
+    "promote_capability",
+    "pack_context",
+    "run_verification",
+    "evaluate_capability",
+    "record_learning_patch",
 )
-type RollbackNode = Literal[
-    "observe_capture",
-    "structure_promote",
-    "context_pack",
-    "execute_replay",
-    "evaluate_harness",
-    "learn_export",
-]
+ROLLBACK_NODE_ALIASES: Final = {
+    "observe_capture": "import_evidence",
+    "structure_promote": "promote_capability",
+    "context_pack": "pack_context",
+    "execute_replay": "run_verification",
+    "evaluate_harness": "evaluate_capability",
+    "learn_export": "record_learning_patch",
+}
 
 
 class RollbackError(Exception):
@@ -44,7 +44,7 @@ class UnknownRollbackNodeError(RollbackError):
 
 class RollbackRequest(StrictModel):
     run_id: str = Field(pattern=EVIDENCE_ID_PATTERN)
-    to_node: RollbackNode
+    to_node: str = Field(min_length=1)
     reason: str = Field(default="manual rollback", min_length=1)
     workflow_dir: Path
 
@@ -76,20 +76,24 @@ def _rollback_record(
     record: WorkflowRunRecord,
     request: RollbackRequest,
 ) -> tuple[WorkflowRunRecord, tuple[str, ...]]:
-    target_index = _node_index(request.to_node)
+    target_node = _canonical_node(request.to_node)
+    target_index = _node_index(target_node)
+    completed_node_names = {
+        _canonical_node(node) for node in record.completed_nodes
+    }
     completed_nodes = tuple(
-        node for node in ROLLBACK_NODES[:target_index] if node in record.completed_nodes
+        node for node in ROLLBACK_NODES[:target_index] if node in completed_node_names
     )
     updates, cleared_artifacts = _artifact_resets(record, target_index)
     rollback_note = WorkflowNodeResult(
-        name=f"rollback_to_{request.to_node}",
+        name=f"rollback_to_{target_node}",
         status="pass",
-        message=f"rolled back to {request.to_node}: {request.reason}",
+        message=f"rolled back to {target_node}: {request.reason}",
     )
     rolled_back = record.model_copy(
         update={
             "status": "pending_review",
-            "current_node": request.to_node,
+            "current_node": target_node,
             "completed_nodes": completed_nodes,
             "failed_node": None,
             "failure_reason": None,
@@ -105,6 +109,10 @@ def _node_index(node: str) -> int:
         return ROLLBACK_NODES.index(node)
     except ValueError as exc:
         raise UnknownRollbackNodeError(node=node) from exc
+
+
+def _canonical_node(node: str) -> str:
+    return ROLLBACK_NODE_ALIASES.get(node, node)
 
 
 def _artifact_resets(

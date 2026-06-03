@@ -65,7 +65,7 @@ def test_dashboard_snapshot_surfaces_runtime_state_and_approvals(
     assert snapshot.metrics.pending_approval_count == 1
     assert snapshot.metrics.regression_case_count == 1
     assert snapshot.metrics.user_intervention_count == 1
-    assert snapshot.workflows[0].current_node == "execute_replay"
+    assert snapshot.workflows[0].current_node == "run_verification"
     assert snapshot.workflows[0].nodes[3].status == "running"
     assert snapshot.workflows[0].pending_approval_count == 1
     assert snapshot.approvals[0].target_type == "evidence"
@@ -231,7 +231,7 @@ def make_manifest(evidence_id: str, eval_id: str) -> CapabilityManifest:
         inputs=("goal",),
         workflow=WorkflowManifest(
             graph="langgraph",
-            nodes=("parse_goal", "run_harness"),
+            nodes=("import_evidence", "run_verification"),
         ),
         harness=HarnessResult(
             status="pass",
@@ -271,8 +271,8 @@ def make_workflow_record(
         updated_at=datetime(2026, 6, 2, 1, 2, 7, tzinfo=UTC),
         goal="triage repo issue",
         status="pending_review",
-        current_node="execute_replay",
-        completed_nodes=("observe_capture", "structure_promote", "context_pack"),
+        current_node="run_verification",
+        completed_nodes=("import_evidence", "promote_capability", "pack_context"),
         config=WorkflowRunConfig(
             capability_name="repo_issue_triage",
             description="GitHub issue triage capability",
@@ -294,17 +294,17 @@ def make_workflow_record(
         ),
         nodes=(
             WorkflowNodeResult(
-                name="observe_capture",
+                name="import_evidence",
                 status="pass",
                 message="captured",
             ),
             WorkflowNodeResult(
-                name="structure_promote",
+                name="promote_capability",
                 status="pass",
                 message="promoted",
             ),
             WorkflowNodeResult(
-                name="context_pack",
+                name="pack_context",
                 status="pass",
                 message="packed",
             ),

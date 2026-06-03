@@ -91,12 +91,12 @@ def test_run_executes_full_workflow_and_writes_checkpoints(
     record = load_workflow_run(output.run_id, tmp_path / "workflows")
     assert output.status == "completed"
     assert record.completed_nodes == (
-        "observe_capture",
-        "structure_promote",
-        "context_pack",
-        "execute_replay",
-        "evaluate_harness",
-        "learn_export",
+        "import_evidence",
+        "promote_capability",
+        "pack_context",
+        "run_verification",
+        "evaluate_capability",
+        "record_learning_patch",
     )
     assert record.evidence_id is not None
     assert record.capability_name == "repo_issue_triage"
@@ -188,9 +188,9 @@ def test_resume_continues_from_saved_checkpoint(tmp_path: Path) -> None:
     record = load_workflow_run(output.run_id, workflow_dir)
     assert output.status == "completed"
     assert record.completed_nodes[-3:] == (
-        "execute_replay",
-        "evaluate_harness",
-        "learn_export",
+        "run_verification",
+        "evaluate_capability",
+        "record_learning_patch",
     )
 
 
@@ -202,7 +202,7 @@ def test_status_reads_workflow_checkpoint(tmp_path: Path) -> None:
         updated_at=datetime(2026, 6, 2, 1, 2, 8, tzinfo=UTC),
         goal="triage repo issue",
         status="running",
-        current_node="evaluate_harness",
+        current_node="evaluate_capability",
         config=WorkflowRunConfig(
             capability_name="repo_issue_triage",
             description="GitHub issue triage capability",
@@ -229,7 +229,7 @@ def test_status_reads_workflow_checkpoint(tmp_path: Path) -> None:
     assert result.exit_code == 0
     output = WorkflowOutput.model_validate_json(result.stdout)
     assert output.status == "running"
-    assert output.current_node == "evaluate_harness"
+    assert output.current_node == "evaluate_capability"
 
 
 def make_evidence_record() -> EvidenceRecord:
@@ -252,7 +252,7 @@ def make_manifest() -> CapabilityManifest:
         source_evidence_id="20260602T010203Z-deadbeef",
         normalized_goal="triage repo issue",
         inputs=("goal",),
-        workflow=WorkflowManifest(graph="langgraph", nodes=("parse_goal",)),
+        workflow=WorkflowManifest(graph="langgraph", nodes=("import_evidence",)),
         harness=HarnessResult(status="pass", checks=("schema_valid",)),
         runtime=RuntimeInfo(name="codex", model="gpt-5.5"),
         promotion_criteria=PromotionCriteria(

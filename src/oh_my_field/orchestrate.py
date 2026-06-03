@@ -35,13 +35,21 @@ from oh_my_field.storage import (
 )
 
 ORCHESTRATOR_NODES: Final = (
-    "observe_capture",
-    "structure_promote",
-    "context_pack",
-    "execute_replay",
-    "evaluate_harness",
-    "learn_export",
+    "import_evidence",
+    "promote_capability",
+    "pack_context",
+    "run_verification",
+    "evaluate_capability",
+    "record_learning_patch",
 )
+NODE_ALIASES: Final = {
+    "observe_capture": "import_evidence",
+    "structure_promote": "promote_capability",
+    "context_pack": "pack_context",
+    "execute_replay": "run_verification",
+    "evaluate_harness": "evaluate_capability",
+    "learn_export": "record_learning_patch",
+}
 
 type Clock = Callable[[], datetime]
 type TokenFactory = Callable[[], str]
@@ -193,7 +201,7 @@ def _continue_workflow(
 ) -> WorkflowRunSummary:
     current = record
     for node in ORCHESTRATOR_NODES:
-        if node in current.completed_nodes:
+        if node in _completed_node_names(current):
             continue
         current = _checkpoint(
             current.model_copy(update={"current_node": node, "status": "running"}),
@@ -236,17 +244,18 @@ def _continue_workflow(
 
 
 def _run_node(record: WorkflowRunRecord, node: str) -> WorkflowRunRecord:
-    if node == "observe_capture":
+    node = _canonical_node(node)
+    if node == "import_evidence":
         return _run_capture_node(record)
-    if node == "structure_promote":
+    if node == "promote_capability":
         return _run_promote_node(record)
-    if node == "context_pack":
+    if node == "pack_context":
         return _run_context_node(record)
-    if node == "execute_replay":
+    if node == "run_verification":
         return _run_replay_node(record)
-    if node == "evaluate_harness":
+    if node == "evaluate_capability":
         return _run_eval_node(record)
-    if node == "learn_export":
+    if node == "record_learning_patch":
         return _run_learn_node(record)
     raise UnknownOrchestratorNodeError(node=node)
 
@@ -276,7 +285,7 @@ def _run_capture_node(record: WorkflowRunRecord) -> WorkflowRunRecord:
     return _record_node(
         record.model_copy(update={"evidence_id": summary.evidence_id}),
         WorkflowNodeResult(
-            name="observe_capture",
+            name="import_evidence",
             status=status,
             message=message,
             path=summary.evidence_path,
@@ -300,7 +309,7 @@ def _run_promote_node(record: WorkflowRunRecord) -> WorkflowRunRecord:
     return _record_node(
         record.model_copy(update={"capability_name": summary.capability_name}),
         WorkflowNodeResult(
-            name="structure_promote",
+            name="promote_capability",
             status="pass",
             message=f"promoted capability {summary.capability_name!r}",
             path=summary.manifest_path,
@@ -323,7 +332,7 @@ def _run_context_node(record: WorkflowRunRecord) -> WorkflowRunRecord:
     return _record_node(
         record.model_copy(update={"context_id": summary.context_id}),
         WorkflowNodeResult(
-            name="context_pack",
+            name="pack_context",
             status="pass",
             message=f"packed context {summary.context_id!r}",
             path=summary.context_path,
@@ -350,7 +359,7 @@ def _run_replay_node(record: WorkflowRunRecord) -> WorkflowRunRecord:
     return _record_node(
         record.model_copy(update={"replay_id": summary.replay_id}),
         WorkflowNodeResult(
-            name="execute_replay",
+            name="run_verification",
             status=status,
             message=(
                 f"replayed capability {summary.capability_name!r} "
@@ -383,7 +392,7 @@ def _run_eval_node(record: WorkflowRunRecord) -> WorkflowRunRecord:
     return _record_node(
         record.model_copy(update={"eval_id": summary.eval_id}),
         WorkflowNodeResult(
-            name="evaluate_harness",
+            name="evaluate_capability",
             status="pass" if summary.status == "pass" else "fail",
             message=f"evaluated capability with status {summary.status!r}",
             path=summary.eval_path,
@@ -405,7 +414,7 @@ def _run_learn_node(record: WorkflowRunRecord) -> WorkflowRunRecord:
     return _record_node(
         record.model_copy(update={"learning_id": summary.learning_id}),
         WorkflowNodeResult(
-            name="learn_export",
+            name="record_learning_patch",
             status="pass",
             message=f"exported learning asset {summary.learning_id!r}",
             path=summary.learning_path,
@@ -458,7 +467,7 @@ def _record_node(
     result: WorkflowNodeResult,
 ) -> WorkflowRunRecord:
     completed_nodes = record.completed_nodes
-    if result.status == "pass":
+    if result.status == "pass" and result.name not in _completed_node_names(record):
         completed_nodes = (*completed_nodes, result.name)
     return record.model_copy(
         update={
@@ -480,6 +489,14 @@ def _checkpoint(
 
 def _touch(record: WorkflowRunRecord, updated_at: datetime) -> WorkflowRunRecord:
     return record.model_copy(update={"updated_at": updated_at})
+
+
+def _canonical_node(node: str) -> str:
+    return NODE_ALIASES.get(node, node)
+
+
+def _completed_node_names(record: WorkflowRunRecord) -> set[str]:
+    return {_canonical_node(node) for node in record.completed_nodes}
 
 
 def _fail_node(

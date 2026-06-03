@@ -51,13 +51,13 @@ def test_import_run_captures_external_agent_log_and_artifacts(
     assert output.adapter == "codex"
     assert output.artifact_count == 3
     assert evidence.runtime.name == "codex"
-    assert evidence.runtime.tools == ("external_agent_log", "adapter:codex")
+    assert evidence.runtime.tools == ("external_agent_log", "importer:codex")
     assert [file.role for file in evidence.files] == [
         "artifact",
         "diff",
         "test_result",
     ]
-    assert evidence.tool_calls[0].tool == "runtime_adapter.capture_run"
+    assert evidence.tool_calls[0].tool == "agent_importer.import_run"
     assert evidence.integrity_chain[-1].artifact_type == "evidence"
 
 

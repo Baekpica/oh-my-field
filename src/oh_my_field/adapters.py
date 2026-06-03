@@ -9,15 +9,15 @@ from pydantic import Field
 
 from oh_my_field.integrity import append_integrity_link
 from oh_my_field.models import (
+    AgentImporterName,
+    AgentImporterSpec,
+    AgentRunSource,
     CapturedFileRole,
     CapturedTextFile,
     EvidenceRecord,
     HarnessResult,
     LatencyMetrics,
-    RuntimeAdapterName,
-    RuntimeAdapterSpec,
     RuntimeInfo,
-    RuntimeRunSource,
     StrictModel,
     ToolCallRecord,
 )
@@ -26,22 +26,22 @@ from oh_my_field.storage import write_evidence
 type Clock = Callable[[], datetime]
 type TokenFactory = Callable[[], str]
 
-ADAPTER_SPECS: tuple[RuntimeAdapterSpec, ...] = (
-    RuntimeAdapterSpec(
+IMPORTER_SPECS: tuple[AgentImporterSpec, ...] = (
+    AgentImporterSpec(
         name="codex",
         display_name="Codex",
         captures=("run log", "diff", "test result", "command output", "artifact"),
         replays=("capability eval",),
         artifact_roles=("artifact", "diff", "test_result"),
     ),
-    RuntimeAdapterSpec(
+    AgentImporterSpec(
         name="claude_code",
         display_name="Claude Code",
         captures=("run log", "diff", "test result", "command output", "artifact"),
         replays=("capability eval",),
         artifact_roles=("artifact", "diff", "test_result"),
     ),
-    RuntimeAdapterSpec(
+    AgentImporterSpec(
         name="hermes",
         display_name="Hermes",
         captures=("run log", "diff", "test result", "command output", "artifact"),
@@ -49,9 +49,14 @@ ADAPTER_SPECS: tuple[RuntimeAdapterSpec, ...] = (
         artifact_roles=("artifact", "diff", "test_result"),
     ),
 )
+ADAPTER_SPECS = IMPORTER_SPECS
 
 
-class AdapterError(Exception):
+class ImporterError(Exception):
+    pass
+
+
+class AdapterError(ImporterError):
     pass
 
 
@@ -76,7 +81,7 @@ class AgentArtifactInput(StrictModel):
 
 
 class AgentImportRequest(StrictModel):
-    adapter: RuntimeAdapterName
+    adapter: AgentImporterName
     log_path: Path
     goal: str = Field(min_length=1)
     field: str = Field(min_length=1)
@@ -89,7 +94,7 @@ class AgentImportRequest(StrictModel):
 class AgentImportSummary(StrictModel):
     evidence_id: str
     evidence_path: str
-    adapter: RuntimeAdapterName
+    adapter: AgentImporterName
     artifact_count: int
 
 
@@ -100,6 +105,7 @@ def import_agent_run(
     dependencies = dependencies or _default_dependencies()
     created_at = dependencies.clock().astimezone(UTC)
     evidence_id = f"{created_at:%Y%m%dT%H%M%SZ}-{dependencies.token_factory()}"
+    importer = request.adapter
     artifact_inputs = _dedupe_artifacts(
         (
             AgentArtifactInput(role="artifact", path=request.log_path),
@@ -116,9 +122,9 @@ def import_agent_run(
         normalized_goal=_normalize_goal(request.goal),
         field=request.field,
         runtime=RuntimeInfo(
-            name=request.adapter,
+            name=importer,
             model=request.model,
-            tools=("external_agent_log", f"adapter:{request.adapter}"),
+            tools=("external_agent_log", f"importer:{importer}"),
         ),
         input_context=tuple(file.path for file in files if file.role == "artifact"),
         files=files,
@@ -135,9 +141,9 @@ def import_agent_run(
         update={
             "tool_calls": (
                 ToolCallRecord(
-                    tool="runtime_adapter.capture_run",
-                    input=RuntimeRunSource(
-                        adapter=request.adapter,
+                    tool="agent_importer.import_run",
+                    input=AgentRunSource(
+                        importer=importer,
                         path=str(request.log_path),
                     ).model_dump_json(),
                     output=f"captured {len(files)} artifacts",
@@ -154,7 +160,7 @@ def import_agent_run(
     return AgentImportSummary(
         evidence_id=evidence.id,
         evidence_path=str(evidence_path),
-        adapter=request.adapter,
+        adapter=importer,
         artifact_count=len(files),
     )
 
