@@ -546,6 +546,12 @@ class CapabilityRegistryEntry(StrictModel):
     dependencies: tuple[str, ...] = ()
     runtime_compatibility: tuple[str, ...] = ()
     evaluation_results: tuple[str, ...] = ()
+    source_evidence_count: int = Field(default=1, ge=0)
+    eval_count: int = Field(default=0, ge=0)
+    latest_eval_status: EvalStatus | None = None
+    pass_rate: float = Field(default=0.0, ge=0.0, le=1.0)
+    runtime_profiles: tuple[str, ...] = ()
+    patch_count: int = Field(default=0, ge=0)
     manifest_path: str = Field(min_length=1)
 
 

@@ -85,11 +85,17 @@ def _entry_from_manifest(
     manifest_path: Path,
     eval_results: tuple[EvalResult, ...],
 ) -> CapabilityRegistryEntry:
-    evaluation_results = tuple(
-        result.id
-        for result in eval_results
-        if result.capability_name == manifest.name
+    capability_evals = tuple(
+        result for result in eval_results if result.capability_name == manifest.name
     )
+    evaluation_results = tuple(result.id for result in capability_evals)
+    pass_count = sum(result.status == "pass" for result in capability_evals)
+    latest_eval = max(
+        capability_evals,
+        key=lambda result: result.created_at,
+        default=None,
+    )
+    runtime_profiles = _runtime_profiles(manifest, capability_evals)
     return CapabilityRegistryEntry(
         name=manifest.name,
         version=manifest.version,
@@ -104,6 +110,18 @@ def _entry_from_manifest(
         evaluation_results=tuple(
             dict.fromkeys((*manifest.evaluation_results, *evaluation_results)),
         ),
+        source_evidence_count=len(manifest.source_evidence_ids)
+        if manifest.source_evidence_ids
+        else 1,
+        eval_count=len(capability_evals),
+        latest_eval_status=None if latest_eval is None else latest_eval.status,
+        pass_rate=pass_count / len(capability_evals) if capability_evals else 0.0,
+        runtime_profiles=runtime_profiles,
+        patch_count=(
+            len(manifest.patches.prompt)
+            + len(manifest.patches.context)
+            + len(manifest.patches.harness)
+        ),
         manifest_path=str(manifest_path),
     )
 
@@ -115,3 +133,20 @@ def _runtime_compatibility(manifest: CapabilityManifest) -> tuple[str, ...]:
     values.extend(f"model:{model}" for model in manifest.runtime.preferred_models)
     values.extend(f"tool:{tool}" for tool in manifest.runtime.tools)
     return tuple(dict.fromkeys(values))
+
+
+def _runtime_profiles(
+    manifest: CapabilityManifest,
+    eval_results: tuple[EvalResult, ...],
+) -> tuple[str, ...]:
+    values = [_runtime_profile(manifest.runtime.name, manifest.runtime.model)]
+    values.extend(
+        profile for result in eval_results if (profile := result.runtime_profile)
+    )
+    return tuple(dict.fromkeys(values))
+
+
+def _runtime_profile(runtime: str, model: str | None) -> str:
+    if model is None:
+        return runtime
+    return f"{runtime}:{model}"

@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 from pydantic import BaseModel, Field, ValidationError
 
 from oh_my_field.models import (
+    CapabilityManifest,
     CommandExecution,
     EvalResult,
     EvidenceRecord,
@@ -26,7 +27,13 @@ from oh_my_field.models import (
 )
 from oh_my_field.orchestrate import ORCHESTRATOR_NODES
 from oh_my_field.review import ReviewError, ReviewRequest, run_review_workflow
-from oh_my_field.storage import StorageError, list_eval_results, list_manifests
+from oh_my_field.storage import (
+    StorageError,
+    list_eval_results,
+    list_eval_sets,
+    list_learning_patch_decisions,
+    list_manifests,
+)
 
 DEFAULT_DASHBOARD_PORT: Final = 8765
 APPROVAL_TIMEOUT_SECONDS: Final = 1_800
@@ -47,6 +54,8 @@ class DashboardPaths(StrictModel):
     eval_dir: Path = Path(".omf/evals")
     workflow_dir: Path = Path(".omf/workflows")
     review_dir: Path = Path(".omf/reviews")
+    eval_set_dir: Path = Path(".omf/eval_sets")
+    learning_patch_dir: Path = Path(".omf/learning_patches")
 
 
 class DashboardServeRequest(StrictModel):
@@ -107,6 +116,10 @@ class DashboardCapabilitySummary(StrictModel):
     network_policy: str
     required_checks: tuple[str, ...]
     evaluation_results: tuple[str, ...]
+    source_evidence_count: int
+    eval_count: int
+    pass_rate: float
+    patch_count: int
     manifest_path: str
 
 
@@ -182,6 +195,8 @@ class DashboardMetrics(StrictModel):
     harness_pass_rate: float
     user_intervention_count: int
     pending_approval_count: int
+    regression_case_count: int
+    learning_patch_count: int
 
 
 class DashboardCapabilityComparison(StrictModel):
@@ -195,6 +210,14 @@ class DashboardCapabilityComparison(StrictModel):
     average_latency_ms: int
 
 
+class DashboardConsoleAction(StrictModel):
+    kind: str
+    title: str
+    command: str
+    target_type: str | None = None
+    target_id: str | None = None
+
+
 class DashboardSnapshot(StrictModel):
     generated_at: datetime
     metrics: DashboardMetrics
@@ -206,6 +229,7 @@ class DashboardSnapshot(StrictModel):
     approvals: tuple[DashboardApprovalRequest, ...]
     events: tuple[DashboardEvent, ...]
     comparisons: tuple[DashboardCapabilityComparison, ...]
+    console_actions: tuple[DashboardConsoleAction, ...]
 
 
 class DashboardReviewRequest(StrictModel):
@@ -230,16 +254,25 @@ class ApprovalCommandContext:
     generated_at: datetime
 
 
+@dataclass(frozen=True, slots=True)
+class DashboardMetricCounts:
+    user_intervention_count: int
+    regression_case_count: int
+    learning_patch_count: int
+
+
 def build_dashboard_snapshot(paths: DashboardPaths) -> DashboardSnapshot:
     generated_at = datetime.now(UTC)
     evidence = _list_json_models(paths.evidence_dir, EvidenceRecord)
     replays = _list_json_models(paths.replay_dir, ReplayRecord)
     evals = list_eval_results(paths.eval_dir)
+    eval_sets = list_eval_sets(paths.eval_set_dir)
+    learning_patch_decisions = list_learning_patch_decisions(paths.learning_patch_dir)
     reviews = _list_json_models(paths.review_dir, HumanReviewRecord)
     workflows = _list_json_models(paths.workflow_dir, WorkflowRunRecord)
     approvals = _approval_requests(evidence, replays, evals, reviews, generated_at)
     workflow_summaries = _workflow_summaries(workflows, evidence, evals, approvals)
-    capability_summaries = _capability_summaries(paths)
+    capability_summaries = _capability_summaries(paths, evals)
     replay_summaries = tuple(_replay_summary(replay) for replay in replays)
     eval_summaries = tuple(_eval_summary(result) for result in evals)
     review_summaries = tuple(_review_summary(review) for review in reviews)
@@ -252,7 +285,16 @@ def build_dashboard_snapshot(paths: DashboardPaths) -> DashboardSnapshot:
             capability_summaries,
             eval_summaries,
             approvals,
-            _user_intervention_count(evidence, review_summaries),
+            DashboardMetricCounts(
+                user_intervention_count=_user_intervention_count(
+                    evidence,
+                    review_summaries,
+                ),
+                regression_case_count=sum(
+                    len(eval_set.cases) for eval_set in eval_sets
+                ),
+                learning_patch_count=len(learning_patch_decisions),
+            ),
         ),
         workflows=workflow_summaries,
         capabilities=capability_summaries,
@@ -262,6 +304,7 @@ def build_dashboard_snapshot(paths: DashboardPaths) -> DashboardSnapshot:
         approvals=approvals,
         events=events,
         comparisons=comparisons,
+        console_actions=_console_actions(approvals, eval_summaries),
     )
 
 
@@ -504,6 +547,7 @@ def dashboard_html() -> str:
                 <a href="#workflows">Workflows</a>
                 <a href="#graph">Graph</a>
                 <a href="#approvals">Approvals</a>
+                <a href="#actions">Actions</a>
                 <a href="#history">History</a>
                 <a href="#debug">Debug</a>
               </nav>
@@ -549,6 +593,10 @@ def dashboard_html() -> str:
               <section id="approvals">
                 <h2>Approvals</h2>
                 <div class="content" id="approval-list"></div>
+              </section>
+              <section id="actions">
+                <h2>Console Actions</h2>
+                <div class="content" id="action-list"></div>
               </section>
               <section>
                 <h2>Events</h2>
@@ -611,6 +659,7 @@ def dashboard_html() -> str:
               renderWorkflows();
               renderGraph();
               renderApprovals();
+              renderActions();
               renderEvents();
               renderComparisons();
               const run = selectedRun();
@@ -623,7 +672,9 @@ def dashboard_html() -> str:
                 ["Workflows", metrics.workflow_count],
                 ["Running", metrics.running_count],
                 ["Pending approvals", metrics.pending_approval_count],
-                ["Harness pass", pct(metrics.harness_pass_rate)]
+                ["Harness pass", pct(metrics.harness_pass_rate)],
+                ["Regression cases", metrics.regression_case_count],
+                ["Learning patches", metrics.learning_patch_count]
               ];
               byId("metrics").innerHTML = items.map((item) =>
                 `<div class="metric"><span>${item[0]}</span><b>${item[1]}</b></div>`
@@ -705,6 +756,21 @@ def dashboard_html() -> str:
                     <small>${event.created_at}</small>
                   </div>`
                 ).join("");
+            }
+
+            function renderActions() {
+              const actions = snapshot.console_actions || [];
+              if (actions.length === 0) {
+                byId("action-list").innerHTML = "<p>No suggested actions.</p>";
+                return;
+              }
+              byId("action-list").innerHTML = actions.map((item) =>
+                `<div class="event">
+                  <strong>${item.title}</strong>
+                  <div>${item.kind}</div>
+                  <code>${item.command}</code>
+                </div>`
+              ).join("");
             }
 
             function renderComparisons() {
@@ -795,17 +861,9 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/snapshot":
             self._send_snapshot()
             return
-        if parsed.path == "/api/workflows":
-            self._send_json(build_dashboard_snapshot(self._paths()).workflows)
-            return
-        if parsed.path == "/api/events":
-            self._send_json(build_dashboard_snapshot(self._paths()).events)
-            return
-        if parsed.path == "/api/approvals":
-            self._send_json(build_dashboard_snapshot(self._paths()).approvals)
-            return
-        if parsed.path == "/api/capabilities":
-            self._send_json(build_dashboard_snapshot(self._paths()).capabilities)
+        route = _snapshot_route(parsed.path, build_dashboard_snapshot(self._paths()))
+        if route is not None:
+            self._send_json(route)
             return
         self._send_error(HTTPStatus.NOT_FOUND, "route not found")
 
@@ -871,6 +929,23 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
 
 def _dashboard_server(server: object) -> DashboardHTTPServer:
     return cast("DashboardHTTPServer", server)
+
+
+def _snapshot_route(
+    path: str,
+    snapshot: DashboardSnapshot,
+) -> tuple[BaseModel, ...] | None:
+    if path == "/api/workflows":
+        return snapshot.workflows
+    if path == "/api/events":
+        return snapshot.events
+    if path == "/api/approvals":
+        return snapshot.approvals
+    if path == "/api/capabilities":
+        return snapshot.capabilities
+    if path == "/api/actions":
+        return snapshot.console_actions
+    return None
 
 
 def _list_json_models[ModelT: BaseModel](
@@ -1021,22 +1096,51 @@ def _elapsed_ms(started_at: datetime, finished_at: datetime) -> int:
 
 def _capability_summaries(
     paths: DashboardPaths,
+    eval_results: tuple[EvalResult, ...],
 ) -> tuple[DashboardCapabilitySummary, ...]:
     return tuple(
-        DashboardCapabilitySummary(
-            name=manifest.name,
-            version=manifest.version,
-            description=manifest.description,
-            status=manifest.status,
-            runtime=manifest.runtime.name,
-            model=manifest.runtime.model,
-            tools=manifest.runtime.tools,
-            network_policy=manifest.workflow_control.network_policy,
-            required_checks=manifest.harness.required_checks,
-            evaluation_results=manifest.evaluation_results,
-            manifest_path=str(path),
+        _capability_summary(
+            path=path,
+            manifest=manifest,
+            eval_results=eval_results,
         )
         for path, manifest in list_manifests(paths.capabilities_dir)
+    )
+
+
+def _capability_summary(
+    *,
+    path: Path,
+    manifest: CapabilityManifest,
+    eval_results: tuple[EvalResult, ...],
+) -> DashboardCapabilitySummary:
+    capability_evals = tuple(
+        result for result in eval_results if result.capability_name == manifest.name
+    )
+    pass_count = sum(result.status == "pass" for result in capability_evals)
+    patch_count = (
+        len(manifest.patches.prompt)
+        + len(manifest.patches.context)
+        + len(manifest.patches.harness)
+    )
+    return DashboardCapabilitySummary(
+        name=manifest.name,
+        version=manifest.version,
+        description=manifest.description,
+        status=manifest.status,
+        runtime=manifest.runtime.name,
+        model=manifest.runtime.model,
+        tools=manifest.runtime.tools,
+        network_policy=manifest.workflow_control.network_policy,
+        required_checks=manifest.harness.required_checks,
+        evaluation_results=manifest.evaluation_results,
+        source_evidence_count=len(manifest.source_evidence_ids)
+        if manifest.source_evidence_ids
+        else 1,
+        eval_count=len(capability_evals),
+        pass_rate=pass_count / len(capability_evals) if capability_evals else 0.0,
+        patch_count=patch_count,
+        manifest_path=str(path),
     )
 
 
@@ -1311,7 +1415,7 @@ def _metrics(
     capabilities: tuple[DashboardCapabilitySummary, ...],
     evals: tuple[DashboardEvalSummary, ...],
     approvals: tuple[DashboardApprovalRequest, ...],
-    user_intervention_count: int,
+    counts: DashboardMetricCounts,
 ) -> DashboardMetrics:
     return DashboardMetrics(
         workflow_count=len(workflows),
@@ -1321,8 +1425,10 @@ def _metrics(
         pending_review_count=_count_status(workflows, "pending_review"),
         capability_count=len(capabilities),
         harness_pass_rate=_pass_rate(evals),
-        user_intervention_count=user_intervention_count,
+        user_intervention_count=counts.user_intervention_count,
         pending_approval_count=len(approvals),
+        regression_case_count=counts.regression_case_count,
+        learning_patch_count=counts.learning_patch_count,
     )
 
 
@@ -1412,6 +1518,47 @@ def _average_latency(workflows: tuple[DashboardWorkflowSummary, ...]) -> int:
     if not workflows:
         return 0
     return int(sum(workflow.latency_ms for workflow in workflows) / len(workflows))
+
+
+def _console_actions(
+    approvals: tuple[DashboardApprovalRequest, ...],
+    evals: tuple[DashboardEvalSummary, ...],
+) -> tuple[DashboardConsoleAction, ...]:
+    return (
+        *tuple(_approval_action(approval) for approval in approvals),
+        *tuple(
+            _regression_action(eval_result)
+            for eval_result in evals
+            if eval_result.status == "fail"
+        ),
+    )
+
+
+def _approval_action(approval: DashboardApprovalRequest) -> DashboardConsoleAction:
+    return DashboardConsoleAction(
+        kind="review",
+        title=f"Review {approval.target_type} approval",
+        command=(
+            f"omf review {approval.target_type} {approval.target_id} approve "
+            '--note "approved from dashboard"'
+        ),
+        target_type=approval.target_type,
+        target_id=approval.target_id,
+    )
+
+
+def _regression_action(eval_result: DashboardEvalSummary) -> DashboardConsoleAction:
+    case_id = f"eval_{eval_result.id[-8:]}"
+    return DashboardConsoleAction(
+        kind="regression_case",
+        title=f"Create regression case for {eval_result.capability_name}",
+        command=(
+            f"omf regression-case {eval_result.capability_name} "
+            f"--case-id {case_id} --check failed_eval_{eval_result.id[-8:]}"
+        ),
+        target_type="eval",
+        target_id=eval_result.id,
+    )
 
 
 def _command_latency(commands: tuple[CommandExecution, ...]) -> int:

@@ -52,6 +52,11 @@ def test_registry_lists_capabilities_with_eval_results(tmp_path: Path) -> None:
     assert entries[0]["name"] == "repo_issue_triage"
     assert entries[0]["evaluation_results"] == [eval_result.id]
     assert "runtime:codex" in entries[0]["runtime_compatibility"]
+    assert entries[0]["eval_count"] == 1
+    assert entries[0]["latest_eval_status"] == "pass"
+    assert entries[0]["pass_rate"] == 1.0
+    assert entries[0]["source_evidence_count"] == 1
+    assert entries[0]["runtime_profiles"] == ["codex:gpt-5.5"]
 
 
 def test_registry_filters_to_single_capability(tmp_path: Path) -> None:

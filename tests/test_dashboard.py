@@ -15,8 +15,10 @@ from oh_my_field.dashboard import (
 from oh_my_field.models import (
     CapabilityManifest,
     CommandExecution,
+    EvalCase,
     EvalCheck,
     EvalResult,
+    EvalSet,
     EvidenceRecord,
     HarnessResult,
     PromotionCriteria,
@@ -28,6 +30,7 @@ from oh_my_field.models import (
 )
 from oh_my_field.storage import (
     write_eval_result,
+    write_eval_set,
     write_evidence,
     write_manifest,
     write_workflow_run,
@@ -40,10 +43,17 @@ def test_dashboard_snapshot_surfaces_runtime_state_and_approvals(
     paths = make_dashboard_paths(tmp_path)
     evidence = make_evidence_record(tmp_path)
     eval_result = make_eval_result(evidence.id, tmp_path)
+    eval_set = EvalSet(
+        name="repo_issue_regression",
+        version="0.1.0",
+        capability_name="repo_issue_triage",
+        cases=(EvalCase(id="blocked_external_call"),),
+    )
     manifest = make_manifest(evidence.id, eval_result.id)
     workflow = make_workflow_record(evidence.id, eval_result.id, tmp_path)
     write_evidence(evidence, paths.evidence_dir)
     write_eval_result(eval_result, paths.eval_dir)
+    write_eval_set(eval_set, paths.eval_set_dir)
     write_manifest(manifest, paths.capabilities_dir)
     write_workflow_run(workflow, paths.workflow_dir)
 
@@ -52,6 +62,7 @@ def test_dashboard_snapshot_surfaces_runtime_state_and_approvals(
     assert snapshot.metrics.workflow_count == 1
     assert snapshot.metrics.pending_review_count == 1
     assert snapshot.metrics.pending_approval_count == 1
+    assert snapshot.metrics.regression_case_count == 1
     assert snapshot.metrics.user_intervention_count == 1
     assert snapshot.workflows[0].current_node == "execute_replay"
     assert snapshot.workflows[0].nodes[3].status == "running"
@@ -59,8 +70,14 @@ def test_dashboard_snapshot_surfaces_runtime_state_and_approvals(
     assert snapshot.approvals[0].target_type == "evidence"
     assert snapshot.approvals[0].risk_categories == ("external_call",)
     assert snapshot.capabilities[0].network_policy == "disabled"
+    assert snapshot.capabilities[0].eval_count == 1
+    assert snapshot.capabilities[0].pass_rate == 0.0
     assert snapshot.comparisons[0].capability_name == "repo_issue_triage"
     assert snapshot.comparisons[0].eval_count == 1
+    assert {action.kind for action in snapshot.console_actions} == {
+        "review",
+        "regression_case",
+    }
     assert {event.kind for event in snapshot.events} >= {
         "approval_required",
         "pending_review",
@@ -87,6 +104,10 @@ def test_dashboard_once_outputs_snapshot_json(tmp_path: Path) -> None:
             str(paths.workflow_dir),
             "--review-dir",
             str(paths.review_dir),
+            "--eval-set-dir",
+            str(paths.eval_set_dir),
+            "--learning-patch-dir",
+            str(paths.learning_patch_dir),
         ],
     )
 
@@ -131,6 +152,8 @@ def make_dashboard_paths(tmp_path: Path) -> DashboardPaths:
         eval_dir=tmp_path / "evals",
         workflow_dir=tmp_path / "workflows",
         review_dir=tmp_path / "reviews",
+        eval_set_dir=tmp_path / "eval_sets",
+        learning_patch_dir=tmp_path / "learning_patches",
     )
 
 

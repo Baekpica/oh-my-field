@@ -193,7 +193,9 @@ def _capture_file_inputs(
     return tuple(CaptureFileInput(role=role, path=path) for path in paths or ())
 
 
-app.command("capture")(_capture)
+app.command("capture", help="Capture files, commands, and feedback as evidence.")(
+    _capture,
+)
 
 
 def _promote(
@@ -231,7 +233,9 @@ def _promote(
     typer.echo(summary.model_dump_json())
 
 
-app.command("promote")(_promote)
+app.command("promote", help="Promote evidence or an evidence set into a capability.")(
+    _promote,
+)
 
 
 def _replay(
@@ -276,7 +280,9 @@ def _replay(
     typer.echo(summary.model_dump_json())
 
 
-app.command("replay")(_replay)
+app.command("replay", help="Replay a capability against its source evidence.")(
+    _replay,
+)
 
 
 def _eval(
@@ -365,7 +371,9 @@ def _eval(
     typer.echo(summary.model_dump_json())
 
 
-app.command("eval")(_eval)
+app.command("eval", help="Evaluate a capability with harness, rubric, or matrix runs.")(
+    _eval,
+)
 
 
 def _matrix_profiles(values: list[str] | None) -> tuple[str, ...]:
@@ -427,7 +435,9 @@ def _regression_case(
     typer.echo(summary.model_dump_json())
 
 
-app.command("regression-case")(_regression_case)
+app.command("regression-case", help="Create or update a regression eval case.")(
+    _regression_case,
+)
 
 
 def _eval_checklist_items(
@@ -502,7 +512,9 @@ def _approve(
     )
 
 
-app.command("approve")(_approve)
+app.command("approve", help="Approve an evidence, capability, replay, or eval target.")(
+    _approve,
+)
 
 
 def _reject(
@@ -528,7 +540,9 @@ def _reject(
     )
 
 
-app.command("reject")(_reject)
+app.command("reject", help="Reject an evidence, capability, replay, or eval target.")(
+    _reject,
+)
 
 
 def _revise(
@@ -555,7 +569,7 @@ def _revise(
     )
 
 
-app.command("revise")(_revise)
+app.command("revise", help="Request revision for a reviewed artifact.")(_revise)
 
 
 def _run_review_command(
@@ -650,7 +664,7 @@ def _review(
     )
 
 
-app.command("review")(_review)
+app.command("review", help="Record a structured human review action.")(_review)
 
 
 def _learn(
@@ -681,7 +695,7 @@ def _learn(
     typer.echo(summary.model_dump_json())
 
 
-app.command("learn")(_learn)
+app.command("learn", help="Export learning assets from capability evidence.")(_learn)
 
 
 def _import_run(
@@ -733,7 +747,9 @@ def _agent_artifacts(
     return tuple(AgentArtifactInput(role=role, path=path) for path in paths or ())
 
 
-app.command("import-run")(_import_run)
+app.command("import-run", help="Import an external agent run log as evidence.")(
+    _import_run,
+)
 
 
 def _learn_patch(
@@ -798,7 +814,9 @@ def _patch_decision(
     return "rejected"
 
 
-app.command("learn-patch")(_learn_patch)
+app.command("learn-patch", help="Accept or reject a learning prompt patch.")(
+    _learn_patch,
+)
 
 
 def _context(
@@ -835,7 +853,7 @@ def _context(
     typer.echo(summary.model_dump_json())
 
 
-app.command("context")(_context)
+app.command("context", help="Build a context bundle from capability policy.")(_context)
 
 
 def _run(
@@ -971,7 +989,9 @@ def _run(
     typer.echo(summary.model_dump_json())
 
 
-app.command("run")(_run)
+app.command("run", help="Run capture, promotion, context, replay, eval, and learn.")(
+    _run,
+)
 
 
 def _resume(
@@ -991,7 +1011,7 @@ def _resume(
     typer.echo(summary.model_dump_json())
 
 
-app.command("resume")(_resume)
+app.command("resume", help="Resume a pending workflow run.")(_resume)
 
 
 def _status(
@@ -1009,7 +1029,7 @@ def _status(
     typer.echo(summary.model_dump_json())
 
 
-app.command("status")(_status)
+app.command("status", help="Inspect workflow run status.")(_status)
 
 
 def _dashboard(
@@ -1032,6 +1052,13 @@ def _dashboard(
     review_dir: Annotated[Path, typer.Option("--review-dir")] = Path(
         ".omf/reviews",
     ),
+    eval_set_dir: Annotated[Path, typer.Option("--eval-set-dir")] = Path(
+        ".omf/eval_sets",
+    ),
+    learning_patch_dir: Annotated[
+        Path,
+        typer.Option("--learning-patch-dir"),
+    ] = Path(".omf/learning_patches"),
 ) -> None:
     paths = DashboardPaths(
         capabilities_dir=capabilities_dir,
@@ -1040,6 +1067,8 @@ def _dashboard(
         eval_dir=eval_dir,
         workflow_dir=workflow_dir,
         review_dir=review_dir,
+        eval_set_dir=eval_set_dir,
+        learning_patch_dir=learning_patch_dir,
     )
     try:
         if once:
@@ -1062,7 +1091,9 @@ def _dashboard(
         server.server_close()
 
 
-app.command("dashboard")(_dashboard)
+app.command("dashboard", help="Serve or print the local operating dashboard.")(
+    _dashboard,
+)
 
 
 def _registry(
@@ -1087,7 +1118,7 @@ def _registry(
     typer.echo(summary.model_dump_json())
 
 
-app.command("registry")(_registry)
+app.command("registry", help="List capability registry health and metadata.")(_registry)
 
 
 def _reflect(
@@ -1124,7 +1155,9 @@ def _reflect(
     typer.echo(summary.model_dump_json())
 
 
-app.command("reflect")(_reflect)
+app.command("reflect", help="Generate a reflection report from evidence and evals.")(
+    _reflect,
+)
 
 
 def _inspect(
@@ -1187,7 +1220,7 @@ def _inspect(
     typer.echo(summary.model_dump_json())
 
 
-app.command("inspect")(_inspect)
+app.command("inspect", help="Inspect a stored oh-my-field artifact.")(_inspect)
 
 
 def _export(
@@ -1237,7 +1270,9 @@ def _export(
     typer.echo(summary.model_dump_json())
 
 
-app.command("export")(_export)
+app.command("export", help="Export a capability bundle after explicit approval.")(
+    _export,
+)
 
 
 def _rollback(
@@ -1274,4 +1309,4 @@ def _rollback(
     typer.echo(summary.model_dump_json())
 
 
-app.command("rollback")(_rollback)
+app.command("rollback", help="Move a workflow run back to an earlier node.")(_rollback)

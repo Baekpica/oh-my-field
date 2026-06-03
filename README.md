@@ -36,6 +36,9 @@ The product is designed around a few principles:
 The goal is not to automate every task blindly. The goal is to make repeated
 agent work inspectable, reviewable, reusable, and progressively better.
 
+This README is the external user guide for installing and operating the CLI.
+The deeper product specification and roadmap live in `oh-my-field.md`.
+
 ## Who It Is For
 
 oh-my-field is built for technical users who are already using agents in real
@@ -195,7 +198,8 @@ The typical path is:
 6. Record human review signals such as approval, rejection, revision, added
    context, unsafe markers, or regression cases.
 7. Learn from the accumulated evidence and evaluation results.
-8. Inspect or export artifacts when they are ready to share or archive.
+8. Accept or reject learning patches before they update a capability.
+9. Inspect or export artifacts when they are ready to share or archive.
 
 For longer runs, `omf run` orchestrates capture, promotion, context packing,
 replay, evaluation, and learning in one workflow record. `status`, `resume`, and
@@ -211,6 +215,8 @@ The default local artifact locations are:
 - `.omf/evals` for evaluation results.
 - `.omf/context` for context bundles.
 - `.omf/learning` for learning exports.
+- `.omf/learning_patches` for accepted or rejected learning patch decisions.
+- `.omf/eval_sets` for regression eval sets.
 - `.omf/reflections` for reflection reports.
 - `.omf/reviews` for human review records.
 - `.omf/workflows` for orchestrated workflow runs.
@@ -351,7 +357,7 @@ uv run omf capture \
 
 ### `omf promote`
 
-Promote one evidence record into a capability manifest.
+Promote one evidence record, or a YAML evidence set, into a capability manifest.
 
 ```bash
 uv run omf promote <evidence_id> \
@@ -361,6 +367,27 @@ uv run omf promote <evidence_id> \
   --evidence-dir /private/tmp/omf-evidence-smoke \
   --capabilities-dir /private/tmp/omf-capabilities-smoke
 ```
+
+Evidence set files may be a YAML list of ids or a mapping with `evidence_ids`:
+
+```yaml
+evidence_ids:
+  - 20260602T010203Z-deadbeef
+  - 20260602T010204Z-feedface
+```
+
+```bash
+uv run omf promote \
+  --from-evidence-set /private/tmp/omf-evidence-set.yaml \
+  --name repo_issue_triage \
+  --description "GitHub issue triage capability" \
+  --evidence-dir /private/tmp/omf-evidence-smoke \
+  --capabilities-dir /private/tmp/omf-capabilities-smoke
+```
+
+The generated manifest includes field policy, context source planning,
+promotion criteria, source evidence ids, accepted patch history, and artifact
+integrity links.
 
 ### `omf replay`
 
@@ -418,6 +445,33 @@ uv run omf eval repo_issue_triage \
   --eval-dir /private/tmp/omf-evals-smoke
 ```
 
+Use `--matrix` to create one eval result per runtime profile:
+
+```bash
+uv run omf eval repo_issue_triage \
+  --matrix frontier,local \
+  --capabilities-dir /private/tmp/omf-capabilities-smoke \
+  --evidence-dir /private/tmp/omf-evidence-smoke \
+  --replay-dir /private/tmp/omf-replays-smoke \
+  --eval-dir /private/tmp/omf-evals-smoke
+```
+
+Use `--eval-set` to attach a stored regression suite to an eval result.
+
+### `omf regression-case`
+
+Create or update a versioned regression eval set.
+
+```bash
+uv run omf regression-case repo_issue_triage \
+  --eval-set repo_issue_regression \
+  --case-id failed_import_case \
+  --input "issue=ImportError" \
+  --check "identifies_root_cause" \
+  --flaky-check "uses_minimal_context" \
+  --eval-set-dir /private/tmp/omf-eval-sets-smoke
+```
+
 ### `omf approve`, `omf reject`, and `omf revise`
 
 Convenience review commands for evidence, capability, replay, and eval targets.
@@ -468,9 +522,43 @@ uv run omf learn repo_issue_triage \
   --learning-dir /private/tmp/omf-learning-smoke
 ```
 
+### `omf learn-patch`
+
+Accept or reject a prompt patch from a learning export. Accepted patches are
+recorded in the capability manifest; rejected patches are preserved as decision
+records.
+
+```bash
+uv run omf learn-patch repo_issue_triage \
+  --learning-id <learning_id> \
+  --patch-index 1 \
+  --decision accept \
+  --reviewer operator \
+  --capabilities-dir /private/tmp/omf-capabilities-smoke \
+  --learning-dir /private/tmp/omf-learning-smoke \
+  --learning-patch-dir /private/tmp/omf-learning-patches-smoke
+```
+
+### `omf import-run`
+
+Import an external Codex, Claude Code, or Hermes run log as evidence. The log is
+captured as an artifact, and generated diffs, test results, or additional
+artifacts can be attached in the same record.
+
+```bash
+uv run omf import-run codex \
+  --log /private/tmp/codex-run.log \
+  --goal "capture external agent run" \
+  --diff /private/tmp/change.diff \
+  --test-result /private/tmp/pytest.txt \
+  --evidence-dir /private/tmp/omf-evidence-smoke
+```
+
 ### `omf registry`
 
 List capability registry information, optionally filtered to one capability.
+Entries include eval count, latest eval status, pass rate, runtime profiles,
+source evidence count, and patch count.
 
 ```bash
 uv run omf registry \
@@ -560,8 +648,8 @@ uv run omf rollback <run_id> \
 ### `omf dashboard`
 
 Serve a local HTML dashboard and JSON API for workflow state, approval requests,
-reviews, evals, and capability history. The JSON API is available at
-`/api/snapshot`.
+reviews, evals, suggested console actions, regression case counts, and
+capability history. The JSON API is available at `/api/snapshot`.
 
 ```bash
 uv run omf dashboard \
@@ -572,7 +660,9 @@ uv run omf dashboard \
   --capabilities-dir /private/tmp/omf-run-capabilities-smoke \
   --replay-dir /private/tmp/omf-run-replays-smoke \
   --eval-dir /private/tmp/omf-run-evals-smoke \
-  --review-dir /private/tmp/omf-run-reviews-smoke
+  --review-dir /private/tmp/omf-run-reviews-smoke \
+  --eval-set-dir /private/tmp/omf-run-eval-sets-smoke \
+  --learning-patch-dir /private/tmp/omf-run-learning-patches-smoke
 ```
 
 For a one-shot JSON snapshot:
@@ -584,8 +674,17 @@ uv run omf dashboard --once \
   --capabilities-dir /private/tmp/omf-run-capabilities-smoke \
   --replay-dir /private/tmp/omf-run-replays-smoke \
   --eval-dir /private/tmp/omf-run-evals-smoke \
-  --review-dir /private/tmp/omf-run-reviews-smoke
+  --review-dir /private/tmp/omf-run-reviews-smoke \
+  --eval-set-dir /private/tmp/omf-run-eval-sets-smoke \
+  --learning-patch-dir /private/tmp/omf-run-learning-patches-smoke
 ```
+
+## Example Template
+
+An editable starter manifest is available at
+`examples/capability-template.yaml`. It shows the expected shape for field
+policy, context sources, workflow control, promotion criteria, patch history,
+and integrity links.
 
 ### `omf inspect`
 

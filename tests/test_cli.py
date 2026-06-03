@@ -10,3 +10,5 @@ def test_help_lists_cli_name_when_invoked() -> None:
 
     assert result.exit_code == 0
     assert "oh-my-field" in result.stdout
+    assert "import-run" in result.stdout
+    assert "Create or update a regression eval case" in result.stdout
