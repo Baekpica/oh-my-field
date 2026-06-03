@@ -518,6 +518,7 @@ def _capability_validate(
         typer.Option("--available-tool"),
     ] = None,
     run_command: Annotated[str | None, typer.Option("--run-command")] = None,
+    run_argv: Annotated[list[str] | None, typer.Option("--run-argv")] = None,
     expected_artifact: Annotated[
         list[str] | None,
         typer.Option("--expected-artifact"),
@@ -530,6 +531,10 @@ def _capability_validate(
     approve_command_risk: Annotated[
         bool,
         typer.Option("--approve-command-risk"),
+    ] = False,
+    require_cwd_inside_project: Annotated[
+        bool,
+        typer.Option("--require-cwd-inside-project"),
     ] = False,
     allow_env: Annotated[list[str] | None, typer.Option("--allow-env")] = None,
     capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
@@ -552,10 +557,12 @@ def _capability_validate(
                 project=project,
                 available_tools=tuple(available_tool or ()),
                 run_command=run_command,
+                run_argv=tuple(run_argv or ()),
                 expected_artifacts=tuple(expected_artifact or ()),
                 command_cwd=command_cwd,
                 command_timeout_seconds=command_timeout_seconds,
                 approve_command_risk=approve_command_risk,
+                require_cwd_inside_project=require_cwd_inside_project,
                 allow_env=tuple(allow_env or ()),
             ),
         )

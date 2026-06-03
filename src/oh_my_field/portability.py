@@ -1,12 +1,13 @@
 import json
 import secrets
+import shlex
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal, cast
 
 import yaml
-from pydantic import Field, ValidationError
+from pydantic import Field, ValidationError, model_validator
 
 from oh_my_field.execution import (
     CommandExecutionRequest,
@@ -389,11 +390,20 @@ class CapabilityValidationRequest(StrictModel):
     project: str | None = None
     available_tools: tuple[str, ...] = ()
     run_command: str | None = None
+    run_argv: tuple[str, ...] = ()
     expected_artifacts: tuple[str, ...] = ()
     command_cwd: Path = Path()
     command_timeout_seconds: int = Field(default=600, ge=1)
     approve_command_risk: bool = False
+    require_cwd_inside_project: bool = False
     allow_env: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def _reject_dual_command_forms(self) -> "CapabilityValidationRequest":
+        if self.run_argv and self.run_command is not None:
+            message = "run_command and run_argv are mutually exclusive"
+            raise ValueError(message)
+        return self
 
 
 class CapabilityValidationSummary(StrictModel):
@@ -805,10 +815,17 @@ def _load_remap_plan(target_dir: Path) -> ContextRemapPlan | None:
         return None
 
 
+def _validation_run_command(request: CapabilityValidationRequest) -> str | None:
+    if request.run_argv:
+        return shlex.join(request.run_argv)
+    return request.run_command
+
+
 def _run_target_hook(
     request: CapabilityValidationRequest,
 ) -> tuple[TargetRunPlan, EvalCheck | None]:
-    if request.run_command is None:
+    command = _validation_run_command(request)
+    if command is None:
         return (
             TargetRunPlan(
                 manual_run_required=True,
@@ -816,11 +833,11 @@ def _run_target_hook(
             ),
             None,
         )
-    risk = assess_command_risk(request.run_command)
+    risk = assess_command_risk(command)
     if risk.approval_required and not request.approve_command_risk:
         return (
             TargetRunPlan(
-                target_run_command=request.run_command,
+                target_run_command=command,
                 manual_run_required=True,
                 expected_artifacts=request.expected_artifacts,
                 executed=False,
@@ -831,15 +848,17 @@ def _run_target_hook(
         )
     execution = execute_shell_command(
         CommandExecutionRequest(
-            command=request.run_command,
+            command=command,
             cwd=request.command_cwd,
             timeout_seconds=request.command_timeout_seconds,
             approve_risk=request.approve_command_risk,
             allow_env=request.allow_env,
+            argv=request.run_argv or None,
+            require_cwd_inside_project=request.require_cwd_inside_project,
         ),
     )
     plan = TargetRunPlan(
-        target_run_command=request.run_command,
+        target_run_command=command,
         manual_run_required=False,
         expected_artifacts=request.expected_artifacts,
         executed=True,
