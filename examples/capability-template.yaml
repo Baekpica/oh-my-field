@@ -7,6 +7,8 @@ dependencies:
   - pytest
 runtime_compatibility:
   - runtime:codex
+  - runtime:claude_code
+  - runtime:hermes
   - tool:shell
 evaluation_results: []
 source_evidence_id: 20260602T010203Z-deadbeef
@@ -142,8 +144,29 @@ promotion_criteria:
   required_harness_pass_rate: 0.9
   min_runtime_profiles:
     - runtime:codex
+    - runtime:claude_code
+    - runtime:hermes
+promotion_metrics:
+  evidence_count: 3
+  successful_evidence_count: 3
+  failed_evidence_count: 0
+  harness_pass_rate: 1.0
+  human_intervention_rate: 0.0
+  retry_rate: 0.0
+  eval_count: 1
+  eval_pass_rate: 1.0
+  runtime_profiles:
+    - runtime:codex
+    - runtime:claude_code
+    - runtime:hermes
+  criteria_met: true
+  eval_gate_met: true
+  recommended_version_bump: minor
 patches:
-  prompt: []
-  context: []
-  harness: []
+  prompt:
+    - "Add instruction: run the regression suite before proposing reuse."
+  context:
+    - "Add context preference: prefer repository-local runbooks."
+  harness:
+    - "Add regression harness: replay the failed import case."
 integrity_chain: []

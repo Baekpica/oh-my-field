@@ -205,6 +205,51 @@ For longer runs, `omf run` orchestrates capture, promotion, context packing,
 replay, evaluation, and learning in one workflow record. `status`, `resume`, and
 `rollback` operate on that workflow record.
 
+## Using With Agent Runtimes
+
+oh-my-field does not replace Codex, Claude Code, or Hermes. Let the agent do
+the work, then import the run log and generated artifacts into OMF.
+
+Codex example:
+
+```bash
+uv run omf import-run codex \
+  --log /private/tmp/codex-run.log \
+  --goal "ship the parser fix" \
+  --diff /private/tmp/codex.diff \
+  --test-result /private/tmp/pytest.txt \
+  --artifact-root /private/tmp/codex-artifacts \
+  --evidence-dir /private/tmp/omf-evidence-smoke
+```
+
+Claude Code example:
+
+```bash
+uv run omf import-run claude_code \
+  --log /private/tmp/claude-code.log \
+  --goal "triage failing import test" \
+  --command-output /private/tmp/claude-stdout.log \
+  --artifact-root /private/tmp/claude-code-artifacts \
+  --evidence-dir /private/tmp/omf-evidence-smoke
+```
+
+Hermes example:
+
+```bash
+uv run omf import-run hermes \
+  --log /private/tmp/hermes-run.log \
+  --goal "prepare release rollback evidence" \
+  --diff /private/tmp/hermes.patch \
+  --test-result /private/tmp/hermes-tests.txt \
+  --artifact-root /private/tmp/hermes-artifacts \
+  --evidence-dir /private/tmp/omf-evidence-smoke
+```
+
+`--artifact-root` scans a file or directory and infers artifact roles from
+filenames: `.diff` and `.patch` become diffs, test/pytest/junit/coverage files
+become test results, stdout/stderr/output/log files become command outputs, and
+everything else is preserved as an artifact.
+
 ## Artifact Directories
 
 The default local artifact locations are:
@@ -365,6 +410,7 @@ uv run omf promote <evidence_id> \
   --description "GitHub issue triage capability" \
   --version 0.1.0 \
   --evidence-dir /private/tmp/omf-evidence-smoke \
+  --eval-dir /private/tmp/omf-evals-smoke \
   --capabilities-dir /private/tmp/omf-capabilities-smoke
 ```
 
@@ -386,8 +432,9 @@ uv run omf promote \
 ```
 
 The generated manifest includes field policy, context source planning,
-promotion criteria, source evidence ids, accepted patch history, and artifact
-integrity links.
+promotion criteria, calculated promotion metrics, source evidence ids, accepted
+patch history, and artifact integrity links. Passing evidence sets become
+`validated`; passing evidence plus matching eval results can become `stable`.
 
 ### `omf replay`
 
@@ -404,6 +451,16 @@ uv run omf replay repo_issue_triage \
 
 Use `--approve-command-risk` only when replay should execute commands that
 require approval.
+
+Use `--matrix` to create one replay record per runtime profile:
+
+```bash
+uv run omf replay repo_issue_triage \
+  --matrix codex,claude_code,hermes \
+  --capabilities-dir /private/tmp/omf-capabilities-smoke \
+  --evidence-dir /private/tmp/omf-evidence-smoke \
+  --replay-dir /private/tmp/omf-replays-smoke
+```
 
 ### `omf context`
 
@@ -457,6 +514,9 @@ uv run omf eval repo_issue_triage \
 ```
 
 Use `--eval-set` to attach a stored regression suite to an eval result.
+Required expected checks fail the eval unless they are observed in checklist,
+rubric, or harness check output. Flaky expected checks are recorded without
+blocking the eval.
 
 ### `omf regression-case`
 
@@ -524,14 +584,15 @@ uv run omf learn repo_issue_triage \
 
 ### `omf learn-patch`
 
-Accept or reject a prompt patch from a learning export. Accepted patches are
-recorded in the capability manifest; rejected patches are preserved as decision
-records.
+Accept or reject a prompt, context, or harness patch from a learning export.
+Accepted patches are recorded in the capability manifest; rejected patches are
+preserved as decision records.
 
 ```bash
 uv run omf learn-patch repo_issue_triage \
   --learning-id <learning_id> \
   --patch-index 1 \
+  --patch-kind prompt \
   --decision accept \
   --reviewer operator \
   --capabilities-dir /private/tmp/omf-capabilities-smoke \
@@ -543,7 +604,8 @@ uv run omf learn-patch repo_issue_triage \
 
 Import an external Codex, Claude Code, or Hermes run log as evidence. The log is
 captured as an artifact, and generated diffs, test results, or additional
-artifacts can be attached in the same record.
+artifacts can be attached in the same record. Use `--artifact-root` to scan a
+directory and infer artifact roles automatically.
 
 ```bash
 uv run omf import-run codex \
@@ -551,6 +613,17 @@ uv run omf import-run codex \
   --goal "capture external agent run" \
   --diff /private/tmp/change.diff \
   --test-result /private/tmp/pytest.txt \
+  --artifact-root /private/tmp/codex-artifacts \
+  --evidence-dir /private/tmp/omf-evidence-smoke
+```
+
+### `omf verify`
+
+Verify artifact integrity links and capability source-evidence lineage.
+
+```bash
+uv run omf verify capability repo_issue_triage \
+  --capabilities-dir /private/tmp/omf-capabilities-smoke \
   --evidence-dir /private/tmp/omf-evidence-smoke
 ```
 
@@ -558,7 +631,7 @@ uv run omf import-run codex \
 
 List capability registry information, optionally filtered to one capability.
 Entries include eval count, latest eval status, pass rate, runtime profiles,
-source evidence count, and patch count.
+source evidence count, patch count, promotion metrics, and integrity status.
 
 ```bash
 uv run omf registry \
@@ -649,7 +722,8 @@ uv run omf rollback <run_id> \
 
 Serve a local HTML dashboard and JSON API for workflow state, approval requests,
 reviews, evals, suggested console actions, regression case counts, and
-capability history. The JSON API is available at `/api/snapshot`.
+capability health. Capability summaries include pass rate, promotion metrics,
+patch count, and integrity status. The JSON API is available at `/api/snapshot`.
 
 ```bash
 uv run omf dashboard \
