@@ -90,6 +90,7 @@ def test_promote_creates_capability_manifest_from_evidence(tmp_path: Path) -> No
     assert output.capability_name == "repo_issue_triage"
     assert output.status == "candidate"
     _assert_package_output(output, package_path)
+    assert "schema_version: omf.capability.v0.1" in manifest_text
     assert "name: repo_issue_triage" in manifest_text
     assert f"source_evidence_id: {evidence.id}" in manifest_text
     assert f"- {evidence.id}" in manifest_text

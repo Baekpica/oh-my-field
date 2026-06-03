@@ -43,6 +43,10 @@ type ValidationStatus = Literal["needs_validation", "needs_adaptation", "validat
 type ToolCompatibilityStatus = Literal["pass", "partial", "unknown"]
 type EvidenceInclusionMode = Literal["none", "summary", "redacted", "full"]
 type ImportCollisionPolicy = Literal["fail", "merge", "version", "overwrite"]
+
+PORTABILITY_SCHEMA_VERSION = "omf.portability.v0.1"
+TARGET_VALIDATION_SCHEMA_VERSION = "omf.target_validation.v0.1"
+TARGET_OVERLAY_SCHEMA_VERSION = "omf.target_overlay.v0.1"
 type ModelClass = Literal["frontier", "standard", "local"]
 type CapabilityTier = Literal["high", "medium", "low"]
 type YamlValue = (
@@ -196,6 +200,7 @@ class PortabilityValidation(StrictModel):
 
 
 class PortabilityManifest(StrictModel):
+    schema_version: str = PORTABILITY_SCHEMA_VERSION
     capability: str = Field(pattern=CAPABILITY_NAME_PATTERN)
     version: str = Field(min_length=1)
     source: PortabilitySource
@@ -264,6 +269,7 @@ class TargetRunPlan(StrictModel):
 
 
 class TargetValidationReport(StrictModel):
+    schema_version: str = TARGET_VALIDATION_SCHEMA_VERSION
     capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
     source: PortabilitySource
     target: PortabilityTarget
@@ -293,6 +299,7 @@ class TargetOverrides(StrictModel):
 
 
 class TargetOverlay(StrictModel):
+    schema_version: str = TARGET_OVERLAY_SCHEMA_VERSION
     capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
     source: PortabilitySource
     target: PortabilityTarget

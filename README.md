@@ -98,6 +98,8 @@ uv run ruff format --check .
 uv run ruff check .
 uv run pyright
 uv run pytest
+uv run omf version --json
+uv run omf doctor --json
 ```
 
 ## Quick Start
@@ -250,6 +252,11 @@ metadata-only.
   [LangGraph-based Artifact Pipeline Design](oh-my-field.md#langgraph-based-artifact-pipeline-design)
 - Runtime portability and export/import:
   [Runtime Exporter](oh-my-field.md#runtime-exporter)
+- Runtime adapter docs:
+  [Codex](docs/runtime-adapters/codex.md),
+  [Claude Code](docs/runtime-adapters/claude-code.md),
+  [Hermes](docs/runtime-adapters/hermes.md),
+  [Generic](docs/runtime-adapters/generic.md)
 - Portability state definitions:
   [Portability Lifecycle](oh-my-field.md#portability-lifecycle)
 - Security and permission model:

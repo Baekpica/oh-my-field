@@ -6,6 +6,11 @@ from pydantic import BaseModel, ConfigDict, Field
 EVIDENCE_ID_PATTERN: Final = r"^[0-9]{8}T[0-9]{6}Z-[a-f0-9]{8}$"
 CAPABILITY_NAME_PATTERN: Final = r"^[a-z][a-z0-9_]*$"
 SHA256_PATTERN: Final = r"^[a-f0-9]{64}$"
+EVIDENCE_SCHEMA_VERSION: Final = "omf.evidence.v0.1"
+CAPABILITY_SCHEMA_VERSION: Final = "omf.capability.v0.1"
+EVAL_RESULT_SCHEMA_VERSION: Final = "omf.eval_result.v0.1"
+LEARNING_EXPORT_SCHEMA_VERSION: Final = "omf.learning_export.v0.1"
+LEARNING_PATCH_DECISION_SCHEMA_VERSION: Final = "omf.learning_patch_decision.v0.1"
 
 type CapturedFileRole = Literal[
     "prompt",
@@ -303,6 +308,7 @@ class HarnessResult(StrictModel):
 
 
 class EvidenceRecord(StrictModel):
+    schema_version: str = EVIDENCE_SCHEMA_VERSION
     id: str = Field(pattern=EVIDENCE_ID_PATTERN)
     session_id: str | None = Field(default=None, pattern=EVIDENCE_ID_PATTERN)
     capability_id: str | None = Field(default=None, pattern=CAPABILITY_NAME_PATTERN)
@@ -405,6 +411,7 @@ class CapabilityPatchSet(StrictModel):
 
 
 class CapabilityManifest(StrictModel):
+    schema_version: str = CAPABILITY_SCHEMA_VERSION
     name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
     version: str = Field(min_length=1)
     description: str = Field(min_length=1)
@@ -492,6 +499,7 @@ class EvalSet(StrictModel):
 
 
 class EvalResult(StrictModel):
+    schema_version: str = EVAL_RESULT_SCHEMA_VERSION
     id: str = Field(pattern=EVIDENCE_ID_PATTERN)
     created_at: datetime
     capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
@@ -520,6 +528,7 @@ class HumanReviewRecord(StrictModel):
 
 
 class LearningExport(StrictModel):
+    schema_version: str = LEARNING_EXPORT_SCHEMA_VERSION
     id: str = Field(pattern=EVIDENCE_ID_PATTERN)
     created_at: datetime
     capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
@@ -542,6 +551,7 @@ class LearningExport(StrictModel):
 
 
 class LearningPatchDecision(StrictModel):
+    schema_version: str = LEARNING_PATCH_DECISION_SCHEMA_VERSION
     id: str = Field(pattern=EVIDENCE_ID_PATTERN)
     created_at: datetime
     capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)

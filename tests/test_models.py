@@ -4,6 +4,11 @@ import pytest
 from pydantic import ValidationError
 
 from oh_my_field.models import (
+    CAPABILITY_SCHEMA_VERSION,
+    EVAL_RESULT_SCHEMA_VERSION,
+    EVIDENCE_SCHEMA_VERSION,
+    LEARNING_EXPORT_SCHEMA_VERSION,
+    LEARNING_PATCH_DECISION_SCHEMA_VERSION,
     CapabilityManifest,
     CapturedTextFile,
     ContextItem,
@@ -15,6 +20,8 @@ from oh_my_field.models import (
     FieldManifest,
     FieldPolicy,
     HarnessResult,
+    LearningExport,
+    LearningPatchDecision,
     PromotionCriteria,
     ReplayRecord,
     RuntimeInfo,
@@ -48,6 +55,7 @@ def test_evidence_record_accepts_valid_manual_inputs() -> None:
 
     assert record.goal == "triage repo issue"
     assert record.files[0].role == "prompt"
+    assert record.schema_version == EVIDENCE_SCHEMA_VERSION
 
 
 def test_evidence_record_rejects_extra_fields() -> None:
@@ -130,6 +138,65 @@ def test_replay_and_eval_models_accept_valid_payloads() -> None:
 
     assert replay.capability_name == "repo_issue"
     assert result.checks[0].name == "schema_valid"
+    assert result.schema_version == EVAL_RESULT_SCHEMA_VERSION
+
+
+def test_top_level_artifacts_default_schema_versions() -> None:
+    manifest = CapabilityManifest(
+        name="repo_issue",
+        version="0.1.0",
+        description="GitHub issue triage capability",
+        status="candidate",
+        source_evidence_id="20260602T010203Z-deadbeef",
+        normalized_goal="triage repo issue",
+        inputs=("goal",),
+        workflow=WorkflowManifest(
+            graph="langgraph",
+            nodes=("load_evidence", "write_capability"),
+        ),
+        harness=HarnessResult(status="pass", checks=("schema_valid",), failures=()),
+        runtime=RuntimeInfo(name="codex", model=None),
+        promotion_criteria=PromotionCriteria(
+            min_success_runs=3,
+            max_human_intervention_rate=0.3,
+            required_harness_pass_rate=0.9,
+        ),
+    )
+    learning = LearningExport(
+        id="20260602T010204Z-feedface",
+        created_at=datetime(2026, 6, 2, 1, 2, 4, tzinfo=UTC),
+        capability_name="repo_issue",
+        source_evidence_id="20260602T010203Z-deadbeef",
+    )
+    decision = LearningPatchDecision(
+        id="20260602T010205Z-cafebabe",
+        created_at=datetime(2026, 6, 2, 1, 2, 5, tzinfo=UTC),
+        capability_name="repo_issue",
+        learning_id=learning.id,
+        patch="Prefer focused issue summaries.",
+        decision="accepted",
+    )
+
+    assert manifest.schema_version == CAPABILITY_SCHEMA_VERSION
+    assert learning.schema_version == LEARNING_EXPORT_SCHEMA_VERSION
+    assert decision.schema_version == LEARNING_PATCH_DECISION_SCHEMA_VERSION
+
+
+def test_legacy_evidence_payload_loads_without_schema_version() -> None:
+    payload: dict[str, JsonValue] = {
+        "id": "20260602T010203Z-deadbeef",
+        "created_at": "2026-06-02T01:02:03Z",
+        "goal": "triage repo issue",
+        "field": "local",
+        "runtime": {"name": "codex", "model": None},
+        "files": [],
+        "feedback": [],
+        "harness": {"status": "pass", "checks": ["schema_valid"], "failures": []},
+    }
+
+    record = EvidenceRecord.model_validate(payload)
+
+    assert record.schema_version == EVIDENCE_SCHEMA_VERSION
 
 
 def test_field_manifest_and_context_pack_plan_are_first_class_models() -> None:

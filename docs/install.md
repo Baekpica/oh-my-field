@@ -26,6 +26,8 @@ uv run omf --help
 
 ```bash
 omf --help
+omf version --json
+omf doctor --json
 omf import-run --help
 omf capability export --help
 ```

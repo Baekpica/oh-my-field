@@ -25,6 +25,12 @@ from oh_my_field.dashboard import (
     build_dashboard_snapshot,
     create_dashboard_server,
 )
+from oh_my_field.diagnostics import (
+    build_doctor_summary,
+    build_version_summary,
+    render_doctor_text,
+    render_version_text,
+)
 from oh_my_field.eval import EvalError, EvalRequest, run_eval_workflow
 from oh_my_field.eval_set import (
     EvalSetError,
@@ -132,6 +138,30 @@ def _main() -> None:
 
 
 app.callback()(_main)
+
+
+def _version(json_output: Annotated[bool, typer.Option("--json")] = False) -> None:
+    summary = build_version_summary()
+    typer.echo(
+        summary.model_dump_json() if json_output else render_version_text(summary)
+    )
+
+
+app.command("version", help="Print package and schema version information.")(
+    _version,
+)
+
+
+def _doctor(json_output: Annotated[bool, typer.Option("--json")] = False) -> None:
+    summary = build_doctor_summary()
+    typer.echo(
+        summary.model_dump_json() if json_output else render_doctor_text(summary)
+    )
+
+
+app.command("doctor", help="Inspect local OMF installation and runtime availability.")(
+    _doctor,
+)
 
 
 def _capture(

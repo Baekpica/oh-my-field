@@ -150,6 +150,7 @@ def test_capability_export_writes_portability_bundle(tmp_path: Path) -> None:
     assert export_dir.joinpath("harness", "harness.yaml").exists()
     assert export_dir.joinpath("provenance", "source_runtime.yaml").exists()
     assert export_dir.joinpath("runtime", "hermes").exists()
+    assert portability["schema_version"] == "omf.portability.v0.1"
     assert portability["source"]["runtime"] == "codex"
     assert portability["source"]["model"] == "gpt-5.5"
     assert portability["source"]["project"] == "source-repo"
@@ -231,6 +232,7 @@ def test_capability_import_writes_validation_report(tmp_path: Path) -> None:
     assert Path(output.imported_package_path).joinpath("capability.yaml").exists()
     assert Path(output.eval_path).exists()
     assert Path(output.failure_evidence_path).exists()
+    assert report["schema_version"] == "omf.target_validation.v0.1"
     assert report["target"]["runtime"] == "generic"
     assert report["target"]["model"] == "small-local"
     assert report["context_remap_required"]
@@ -249,6 +251,7 @@ def test_capability_import_writes_validation_report(tmp_path: Path) -> None:
     assert report["failure_evidence_id"] == output.failure_evidence_id
     overlay = yaml.safe_load(Path(output.overlay_path).read_text(encoding="utf-8"))
     target_dir = Path(output.overlay_path).parent
+    assert overlay["schema_version"] == "omf.target_overlay.v0.1"
     assert overlay["target"]["runtime"] == "generic"
     assert overlay["target"]["model"] == "small-local"
     assert overlay["status"] == "needs_adaptation"
