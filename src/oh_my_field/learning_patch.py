@@ -177,7 +177,16 @@ def _accepted_manifest(
     patches = manifest.patches.model_copy(
         update={patch_kind: (*existing, patch)},
     )
-    return manifest.model_copy(update={"patches": patches})
+    updated = manifest.model_copy(update={"patches": patches})
+    previous_sha256 = (
+        manifest.integrity_chain[-1].sha256 if manifest.integrity_chain else None
+    )
+    return append_integrity_link(
+        updated,
+        artifact_type="capability",
+        artifact_id=updated.name,
+        previous_sha256=previous_sha256,
+    )
 
 
 def _learning_integrity_link(

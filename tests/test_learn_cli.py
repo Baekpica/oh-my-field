@@ -224,6 +224,7 @@ def test_learn_patch_accepts_and_rejects_prompt_patches(tmp_path: Path) -> None:
     assert updated_manifest.patches.prompt == (
         "Add instruction: always run parser regression tests",
     )
+    assert updated_manifest.integrity_chain[-1].artifact_type == "capability"
     assert accepted_decision.integrity_chain[-1].artifact_type == (
         "learning_patch_decision"
     )
