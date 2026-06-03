@@ -134,12 +134,14 @@ def test_review_records_safety_and_regression_signals(tmp_path: Path) -> None:
     assert unsafe_result.exit_code == 0
     assert regression_result.exit_code == 0
     unsafe = HumanReviewRecord.model_validate_json(
-        Path(ReviewOutput.model_validate_json(unsafe_result.stdout).review_path)
-        .read_text(encoding="utf-8"),
+        Path(
+            ReviewOutput.model_validate_json(unsafe_result.stdout).review_path
+        ).read_text(encoding="utf-8"),
     )
     regression = HumanReviewRecord.model_validate_json(
-        Path(ReviewOutput.model_validate_json(regression_result.stdout).review_path)
-        .read_text(encoding="utf-8"),
+        Path(
+            ReviewOutput.model_validate_json(regression_result.stdout).review_path
+        ).read_text(encoding="utf-8"),
     )
     assert unsafe.review.unsafe is True
     assert regression.review.regression_case == "parser should reject empty branch"

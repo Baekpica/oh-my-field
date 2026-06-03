@@ -25,6 +25,12 @@ from oh_my_field.dashboard import (
     build_dashboard_snapshot,
     create_dashboard_server,
 )
+from oh_my_field.diagnostics import (
+    build_doctor_summary,
+    build_version_summary,
+    render_doctor_text,
+    render_version_text,
+)
 from oh_my_field.eval import EvalError, EvalRequest, run_eval_workflow
 from oh_my_field.eval_set import (
     EvalSetError,
@@ -134,6 +140,30 @@ def _main() -> None:
 app.callback()(_main)
 
 
+def _version(json_output: Annotated[bool, typer.Option("--json")] = False) -> None:
+    summary = build_version_summary()
+    typer.echo(
+        summary.model_dump_json() if json_output else render_version_text(summary)
+    )
+
+
+app.command("version", help="Print package and schema version information.")(
+    _version,
+)
+
+
+def _doctor(json_output: Annotated[bool, typer.Option("--json")] = False) -> None:
+    summary = build_doctor_summary()
+    typer.echo(
+        summary.model_dump_json() if json_output else render_doctor_text(summary)
+    )
+
+
+app.command("doctor", help="Inspect local OMF installation and runtime availability.")(
+    _doctor,
+)
+
+
 def _capture(
     goal: Annotated[str, typer.Option("--goal")],
     prompt: Annotated[list[Path] | None, typer.Option("--prompt")] = None,
@@ -159,6 +189,7 @@ def _capture(
         bool,
         typer.Option("--approve-command-risk"),
     ] = False,
+    allow_env: Annotated[list[str] | None, typer.Option("--allow-env")] = None,
     feedback: Annotated[list[str] | None, typer.Option("--feedback")] = None,
     user_intervention: Annotated[
         list[str] | None,
@@ -208,6 +239,7 @@ def _capture(
         command_cwd=command_cwd,
         command_timeout_seconds=command_timeout_seconds,
         approve_command_risk=approve_command_risk,
+        allow_env=tuple(allow_env or ()),
         retries=retries,
         feedback=tuple(feedback or ()),
         user_interventions=tuple(user_intervention or ()),
@@ -499,6 +531,7 @@ def _capability_validate(
         bool,
         typer.Option("--approve-command-risk"),
     ] = False,
+    allow_env: Annotated[list[str] | None, typer.Option("--allow-env")] = None,
     capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
         "capabilities",
     ),
@@ -523,6 +556,7 @@ def _capability_validate(
                 command_cwd=command_cwd,
                 command_timeout_seconds=command_timeout_seconds,
                 approve_command_risk=approve_command_risk,
+                allow_env=tuple(allow_env or ()),
             ),
         )
     except (PortabilityError, StorageError, ValidationError) as exc:
@@ -657,6 +691,7 @@ def _replay(
         bool,
         typer.Option("--approve-command-risk"),
     ] = False,
+    allow_env: Annotated[list[str] | None, typer.Option("--allow-env")] = None,
     matrix: Annotated[list[str] | None, typer.Option("--matrix")] = None,
 ) -> None:
     try:
@@ -669,6 +704,7 @@ def _replay(
             command_cwd=command_cwd,
             command_timeout_seconds=command_timeout_seconds,
             approve_command_risk=approve_command_risk,
+            allow_env=tuple(allow_env or ()),
         )
         profiles = _matrix_profiles(matrix)
         if profiles:
@@ -757,6 +793,7 @@ def _eval(
         bool,
         typer.Option("--approve-command-risk"),
     ] = False,
+    allow_env: Annotated[list[str] | None, typer.Option("--allow-env")] = None,
 ) -> None:
     try:
         request = EvalRequest(
@@ -777,12 +814,11 @@ def _eval(
             command_cwd=command_cwd,
             command_timeout_seconds=command_timeout_seconds,
             approve_command_risk=approve_command_risk,
+            allow_env=tuple(allow_env or ()),
         )
         profiles = _matrix_profiles(matrix)
         if profiles:
-            results = tuple(
-                _eval_matrix_item(request, profile) for profile in profiles
-            )
+            results = tuple(_eval_matrix_item(request, profile) for profile in profiles)
             typer.echo(
                 EvalMatrixSummary(
                     capability_name=capability_name,
@@ -1152,6 +1188,19 @@ def _import_run(
         int | None,
         typer.Option("--max-artifact-bytes"),
     ] = None,
+    max_artifact_count: Annotated[
+        int | None,
+        typer.Option("--max-artifact-count"),
+    ] = None,
+    max_total_artifact_bytes: Annotated[
+        int | None,
+        typer.Option("--max-total-artifact-bytes"),
+    ] = None,
+    exclude: Annotated[list[str] | None, typer.Option("--exclude")] = None,
+    outcome: Annotated[
+        Literal["success", "failure", "unknown"],
+        typer.Option("--outcome"),
+    ] = "unknown",
     redact_secrets: Annotated[bool, typer.Option("--redact-secrets")] = False,
     evidence_dir: Annotated[Path, typer.Option("--evidence-dir")] = Path(
         ".omf/evidence",
@@ -1174,7 +1223,11 @@ def _import_run(
                 ),
                 artifact_roots=tuple(artifact_root or ()),
                 max_artifact_bytes=max_artifact_bytes,
+                max_artifact_count=max_artifact_count,
+                max_total_artifact_bytes=max_total_artifact_bytes,
+                exclude_patterns=tuple(exclude or ()),
                 redact_secrets=redact_secrets,
+                task_outcome=outcome,
             ),
         )
     except (AdapterError, StorageError, ValidationError) as exc:
@@ -1422,6 +1475,7 @@ def _run(
         bool,
         typer.Option("--approve-command-risk"),
     ] = False,
+    allow_env: Annotated[list[str] | None, typer.Option("--allow-env")] = None,
     field: Annotated[str, typer.Option("--field")] = "local",
     runtime: Annotated[str, typer.Option("--runtime")] = "codex",
     model: Annotated[str | None, typer.Option("--model")] = None,
@@ -1482,6 +1536,7 @@ def _run(
         command_cwd=command_cwd,
         command_timeout_seconds=command_timeout_seconds,
         approve_command_risk=approve_command_risk,
+        allow_env=tuple(allow_env or ()),
         harness_commands=tuple(harness_command or ()),
         checklist_items=_eval_checklist_items(
             passes=checklist_pass,

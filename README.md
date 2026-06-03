@@ -4,12 +4,18 @@
 
 # oh-my-field
 
+[![CI](https://github.com/Baekpica/oh-my-field/actions/workflows/ci.yml/badge.svg)](https://github.com/Baekpica/oh-my-field/actions/workflows/ci.yml)
+
 Field-fit agents to real work. oh-my-field turns one-off agent sessions into
 portable, evidence-backed capability packages.
 
 OMF is not an agent runtime. Codex, Claude Code, Hermes, or another agent does
 the work. OMF imports that run, preserves the evidence, and promotes repeatable
 work into a package that can be reviewed, hardened, and exported.
+
+The OMF CLI is Apache-2.0 licensed. Capability artifacts generated from your
+work remain owned by you or the project that generated them unless you choose to
+publish them under separate terms.
 
 ## Why OMF
 
@@ -65,30 +71,39 @@ The checks used to decide whether a result is acceptable. For code work this is
 usually tests, lint, type checks, or smoke commands. For operational or document
 work it can be checklists, rubrics, schema validation, or human approval.
 
-## Install From Source
+## Install
 
-This repository currently documents the source-based installation path.
+Recommended persistent CLI install:
 
-Requirements:
+```bash
+pipx install oh-my-field
+omf --help
+```
 
-- Python `>=3.12`
-- `uv`
+Try without a persistent install:
 
-Install and run the local CLI:
+```bash
+uvx oh-my-field --help
+```
+
+Development install from source:
 
 ```bash
 git clone https://github.com/Baekpica/oh-my-field.git
 cd oh-my-field
-uv sync
+uv sync --all-extras --dev
 uv run omf --help
 ```
 
 Development checks:
 
 ```bash
-uv run pytest
+uv run ruff format --check .
 uv run ruff check .
 uv run pyright
+uv run pytest
+uv run omf version --json
+uv run omf doctor --json
 ```
 
 ## Quick Start
@@ -97,27 +112,29 @@ The first product loop is three commands: import an external agent run, promote
 the evidence into a package, then inspect capability health.
 
 ```bash
-uv run omf import-run codex \
-  --log /private/tmp/codex-run.log \
+mkdir -p /tmp/omf-smoke
+printf "agent run log\n" > /tmp/omf-smoke/codex.log
+printf "pytest passed\n" > /tmp/omf-smoke/pytest.txt
+
+omf import-run codex \
+  --log /tmp/omf-smoke/codex.log \
   --goal "triage repo issue" \
-  --test-result /private/tmp/pytest.txt \
-  --artifact-root /private/tmp/codex-artifacts \
-  --evidence-dir /private/tmp/omf-evidence-smoke
+  --test-result /tmp/omf-smoke/pytest.txt \
+  --evidence-dir /tmp/omf-smoke/evidence \
+  --outcome success
 
-uv run omf promote <evidence_id> \
+omf promote <evidence_id> \
   --name repo_issue_triage \
-  --description "GitHub issue triage capability" \
-  --evidence-dir /private/tmp/omf-evidence-smoke \
-  --capabilities-dir /private/tmp/omf-capabilities-smoke
+  --description "Repository issue triage capability" \
+  --evidence-dir /tmp/omf-smoke/evidence \
+  --capabilities-dir /tmp/omf-smoke/capabilities
 
-uv run omf health repo_issue_triage \
-  --capabilities-dir /private/tmp/omf-capabilities-smoke \
-  --eval-dir /private/tmp/omf-evals-smoke
+omf health repo_issue_triage \
+  --capabilities-dir /tmp/omf-smoke/capabilities
 ```
 
-Use a real agent log when you have one. For a local smoke run, replace
-`/private/tmp/codex-run.log` and `/private/tmp/pytest.txt` with any small text
-files that represent the run log and test result.
+From a source checkout, prefix those commands with `uv run`. Use a real agent
+log when you have one.
 
 ## What You Get
 
@@ -208,17 +225,42 @@ external, credential, production, or paid risk are recorded but not executed
 unless the command receives explicit approval.
 
 Use `--approve-command-risk` only when you intentionally want a risky command to
-execute. Export bundles are also gated by explicit approval.
+execute. Command strings are legacy shell strings, so treat `--command`,
+`--harness-command`, and `--run-command` as shell execution surfaces. OMF records
+the cwd, risk categories, approval state, shell mode, and environment policy for
+each command execution.
+
+Commands run with a minimal environment by default. OMF keeps `PATH`, `HOME`,
+and `TMPDIR`, blocks common secret-bearing variables such as `OPENAI_API_KEY`,
+`ANTHROPIC_API_KEY`, `AWS_SECRET_ACCESS_KEY`, and `GITHUB_TOKEN`, and records
+blocked variable names in the execution record. Pass a variable explicitly with
+`--allow-env NAME` only when the command needs it. Export bundles are also gated
+by explicit approval.
+
+Artifact root import also applies safety limits. `import-run --artifact-root`
+skips `.git/`, `.venv/`, `node_modules/`, `.env*`, private key patterns, and
+symlinked files by default. Use `.omfignore` or `--exclude PATTERN` for
+project-specific exclusions, and cap traversal with `--max-artifact-count` and
+`--max-total-artifact-bytes`. Binary or oversized artifacts remain
+metadata-only.
 
 ## Learn More
 
 - Full product and feature reference: [oh-my-field.md](oh-my-field.md)
+- Install guide: [docs/install.md](docs/install.md)
+- 5-minute quickstart: [docs/quickstart.md](docs/quickstart.md)
+- Security model: [docs/security.md](docs/security.md)
 - CLI command reference: [Command Interface](oh-my-field.md#command-interface)
 - Capability package shape: [Capability Package](oh-my-field.md#capability-package)
 - Artifact pipeline design:
   [LangGraph-based Artifact Pipeline Design](oh-my-field.md#langgraph-based-artifact-pipeline-design)
 - Runtime portability and export/import:
   [Runtime Exporter](oh-my-field.md#runtime-exporter)
+- Runtime adapter docs:
+  [Codex](docs/runtime-adapters/codex.md),
+  [Claude Code](docs/runtime-adapters/claude-code.md),
+  [Hermes](docs/runtime-adapters/hermes.md),
+  [Generic](docs/runtime-adapters/generic.md)
 - Portability state definitions:
   [Portability Lifecycle](oh-my-field.md#portability-lifecycle)
 - Security and permission model:

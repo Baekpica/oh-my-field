@@ -114,6 +114,8 @@ def test_capture_executes_shell_command_and_stores_structured_result(
     assert evidence.command_executions[0].stdout == "hello"
     assert evidence.command_executions[0].exit_code == 0
     assert evidence.runtime.tools == ("shell",)
+    assert evidence.capture_status == "captured"
+    assert evidence.task_outcome == "success"
     assert evidence.success_or_failure_label == "success"
     assert evidence.improvement_notes == ("keep command outputs for replay",)
 
@@ -145,6 +147,7 @@ def test_capture_preserves_failed_command_as_failed_evidence(
     evidence = load_evidence(output.evidence_id, evidence_dir)
     assert output.harness_status == "fail"
     assert evidence.command_executions[0].exit_code == 7
+    assert evidence.task_outcome == "failure"
     assert evidence.errors == ("failed\n",)
 
 
@@ -179,6 +182,8 @@ def test_capture_blocks_write_command_without_explicit_approval(
     assert execution.risk_categories == ("write",)
     assert execution.approval_required
     assert not execution.approved
+    assert execution.env_policy == "minimal"
+    assert execution.cwd_inside_project is False
 
 
 def test_capture_executes_write_command_with_explicit_approval(

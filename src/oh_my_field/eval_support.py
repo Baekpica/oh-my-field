@@ -72,6 +72,7 @@ class EvalRequest(StrictModel):
     command_cwd: Path = Path()
     command_timeout_seconds: int = Field(default=60, ge=1)
     approve_command_risk: bool = False
+    allow_env: tuple[str, ...] = ()
 
 
 class EvalSummary(StrictModel):

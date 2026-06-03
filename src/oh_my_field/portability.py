@@ -43,6 +43,10 @@ type ValidationStatus = Literal["needs_validation", "needs_adaptation", "validat
 type ToolCompatibilityStatus = Literal["pass", "partial", "unknown"]
 type EvidenceInclusionMode = Literal["none", "summary", "redacted", "full"]
 type ImportCollisionPolicy = Literal["fail", "merge", "version", "overwrite"]
+
+PORTABILITY_SCHEMA_VERSION = "omf.portability.v0.1"
+TARGET_VALIDATION_SCHEMA_VERSION = "omf.target_validation.v0.1"
+TARGET_OVERLAY_SCHEMA_VERSION = "omf.target_overlay.v0.1"
 type ModelClass = Literal["frontier", "standard", "local"]
 type CapabilityTier = Literal["high", "medium", "low"]
 type YamlValue = (
@@ -196,6 +200,7 @@ class PortabilityValidation(StrictModel):
 
 
 class PortabilityManifest(StrictModel):
+    schema_version: str = PORTABILITY_SCHEMA_VERSION
     capability: str = Field(pattern=CAPABILITY_NAME_PATTERN)
     version: str = Field(min_length=1)
     source: PortabilitySource
@@ -264,6 +269,7 @@ class TargetRunPlan(StrictModel):
 
 
 class TargetValidationReport(StrictModel):
+    schema_version: str = TARGET_VALIDATION_SCHEMA_VERSION
     capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
     source: PortabilitySource
     target: PortabilityTarget
@@ -293,6 +299,7 @@ class TargetOverrides(StrictModel):
 
 
 class TargetOverlay(StrictModel):
+    schema_version: str = TARGET_OVERLAY_SCHEMA_VERSION
     capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
     source: PortabilitySource
     target: PortabilityTarget
@@ -386,6 +393,7 @@ class CapabilityValidationRequest(StrictModel):
     command_cwd: Path = Path()
     command_timeout_seconds: int = Field(default=600, ge=1)
     approve_command_risk: bool = False
+    allow_env: tuple[str, ...] = ()
 
 
 class CapabilityValidationSummary(StrictModel):
@@ -827,6 +835,7 @@ def _run_target_hook(
             cwd=request.command_cwd,
             timeout_seconds=request.command_timeout_seconds,
             approve_risk=request.approve_command_risk,
+            allow_env=request.allow_env,
         ),
     )
     plan = TargetRunPlan(
@@ -1558,9 +1567,7 @@ def _pass_rate_comparison(
         else None
     )
     delta = (
-        round(target - source, 2)
-        if source is not None and target is not None
-        else None
+        round(target - source, 2) if source is not None and target is not None else None
     )
     return EvalPassRateComparison(
         source_pass_rate=source,

@@ -86,6 +86,7 @@ class CaptureRequest(StrictModel):
     command_cwd: Path = Path()
     command_timeout_seconds: int = Field(default=60, ge=1)
     approve_command_risk: bool = False
+    allow_env: tuple[str, ...] = ()
     retries: int = Field(default=0, ge=0)
     feedback: tuple[str, ...] = ()
     user_interventions: tuple[str, ...] = ()
@@ -162,9 +163,7 @@ def _build_capture_graph() -> CompiledStateGraph[
 
 def _collect_files(state: CaptureState) -> CaptureState:
     request = _state_request(state)
-    captured_files = tuple(
-        _read_text_file(file_input) for file_input in request.files
-    )
+    captured_files = tuple(_read_text_file(file_input) for file_input in request.files)
     return CaptureState(captured_files=captured_files)
 
 
@@ -223,6 +222,7 @@ def _build_evidence(state: CaptureState) -> CaptureState:
             total_ms=sum(execution.duration_ms for execution in command_executions),
             tool_ms=sum(execution.duration_ms for execution in command_executions),
         ),
+        task_outcome=request.success_or_failure_label,
         success_or_failure_label=request.success_or_failure_label,
         improvement_notes=request.improvement_notes,
     )
@@ -297,6 +297,7 @@ def _execute_command(command: str, request: CaptureRequest) -> CommandExecution:
                 cwd=request.command_cwd,
                 timeout_seconds=request.command_timeout_seconds,
                 approve_risk=request.approve_command_risk,
+                allow_env=request.allow_env,
             ),
         )
     except CommandExecutionError as exc:

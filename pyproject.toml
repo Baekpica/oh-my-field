@@ -1,15 +1,42 @@
 [project]
 name = "oh-my-field"
 version = "0.1.0"
-description = "Field-fit agents to real work."
+description = "Evidence-backed capability packaging layer for cross-runtime agents."
 readme = "README.md"
 requires-python = ">=3.12"
+license = "Apache-2.0"
+authors = [
+    { name = "Baekpica", email = "seanbb93@gmail.com" },
+]
+keywords = [
+    "agent",
+    "capability",
+    "codex",
+    "evaluation",
+    "llm",
+    "workflow",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Testing",
+]
 dependencies = [
     "langgraph",
     "pydantic",
     "pyyaml",
     "typer",
 ]
+
+[project.urls]
+Documentation = "https://github.com/Baekpica/oh-my-field#readme"
+Homepage = "https://github.com/Baekpica/oh-my-field"
+Issues = "https://github.com/Baekpica/oh-my-field/issues"
+Repository = "https://github.com/Baekpica/oh-my-field"
 
 [project.scripts]
 omf = "oh_my_field.cli:app"

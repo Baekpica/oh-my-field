@@ -78,9 +78,7 @@ def _rollback_record(
 ) -> tuple[WorkflowRunRecord, tuple[str, ...]]:
     target_node = _canonical_node(request.to_node)
     target_index = _node_index(target_node)
-    completed_node_names = {
-        _canonical_node(node) for node in record.completed_nodes
-    }
+    completed_node_names = {_canonical_node(node) for node in record.completed_nodes}
     completed_nodes = tuple(
         node for node in ROLLBACK_NODES[:target_index] if node in completed_node_names
     )

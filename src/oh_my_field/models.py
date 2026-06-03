@@ -6,6 +6,11 @@ from pydantic import BaseModel, ConfigDict, Field
 EVIDENCE_ID_PATTERN: Final = r"^[0-9]{8}T[0-9]{6}Z-[a-f0-9]{8}$"
 CAPABILITY_NAME_PATTERN: Final = r"^[a-z][a-z0-9_]*$"
 SHA256_PATTERN: Final = r"^[a-f0-9]{64}$"
+EVIDENCE_SCHEMA_VERSION: Final = "omf.evidence.v0.1"
+CAPABILITY_SCHEMA_VERSION: Final = "omf.capability.v0.1"
+EVAL_RESULT_SCHEMA_VERSION: Final = "omf.eval_result.v0.1"
+LEARNING_EXPORT_SCHEMA_VERSION: Final = "omf.learning_export.v0.1"
+LEARNING_PATCH_DECISION_SCHEMA_VERSION: Final = "omf.learning_patch_decision.v0.1"
 
 type CapturedFileRole = Literal[
     "prompt",
@@ -20,7 +25,9 @@ type HarnessStatus = Literal["pass", "fail"]
 type EvalStatus = Literal["pass", "fail"]
 type CapabilityStatus = Literal["candidate", "validated", "stable", "deprecated"]
 type WorkflowGraph = Literal["langgraph"]
+type CaptureStatus = Literal["captured", "partial", "failed"]
 type SuccessLabel = Literal["success", "failure", "unknown"]
+type TaskOutcome = Literal["success", "failure", "unknown"]
 type AgentImporterName = Literal["codex", "claude_code", "hermes"]
 type RuntimeAdapterName = AgentImporterName
 type ContextSourceType = Literal[
@@ -39,6 +46,7 @@ type CommandRiskCategory = Literal[
     "production_write",
     "paid_operation",
 ]
+type CommandEnvPolicy = Literal["minimal"]
 type NetworkPolicy = Literal["disabled", "internal_only", "allowed"]
 type ReviewTargetType = Literal["evidence", "capability", "replay", "eval"]
 type HumanReviewAction = Literal[
@@ -138,6 +146,11 @@ class CommandExecution(StrictModel):
     risk_categories: tuple[CommandRiskCategory, ...] = ()
     approval_required: bool = False
     approved: bool = False
+    shell: bool = True
+    env_policy: CommandEnvPolicy = "minimal"
+    allowed_env: tuple[str, ...] = ()
+    blocked_env: tuple[str, ...] = ()
+    cwd_inside_project: bool = True
 
 
 class CostMetrics(StrictModel):
@@ -295,6 +308,7 @@ class HarnessResult(StrictModel):
 
 
 class EvidenceRecord(StrictModel):
+    schema_version: str = EVIDENCE_SCHEMA_VERSION
     id: str = Field(pattern=EVIDENCE_ID_PATTERN)
     session_id: str | None = Field(default=None, pattern=EVIDENCE_ID_PATTERN)
     capability_id: str | None = Field(default=None, pattern=CAPABILITY_NAME_PATTERN)
@@ -318,6 +332,8 @@ class EvidenceRecord(StrictModel):
     harness: HarnessResult
     cost_metrics: CostMetrics = Field(default_factory=CostMetrics)
     latency_metrics: LatencyMetrics = Field(default_factory=LatencyMetrics)
+    capture_status: CaptureStatus = "captured"
+    task_outcome: TaskOutcome = "unknown"
     success_or_failure_label: SuccessLabel = "unknown"
     improvement_notes: tuple[str, ...] = ()
     human_review: HumanReview = Field(default_factory=HumanReview)
@@ -356,9 +372,7 @@ class WorkflowControl(StrictModel):
     require_approval_before_write: bool = True
     require_approval_before_external_call: bool = True
     require_approval_before_destructive_action: bool = True
-    approval_required_actions: tuple[CommandRiskCategory, ...] = (
-        COMMAND_RISK_CATEGORIES
-    )
+    approval_required_actions: tuple[CommandRiskCategory, ...] = COMMAND_RISK_CATEGORIES
     safe_execution_mode: bool = True
     credential_scope: str | None = None
     network_policy: NetworkPolicy = "disabled"
@@ -397,6 +411,7 @@ class CapabilityPatchSet(StrictModel):
 
 
 class CapabilityManifest(StrictModel):
+    schema_version: str = CAPABILITY_SCHEMA_VERSION
     name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
     version: str = Field(min_length=1)
     description: str = Field(min_length=1)
@@ -484,6 +499,7 @@ class EvalSet(StrictModel):
 
 
 class EvalResult(StrictModel):
+    schema_version: str = EVAL_RESULT_SCHEMA_VERSION
     id: str = Field(pattern=EVIDENCE_ID_PATTERN)
     created_at: datetime
     capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
@@ -512,6 +528,7 @@ class HumanReviewRecord(StrictModel):
 
 
 class LearningExport(StrictModel):
+    schema_version: str = LEARNING_EXPORT_SCHEMA_VERSION
     id: str = Field(pattern=EVIDENCE_ID_PATTERN)
     created_at: datetime
     capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
@@ -534,6 +551,7 @@ class LearningExport(StrictModel):
 
 
 class LearningPatchDecision(StrictModel):
+    schema_version: str = LEARNING_PATCH_DECISION_SCHEMA_VERSION
     id: str = Field(pattern=EVIDENCE_ID_PATTERN)
     created_at: datetime
     capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
@@ -582,6 +600,7 @@ class WorkflowRunConfig(StrictModel):
     command_cwd: str = Field(min_length=1)
     command_timeout_seconds: int = Field(ge=1)
     approve_command_risk: bool = False
+    allow_env: tuple[str, ...] = ()
     harness_commands: tuple[str, ...] = ()
     checklist_items: tuple[EvalChecklistItem, ...] = ()
     rubric_scores: tuple[EvalRubricScore, ...] = ()

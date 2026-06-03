@@ -1,3 +1,4 @@
+import fnmatch
 import hashlib
 import mimetypes
 import re
@@ -22,6 +23,7 @@ from oh_my_field.models import (
     LatencyMetrics,
     RuntimeInfo,
     StrictModel,
+    TaskOutcome,
     ToolCallRecord,
 )
 from oh_my_field.storage import write_evidence
@@ -53,6 +55,21 @@ IMPORTER_SPECS: tuple[AgentImporterSpec, ...] = (
     ),
 )
 ADAPTER_SPECS = IMPORTER_SPECS
+OMFIGNORE_FILE_NAME: Final = ".omfignore"
+DEFAULT_EXCLUDE_PATTERNS: Final = (
+    ".git/**",
+    ".venv/**",
+    "node_modules/**",
+    "dist/**",
+    "build/**",
+    ".env*",
+    "*.pem",
+    "*.key",
+    "*.sqlite",
+    "*.db",
+    "*.zip",
+    "*.tar.gz",
+)
 
 
 class ImporterError(Exception):
@@ -70,6 +87,14 @@ class AgentArtifactReadError(AdapterError):
 
     def __str__(self) -> str:
         return f"could not read agent artifact {self.path}: {self.reason}"
+
+
+@dataclass
+class AgentArtifactLimitError(AdapterError):
+    reason: str
+
+    def __str__(self) -> str:
+        return self.reason
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,7 +118,11 @@ class AgentImportRequest(StrictModel):
     artifacts: tuple[AgentArtifactInput, ...] = ()
     artifact_roots: tuple[Path, ...] = ()
     max_artifact_bytes: int | None = Field(default=None, ge=1)
+    max_artifact_count: int | None = Field(default=None, ge=1)
+    max_total_artifact_bytes: int | None = Field(default=None, ge=1)
+    exclude_patterns: tuple[str, ...] = ()
     redact_secrets: bool = False
+    task_outcome: TaskOutcome = "unknown"
 
 
 class AgentImportSummary(StrictModel):
@@ -115,7 +144,13 @@ def import_agent_run(
         (
             AgentArtifactInput(role="artifact", path=request.log_path),
             *request.artifacts,
-            *_discover_artifacts(request.artifact_roots, request.log_path),
+            *_discover_artifacts(
+                request.artifact_roots,
+                request.log_path,
+                exclude_patterns=request.exclude_patterns,
+                max_artifact_count=request.max_artifact_count,
+                max_total_artifact_bytes=request.max_total_artifact_bytes,
+            ),
         ),
     )
     files = tuple(
@@ -147,7 +182,9 @@ def import_agent_run(
             required_checks=("agent_log_imported", "artifacts_readable"),
         ),
         latency_metrics=LatencyMetrics(),
-        success_or_failure_label="unknown",
+        capture_status="captured",
+        task_outcome=request.task_outcome,
+        success_or_failure_label=request.task_outcome,
     )
     evidence = evidence.model_copy(
         update={
@@ -255,16 +292,111 @@ def _redact_secrets(text: str) -> tuple[str, bool]:
 def _discover_artifacts(
     roots: tuple[Path, ...],
     log_path: Path,
+    *,
+    exclude_patterns: tuple[str, ...] = (),
+    max_artifact_count: int | None = None,
+    max_total_artifact_bytes: int | None = None,
 ) -> tuple[AgentArtifactInput, ...]:
     discovered: list[AgentArtifactInput] = []
     for root in roots:
+        root_patterns = _root_exclude_patterns(root, exclude_patterns)
         paths = (root,) if root.is_file() else tuple(sorted(root.rglob("*")))
-        discovered.extend(
-            AgentArtifactInput(role=_infer_artifact_role(path), path=path)
-            for path in paths
-            if path.is_file() and path != log_path
-        )
+        for path in paths:
+            if (
+                not path.is_file()
+                or path == log_path
+                or path.is_symlink()
+                or _is_excluded(path, root=root, patterns=root_patterns)
+            ):
+                continue
+            discovered.append(
+                AgentArtifactInput(role=_infer_artifact_role(path), path=path),
+            )
+            _enforce_artifact_limits(
+                discovered,
+                max_artifact_count=max_artifact_count,
+                max_total_artifact_bytes=max_total_artifact_bytes,
+            )
     return tuple(discovered)
+
+
+def _root_exclude_patterns(
+    root: Path,
+    exclude_patterns: tuple[str, ...],
+) -> tuple[str, ...]:
+    omfignore = root / OMFIGNORE_FILE_NAME if root.is_dir() else None
+    return (
+        *DEFAULT_EXCLUDE_PATTERNS,
+        *((OMFIGNORE_FILE_NAME,) if root.is_dir() else ()),
+        *_read_omfignore_patterns(omfignore),
+        *exclude_patterns,
+    )
+
+
+def _read_omfignore_patterns(path: Path | None) -> tuple[str, ...]:
+    if path is None or not path.exists():
+        return ()
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        raise AgentArtifactReadError(path=path, reason=str(exc)) from exc
+    return tuple(
+        line.strip()
+        for line in lines
+        if line.strip() and not line.lstrip().startswith("#")
+    )
+
+
+def _is_excluded(path: Path, *, root: Path, patterns: tuple[str, ...]) -> bool:
+    relative = _relative_posix(path, root)
+    return any(
+        _matches_exclude_pattern(relative, path.name, pattern) for pattern in patterns
+    )
+
+
+def _relative_posix(path: Path, root: Path) -> str:
+    if root.is_file():
+        return path.name
+    try:
+        return path.relative_to(root).as_posix()
+    except ValueError:
+        return path.name
+
+
+def _matches_exclude_pattern(relative: str, name: str, pattern: str) -> bool:
+    normalized = pattern.strip().rstrip("/")
+    if not normalized:
+        return False
+    if pattern.endswith("/"):
+        return relative == normalized or relative.startswith(f"{normalized}/")
+    if normalized.endswith("/**"):
+        prefix = normalized.removesuffix("/**")
+        return relative == prefix or relative.startswith(f"{prefix}/")
+    return fnmatch.fnmatch(relative, normalized) or fnmatch.fnmatch(name, normalized)
+
+
+def _enforce_artifact_limits(
+    artifacts: list[AgentArtifactInput],
+    *,
+    max_artifact_count: int | None,
+    max_total_artifact_bytes: int | None,
+) -> None:
+    if max_artifact_count is not None and len(artifacts) > max_artifact_count:
+        raise AgentArtifactLimitError(
+            reason=(
+                f"max artifact count exceeded: {len(artifacts)} > {max_artifact_count}"
+            ),
+        )
+    if max_total_artifact_bytes is None:
+        return
+    total_bytes = sum(artifact.path.stat().st_size for artifact in artifacts)
+    if total_bytes > max_total_artifact_bytes:
+        raise AgentArtifactLimitError(
+            reason=(
+                f"max total artifact bytes exceeded: {total_bytes} > "
+                f"{max_total_artifact_bytes}"
+            ),
+        )
 
 
 def _infer_artifact_role(path: Path) -> CapturedFileRole:

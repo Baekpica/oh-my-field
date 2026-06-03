@@ -273,8 +273,7 @@ def _context_additions(
     additions = [f"Investigate source error: {error}" for error in evidence.errors]
     if eval_result is not None:
         additions.extend(
-            f"Investigate eval failure: {failure}"
-            for failure in eval_result.failures
+            f"Investigate eval failure: {failure}" for failure in eval_result.failures
         )
     return tuple(additions)
 

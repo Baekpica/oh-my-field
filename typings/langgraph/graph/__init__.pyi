@@ -6,7 +6,6 @@ from langgraph.graph.state import CompiledStateGraph
 START: Final[str]
 END: Final[str]
 
-
 class StateGraph[StateT, ContextT, InputT, OutputT]:
     def __init__(self, state_schema: type[StateT]) -> None: ...
     def add_node(

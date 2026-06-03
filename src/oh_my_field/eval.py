@@ -255,6 +255,7 @@ def _execute_command(
                 cwd=request.command_cwd,
                 timeout_seconds=request.command_timeout_seconds,
                 approve_risk=request.approve_command_risk,
+                allow_env=request.allow_env,
                 approval_required_categories=(
                     manifest.workflow_control.approval_required_actions
                 ),
@@ -339,9 +340,7 @@ def _eval_set_checks(
         EvalCheck(
             name=f"eval_set_{eval_set.name}_loaded",
             status="pass",
-            message=(
-                f"loaded eval set {eval_set.name!r} version {eval_set.version!r}"
-            ),
+            message=(f"loaded eval set {eval_set.name!r} version {eval_set.version!r}"),
         ),
     ]
     for case in eval_set.cases:
@@ -403,8 +402,7 @@ def _expected_check_observed(
 
 def _check_name(value: str) -> str:
     normalized = "".join(
-        character if character.isalnum() else "_"
-        for character in value.casefold()
+        character if character.isalnum() else "_" for character in value.casefold()
     ).strip("_")
     return normalized or "item"
 
