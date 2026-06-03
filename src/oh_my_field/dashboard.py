@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field, ValidationError
 
-from oh_my_field.integrity import model_sha256
+from oh_my_field.health import health_entry_from_manifest
 from oh_my_field.models import (
     CapabilityManifest,
     CommandExecution,
@@ -126,6 +126,7 @@ class DashboardCapabilitySummary(StrictModel):
     promotion_eval_pass_rate: float
     promotion_criteria_met: bool
     integrity_status: str
+    next_action: str
     manifest_path: str
 
 
@@ -1129,6 +1130,11 @@ def _capability_summary(
         + len(manifest.patches.context)
         + len(manifest.patches.harness)
     )
+    health_entry = health_entry_from_manifest(
+        manifest=manifest,
+        package_dir=path.parent,
+        eval_results=eval_results,
+    )
     return DashboardCapabilitySummary(
         name=manifest.name,
         version=manifest.version,
@@ -1166,17 +1172,10 @@ def _capability_summary(
             if manifest.promotion_metrics is None
             else manifest.promotion_metrics.criteria_met
         ),
-        integrity_status=_manifest_integrity_status(manifest),
+        integrity_status=health_entry.integrity_status,
+        next_action=health_entry.next_action,
         manifest_path=str(path),
     )
-
-
-def _manifest_integrity_status(manifest: CapabilityManifest) -> str:
-    if not manifest.integrity_chain:
-        return "fail"
-    if model_sha256(manifest) == manifest.integrity_chain[-1].sha256:
-        return "pass"
-    return "fail"
 
 
 def _replay_summary(record: ReplayRecord) -> DashboardReplaySummary:

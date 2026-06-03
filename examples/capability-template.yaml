@@ -73,14 +73,12 @@ context:
 workflow:
   graph: langgraph
   nodes:
-    - parse_goal
-    - collect_context
-    - plan_execution
-    - execute_tools
-    - run_harness
-    - collect_evidence
-    - human_review
-    - package_learning
+    - import_evidence
+    - pack_context
+    - run_verification
+    - record_review
+    - export_runtime_assets
+    - apply_learning_patch
 harness:
   status: pass
   checks:

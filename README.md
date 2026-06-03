@@ -5,12 +5,12 @@
 # oh-my-field
 
 Field-fit agents to real work. oh-my-field turns one-off agent sessions into
-reusable, evidence-backed field capabilities.
+portable, evidence-backed capability packages.
 
 Most agent tools help you run the next prompt. oh-my-field focuses on what
-happens after an agent does useful work: capture the run, preserve the evidence,
-define the harness, replay it, review it, and promote it into a capability that
-can be reused across models, tools, and operating environments.
+happens after an agent does useful work: import the run, preserve the evidence,
+define the harness, review it, and promote it into a capability package that can
+be exported across models, tools, and operating environments.
 
 ## Product Philosophy
 
@@ -25,9 +25,9 @@ The product is designed around a few principles:
 - A field is more than a knowledge base. It includes the local codebase,
   operating process, constraints, review preferences, failure history, and
   quality bar that shape how work should be done.
-- A capability is more than a prompt template. It packages goals, context,
-  runtime assumptions, tool-use patterns, verification checks, and improvement
-  notes into a repeatable unit.
+- A capability is more than a prompt template. It is a repo-local package with
+  `capability.yaml`, `instructions.md`, `harness.yaml`, a human-readable card,
+  evidence links, and learning metadata.
 - Evidence is a product asset. Failed runs, user corrections, command outputs,
   test results, diffs, and review notes become raw material for better future
   runs.
@@ -78,9 +78,10 @@ context matter.
 
 ### Capability
 
-A reusable unit of agent work. A capability includes the goal, captured context,
-runtime metadata, execution policy, verification harness, evidence links, human
-review policy, and learning metadata needed to repeat or improve a workflow.
+A repo-local package that can be given to an external agent runtime. A
+capability includes runtime-neutral instructions, captured context policy,
+runtime metadata, verification harness, evidence links, human review policy,
+and learning metadata needed to repeat or improve a workflow.
 
 ### Evidence
 
@@ -194,20 +195,20 @@ uv run omf export repo_issue_triage \
 
 The typical path is:
 
-1. Capture a real agent run as evidence.
-2. Promote the evidence into a capability manifest.
+1. Import a real agent run as evidence.
+2. Promote the evidence into a capability package.
 3. Replay the capability to check reproducibility.
 4. Build a context bundle from required and optional evidence.
 5. Evaluate the capability with harness commands, checklists, or rubrics.
 6. Record human review signals such as approval, rejection, revision, added
    context, unsafe markers, or regression cases.
 7. Learn from the accumulated evidence and evaluation results.
-8. Accept or reject learning patches before they update a capability.
+8. Accept or reject learning patches before they update the package.
 9. Inspect or export artifacts when they are ready to share or archive.
 
-For longer runs, `omf run` orchestrates capture, promotion, context packing,
-replay, evaluation, and learning in one workflow record. `status`, `resume`, and
-`rollback` operate on that workflow record.
+For local artifact processing, `omf run` can combine capture, promotion, context
+packing, replay, evaluation, and learning in one workflow record. It is an
+advanced OMF pipeline command, not an agent runtime replacement.
 
 ## Using With Agent Runtimes
 
@@ -259,7 +260,8 @@ everything else is preserved as an artifact.
 The default local artifact locations are:
 
 - `.omf/evidence` for captured evidence records.
-- `capabilities` for capability manifests.
+- `capabilities` for capability packages. Each package contains
+  `capability.yaml`, `instructions.md`, `harness.yaml`, and `README.md`.
 - `.omf/replays` for replay records.
 - `.omf/evals` for evaluation results.
 - `.omf/context` for context bundles.
@@ -279,32 +281,96 @@ suffix or capability name and run it again.
 
 ## Quick Start
 
-Capture a successful command and supporting files as evidence:
+The first product loop is three commands: import an external agent run, promote
+the evidence into a package, then inspect registry health.
 
 ```bash
-uv run omf capture \
+uv run omf import-run codex \
+  --log /private/tmp/codex-run.log \
   --goal "triage repo issue" \
-  --prompt tests/fixtures/prompt.md \
-  --command "printf 'smoke ok\n'" \
-  --command-output tests/fixtures/output.txt \
   --test-result tests/fixtures/pytest.txt \
-  --runtime-tool shell \
-  --outcome success \
   --evidence-dir /private/tmp/omf-evidence-smoke
-```
 
-The command prints JSON with an `evidence_id`. Use that id to promote the
-captured run:
-
-```bash
 uv run omf promote <evidence_id> \
   --name repo_issue_triage \
   --description "GitHub issue triage capability" \
   --evidence-dir /private/tmp/omf-evidence-smoke \
   --capabilities-dir /private/tmp/omf-capabilities-smoke
+
+uv run omf health repo_issue_triage \
+  --capabilities-dir /private/tmp/omf-capabilities-smoke \
+  --eval-dir /private/tmp/omf-evals-smoke
 ```
 
-Replay and evaluate the promoted capability:
+`promote` creates `capabilities/<name>/capability.yaml`, `instructions.md`,
+`harness.yaml`, and `README.md`. The package is the canonical source of truth;
+runtime-specific files are export targets, not the capability itself.
+
+## Command Groups
+
+- Create: `import-run`, `capture`, `promote`
+- Harden: `harden`, `regression-case`, `eval`, `learn`, `learn-patch`
+- Port: `capability export`, `capability import`
+- Operate: `health`, `registry`, `dashboard`, `verify`
+- Review: `approve`, `reject`, `revise`, `review`
+- Advanced: `replay`, `context`, `reflect`, `inspect`, `rollback`, `resume`,
+  `run`, `export`
+
+## Portability Loop
+
+Export a capability package for another runtime/model/project:
+
+```bash
+uv run omf capability export repo_issue_triage \
+  --target hermes \
+  --target-model qwen3.6-27b \
+  --source-project source-repo \
+  --target-project target-repo \
+  --source-context-tokens 64000 \
+  --target-context-tokens 16000 \
+  --out /private/tmp/repo_issue_triage-hermes-qwen36 \
+  --capabilities-dir /private/tmp/omf-capabilities-smoke
+```
+
+The bundle includes `capability.yaml`, `portability.yaml`, runtime export
+assets, instructions, context policy, harness, and provenance metadata.
+
+Runtime-specific assets include:
+
+- Codex: `AGENTS.md`, `capability.md`, `context.policy.md`, `harness.md`
+- Claude Code: `CLAUDE.md`, `capability.md`, `examples.md`, `checks.md`
+- Hermes: `SOUL.md`, `skills/<capability>.md`, `profile.patch.yaml`,
+  `harness.md`
+- Generic: `skill.md`, `context.policy.yaml`, `harness.yaml`, `eval_set.yaml`
+
+Import the bundle in the target project and write an initial validation report:
+
+```bash
+uv run omf capability import /private/tmp/repo_issue_triage-hermes-qwen36 \
+  --runtime hermes \
+  --model qwen3.6-27b \
+  --project target-repo \
+  --available-tool shell \
+  --available-tool file_system \
+  --validate \
+  --capabilities-dir /private/tmp/target-omf-capabilities
+```
+
+Import creates a local package and
+`capabilities/<name>/imports/<runtime-model>/validation_report.yaml`. The report
+records source/target runtime metadata, tool compatibility, context remap needs,
+the regression eval set to run next, portability score, and whether the target
+package needs adaptation before validation. The score starts at `1.0` and
+deducts for runtime, model, project, tool, and context-budget portability risk.
+When `--validate` is used, OMF also writes a target-side eval result; failed
+target validation is captured back into evidence. Model transfer exports include
+compact instructions, and smaller target context budgets create a compressed
+context pack.
+
+## Hardening Example
+
+After the package exists, replay and evaluate it when you are ready to harden
+the capability:
 
 ```bash
 uv run omf replay repo_issue_triage \
@@ -323,10 +389,11 @@ uv run omf eval repo_issue_triage \
   --eval-dir /private/tmp/omf-evals-smoke
 ```
 
-## Full Workflow Example
+## Advanced Local Pipeline Example
 
-Use `omf run` when you want one command to create a workflow run that captures,
-promotes, packs context, replays, evaluates, and learns.
+`omf run` is an advanced local pipeline command for creating OMF artifacts in
+one pass. It is not an agent runtime replacement; Codex, Claude Code, Hermes, or
+another agent should still perform the original work.
 
 ```bash
 uv run omf run \
@@ -406,7 +473,7 @@ uv run omf capture \
 
 ### `omf promote`
 
-Promote one evidence record, or a YAML evidence set, into a capability manifest.
+Promote one evidence record, or a YAML evidence set, into a capability package.
 
 ```bash
 uv run omf promote <evidence_id> \
@@ -435,10 +502,11 @@ uv run omf promote \
   --capabilities-dir /private/tmp/omf-capabilities-smoke
 ```
 
-The generated manifest includes field policy, context source planning,
-promotion criteria, calculated promotion metrics, source evidence ids, accepted
-patch history, and artifact integrity links. Passing evidence sets become
-`validated`; passing evidence plus matching eval results can become `stable`.
+The generated package includes field policy, context source planning, promotion
+criteria, calculated promotion metrics, source evidence ids, accepted patch
+history, artifact integrity links, runtime-neutral instructions, a harness file,
+and a human-readable capability card. Passing evidence sets become `validated`;
+passing evidence plus matching eval results can become `stable`.
 
 ### `omf replay`
 
@@ -589,7 +657,7 @@ uv run omf learn repo_issue_triage \
 ### `omf learn-patch`
 
 Accept or reject a prompt, context, or harness patch from a learning export.
-Accepted patches are recorded in the capability manifest; rejected patches are
+Accepted patches are recorded in the capability package; rejected patches are
 preserved as decision records.
 
 ```bash
@@ -620,6 +688,87 @@ uv run omf import-run codex \
   --artifact-root /private/tmp/codex-artifacts \
   --evidence-dir /private/tmp/omf-evidence-smoke
 ```
+
+### `omf health`
+
+Summarize capability health and the next recommended action.
+
+```bash
+uv run omf health repo_issue_triage \
+  --capabilities-dir /private/tmp/omf-capabilities-smoke \
+  --eval-dir /private/tmp/omf-evals-smoke
+```
+
+### `omf harden`
+
+Recommend hardening actions without requiring the user to remember every
+advanced command.
+
+```bash
+uv run omf harden repo_issue_triage \
+  --capabilities-dir /private/tmp/omf-capabilities-smoke \
+  --eval-dir /private/tmp/omf-evals-smoke
+```
+
+### `omf card`
+
+Read the generated capability card, or rewrite it from the current package
+metadata.
+
+```bash
+uv run omf card repo_issue_triage \
+  --capabilities-dir /private/tmp/omf-capabilities-smoke
+
+uv run omf card repo_issue_triage --write \
+  --capabilities-dir /private/tmp/omf-capabilities-smoke
+```
+
+### `omf capability export`
+
+Export a canonical capability package into a target runtime/model portability
+bundle.
+
+```bash
+uv run omf capability export repo_issue_triage \
+  --target hermes \
+  --target-model qwen3.6-27b \
+  --source-project source-repo \
+  --target-project target-repo \
+  --source-context-tokens 64000 \
+  --target-context-tokens 16000 \
+  --out /private/tmp/repo_issue_triage-hermes-qwen36 \
+  --capabilities-dir /private/tmp/omf-capabilities-smoke
+```
+
+The export writes `portability.yaml`, source runtime metadata, evidence links,
+instructions, context policy, harness metadata, and a target runtime directory.
+Target directories are shaped for Codex, Claude Code, Hermes, or generic skill
+consumers.
+When the target model differs from the source model, export writes
+`instructions/compact.md` and model notes. When the target context budget is
+smaller than the source budget, export writes `context/context.pack.md`.
+
+### `omf capability import`
+
+Import a portability bundle into a target project capability directory and write
+a target-side validation report.
+
+```bash
+uv run omf capability import /private/tmp/repo_issue_triage-hermes-qwen36 \
+  --runtime hermes \
+  --model qwen3.6-27b \
+  --project target-repo \
+  --available-tool shell \
+  --validate \
+  --capabilities-dir /private/tmp/target-omf-capabilities \
+  --eval-dir /private/tmp/target-omf-evals \
+  --evidence-dir /private/tmp/target-omf-evidence
+```
+
+The import report records whether tool compatibility is `pass`, `partial`, or
+`unknown`, whether context remapping is required, and the eval set to run before
+marking the target package validated. With `--validate`, import writes an eval
+record and captures failed target validation as evidence.
 
 ### `omf verify`
 
@@ -661,10 +810,11 @@ uv run omf reflect repo_issue_triage \
   --reflection-dir /private/tmp/omf-reflections-smoke
 ```
 
-### `omf run`
+### `omf run` Advanced
 
-Run the orchestrated workflow: capture, promote, context pack, replay, evaluate,
-and learn.
+Run the local OMF artifact pipeline: capture, promote, context pack, replay,
+evaluate, and learn. This command processes artifacts; it does not replace the
+external agent runtime that performs the original task.
 
 Important options:
 
@@ -759,10 +909,10 @@ uv run omf dashboard --once \
 
 ## Example Template
 
-An editable starter manifest is available at
-`examples/capability-template.yaml`. It shows the expected shape for field
-policy, context sources, workflow control, promotion criteria, patch history,
-and integrity links.
+An editable starter capability template is available at
+`examples/capability-template.yaml`. It shows the expected `capability.yaml`
+shape for field policy, context sources, workflow control, promotion criteria,
+patch history, and integrity links.
 
 ### `omf inspect`
 

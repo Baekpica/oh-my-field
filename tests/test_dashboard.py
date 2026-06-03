@@ -78,6 +78,9 @@ def test_dashboard_snapshot_surfaces_runtime_state_and_approvals(
     assert snapshot.capabilities[0].promotion_eval_pass_rate == 0.0
     assert not snapshot.capabilities[0].promotion_criteria_met
     assert snapshot.capabilities[0].integrity_status == "fail"
+    assert snapshot.capabilities[0].next_action == (
+        "run `omf verify capability repo_issue_triage`"
+    )
     assert snapshot.comparisons[0].capability_name == "repo_issue_triage"
     assert snapshot.comparisons[0].eval_count == 1
     assert {action.kind for action in snapshot.console_actions} == {

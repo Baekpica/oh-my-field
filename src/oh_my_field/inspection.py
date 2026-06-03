@@ -15,6 +15,7 @@ from oh_my_field.storage import (
     load_reflection_report,
     load_replay,
     load_workflow_run,
+    manifest_path_for_capability,
 )
 
 type InspectTargetType = Literal[
@@ -79,14 +80,23 @@ def inspect_artifact(request: InspectRequest) -> InspectSummary:
 def _inspect_capability(request: InspectRequest) -> InspectSummary:
     capability_name = _capability_name(request.target_id)
     manifest = load_manifest(capability_name, request.capabilities_dir)
+    manifest_path = manifest_path_for_capability(
+        capability_name,
+        request.capabilities_dir,
+    )
     return InspectSummary(
         target_type="capability",
         target_id=manifest.name,
-        path=str(request.capabilities_dir / manifest.name / "manifest.yaml"),
+        path=str(manifest_path or request.capabilities_dir / manifest.name),
         status=manifest.status,
         payload={
             "version": manifest.version,
             "source_evidence_id": manifest.source_evidence_id,
+            "package_path": str(request.capabilities_dir / manifest.name),
+            "capability_path": str(
+                request.capabilities_dir / manifest.name / "capability.yaml",
+            ),
+            "card_path": str(request.capabilities_dir / manifest.name / "README.md"),
             "workflow_nodes": list(manifest.workflow.nodes),
             "runtime_tools": list(manifest.runtime.tools),
             "approval_required_actions": list(

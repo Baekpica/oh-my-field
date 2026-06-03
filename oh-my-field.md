@@ -2,7 +2,7 @@
 
 - oh-my-field는 에이전트가 수행한 일회성 작업을 조직과 개인의 반복 가능한 업무 자산으로 전환하는 Field-oriented Agent Capability Platform 지향
 - 사용자의 현장 업무 맥락, 암묵지, 시행착오, 검증 기준을 에이전트가 재사용 가능한 형태로 학습·축적·실행할 수 있도록 지원
-- 단순 프롬프트 관리 도구가 아닌, 프롬프트·컨텍스트·실행 환경·검증 하네스·증거 수집·모델 학습까지 수직적으로 연결하는 agent workflow operating layer 지향
+- 단순 프롬프트 관리 도구가 아닌, 프롬프트·컨텍스트·검증 하네스·증거 수집·학습 신호를 capability package로 연결하는 operating layer 지향
 - 프론티어 모델, 로컬 모델, 폐쇄망 모델, 사내 특화 모델 등 런타임이 변경되어도 사용자의 업무 기준과 검증 가능한 실행 품질 유지
 - “AI가 한 번 잘한 일”을 “언제든 다시 잘할 수 있는 capability”로 만드는 것에 집중
 
@@ -16,9 +16,9 @@
 
 ## Capability
 
-- 특정 업무를 에이전트가 반복적으로 수행할 수 있도록 패키징된 능력 단위
-- 프롬프트, 컨텍스트, 입력 스키마, 실행 절차, 도구 사용 방식, 검증 하네스, 실패 대응 전략, 결과물 기준 포함
-- 모델이 바뀌어도 재현 가능해야 하며, 실패 시 개선 가능한 구조 필요
+- 외부 agent runtime에 주입 가능한 repo-local 업무 능력 패키지
+- `capability.yaml`, `instructions.md`, `harness.yaml`, 사람이 읽는 capability card, evidence lineage, accepted patch metadata 포함
+- 모델·런타임·프로젝트가 바뀌어도 검증 가능한 방식으로 이식되어야 하며, 실패 시 evidence와 patch 후보로 개선 가능한 구조 필요
 
 ## Evidence
 
@@ -73,10 +73,11 @@
 - 에이전트 실패, 사용자 수정, 재시도, 로그, 히스토리를 evidence로 수집
 - 실패를 단발성 오류로 소모하지 않고, 다음 실행의 품질 개선 재료로 전환
 
-## 장시간 agent workflow 지원
+## 장시간 agent run의 자산화
 
-- /goals, /ulw 등 장시간 작업 루프를 통해 복잡한 목표를 여러 단계로 분해·실행·검증·수정
-- 단일 프롬프트-응답 구조를 넘어, 상태를 유지하는 multi-step workflow 지원
+- 장시간 실행 자체는 Codex, Claude Code, Hermes 등 외부 agent runtime에 위임
+- omf는 해당 run에서 생성된 log, diff, test result, artifact, user intervention을 evidence로 수집
+- 반복되는 성공/실패를 capability package, regression eval, context policy, learning patch로 전환
 
 ## 모델/런타임 독립성 확보
 
@@ -126,85 +127,77 @@
 ## 1. Observe
 
 - 사용자의 실제 agent 작업 로그, 프롬프트, 스크립트, 커맨드, 실행 결과, 실패 이력 수집
-- 단순 성공 산출물뿐 아니라 중간 사고 과정에 해당하는 실행 흔적과 환경 정보 수집
+- 단순 성공 산출물뿐 아니라 외부 runtime이 남긴 실행 흔적과 환경 정보 수집
 
 ## 2. Structure
 
 - 수집된 작업을 목표, 입력, 절차, 도구, 산출물, 검증 기준, 실패 조건으로 구조화
-- 일회성 agent interaction을 workflow graph로 변환
+- 일회성 agent interaction을 evidence-backed capability package 후보로 변환
 
 ## 3. Harness
 
 - capability의 성공 여부를 판단할 수 있는 평가 기준 구성
 - 자동 테스트, schema validation, lint, benchmark, checklist, human approval gate 등 설정
 
-## 4. Execute
+## 4. Verify
 
-- LangGraph 기반 node workflow 또는 유사한 graph runtime을 통해 작업 실행
-- 각 node는 독립적인 책임을 가지며, 상태와 evidence를 명시적으로 전달
+- 외부 agent가 만든 산출물을 harness 기준으로 검증
+- 각 검증 단계는 상태와 evidence를 명시적으로 남김
 
 ## 5. Evaluate
 
 - 실행 결과를 harness 기준으로 검증
-- 실패 시 원인 분류, 재시도 전략 수립, context 보강, prompt 수정, tool call 재구성
+- 실패 시 원인 분류, context 보강, prompt/harness patch 후보 생성, target runtime 재검증 계획 수립
 
 ## 6. Promote
 
-- 검증을 통과한 workflow를 reusable capability로 승격
-- capability registry에 저장하고, 이후 유사 작업에서 검색·재사용 가능하게 구성
+- 검증 가능한 evidence set을 reusable capability package로 승격
+- capability registry에 저장하고, 이후 유사 작업이나 다른 runtime export에서 검색·재사용 가능하게 구성
 
 ## 7. Learn
 
 - 누적 evidence를 기반으로 prompt optimization, context packing, retrieval policy 개선
 - 필요 시 fine-tuning dataset, preference dataset, eval set으로 전환
 
-# LangGraph-based Workflow Design
+# LangGraph-based Artifact Pipeline Design
 
-- omf는 장시간·다단계 agent 작업을 견고하게 처리하기 위해 LangGraph 기반 workflow 구성을 고려
-- 각 작업은 단일 프롬프트가 아니라 상태를 가진 graph로 표현
-- node는 명확한 책임 단위로 분리하며, edge는 성공·실패·보류·사용자 승인 등 상태 전이를 표현
+- omf의 LangGraph는 agent가 일을 수행하는 graph가 아니라, agent가 만든 run artifact를 capture, structure, verify, promote, learn 하는 artifact processing pipeline graph
+- 각 pipeline은 evidence와 capability package 상태를 가진 graph로 표현
+- node는 명확한 artifact 처리 책임 단위로 분리하며, edge는 성공·실패·보류·사용자 승인 등 상태 전이를 표현
 
 ## 주요 node 예시
 
-### Goal Parser Node
+### Import Evidence Node
 
-- 사용자 요청을 목표, 제약 조건, 완료 기준, 예상 산출물로 분해
+- 외부 runtime log, diff, test result, artifact를 evidence record로 수집
 
-### Context Collector Node
+### Structure Context Node
 
-- 코드베이스, 문서, 로그, 이전 evidence, 사용자 선호, 환경 정보를 수집
+- evidence와 field policy를 바탕으로 required/optional/forbidden context를 구조화
 
-### Plan Builder Node
+### Build Harness Node
 
-- 목표 달성을 위한 단계별 실행 계획 생성
+- 테스트, lint, rubric, checklist, human review gate를 capability harness로 정리
 
-### Tool Execution Node
+### Verify Integrity Node
 
-- shell, git, browser, DB, API, MCP tool 등 실제 도구 실행
+- evidence와 capability package의 integrity link를 검증
 
-### Harness Runner Node
+### Promote Capability Node
 
-- 테스트, lint, type check, schema validation, benchmark, rubric 평가 수행
+- evidence set과 metrics를 canonical package로 승격
 
-### Evidence Collector Node
+### Export Runtime Assets Node
 
-- 실행 로그, 결과물, 실패 원인, 사용자 개입, 재시도 이력 저장
+- canonical package를 Codex, Claude Code, Hermes, generic skill bundle로 변환
 
-### Reflection Node
+### Record Learning Patch Node
 
-- 실패 또는 품질 미달 결과에 대해 원인 분석 및 수정 방향 도출
+- failure/review/eval 결과를 prompt, context, harness patch 후보와 decision record로 저장
 
 ### Human Review Node
 
 - 사용자 승인, 수정 요청, 중단, 재실행 여부 판단
-
-### Capability Packager Node
-
-- 성공한 workflow를 capability manifest로 변환
-
-### Learning Export Node
-
-- evidence를 eval set, prompt improvement data, fine-tuning candidate로 변환
 
 # Command Interface
 
@@ -216,12 +209,12 @@
 
 ## /promote
 
-- 특정 작업 세션 또는 workflow를 capability로 승격
-- manifest, harness, context policy, execution policy, failure recovery rule 생성
+- 특정 evidence record 또는 evidence set을 capability package로 승격
+- capability.yaml, instructions.md, harness.yaml, Capability Card, context policy, failure recovery rule 생성
 
 ## /replay
 
-- 기존 capability 또는 workflow를 동일/유사 입력에 대해 재실행
+- 기존 capability package를 동일/유사 입력에 대해 검증
 - 모델·런타임 변경 시 재현성 비교 가능
 
 ## /eval
@@ -229,9 +222,71 @@
 - capability의 성능, 안정성, 비용, 재현성, 사용자 개입률 평가
 - 여러 모델 또는 runtime 간 비교 지원
 
-# Capability Manifest
+## /capability export
 
-- capability는 다음과 같은 yaml manifest 형태로 정의
+- canonical capability package를 target runtime/model/project용 portability bundle로 export
+- `portability.yaml`, source runtime/model/project metadata, evidence links, context policy, harness metadata 생성
+- Codex target은 `AGENTS.md`, `capability.md`, `context.policy.md`, `harness.md` 생성
+- Claude Code target은 `CLAUDE.md`, `capability.md`, `examples.md`, `checks.md` 생성
+- Hermes target은 `SOUL.md`, `skills/<capability>.md`, `profile.patch.yaml`, `harness.md` 생성
+- generic target은 `skill.md`, `context.policy.yaml`, `harness.yaml`, `eval_set.yaml` 생성
+
+## /capability import
+
+- portability bundle을 target project capability directory로 import
+- target runtime/model/project metadata를 확정하고 validation report 생성
+- tool compatibility, context remap 필요 여부, target eval set, next action 기록
+- `--validate` 사용 시 target-side eval result를 자동 생성하고, 실패한 target validation을 evidence로 수집
+- validation report에는 portability score, source/target model delta, compact instruction, compressed context path 기록
+
+## /health
+
+- capability 상태, evidence/eval/integrity/portability 요약과 next action 표시
+- `registry`보다 운영자가 읽기 쉬운 health surface 제공
+
+## /harden
+
+- regression case, eval, learning patch, runtime export 등 다음 hardening action 추천
+- 사용자가 advanced command를 모두 외우지 않아도 capability 강화 루프를 진행할 수 있게 함
+
+## /card
+
+- capability package의 `README.md` Capability Card를 읽거나 재생성
+- 사람이 읽는 capability 요약을 CLI에서 바로 확인 가능
+
+## Command Grouping
+
+- Create: `import-run`, `capture`, `promote`
+- Harden: `harden`, `regression-case`, `eval`, `learn`, `learn-patch`
+- Port: `capability export`, `capability import`
+- Operate: `health`, `registry`, `dashboard`, `verify`
+- Review: `approve`, `reject`, `revise`, `review`
+- Advanced: `replay`, `context`, `reflect`, `inspect`, `rollback`, `resume`, `run`, `export`
+
+# Capability Package
+
+- capability는 단일 manifest가 아니라 폴더 단위 package로 정의
+
+```text
+capabilities/
+  repo_issue_triage/
+    capability.yaml
+    instructions.md
+    harness.yaml
+    README.md
+    examples/
+    eval_sets/
+    patches/
+    provenance/
+    exports/
+```
+
+- `capability.yaml`은 canonical metadata
+- `instructions.md`는 agent runtime에 주입 가능한 runtime-neutral instruction surface
+- `harness.yaml`은 검증 기준과 approval boundary
+- `README.md`는 사람이 읽는 Capability Card
+
+`capability.yaml`은 다음 형태를 기본으로 함.
 
 ```yaml
 name: repo_issue_triage
@@ -256,13 +311,12 @@ context:
 workflow:
   graph: langgraph
   nodes:
-    - parse_goal
-    - collect_context
-    - inspect_code
-    - propose_fix
-    - run_tests
-    - collect_evidence
-    - human_review
+    - import_evidence
+    - pack_context
+    - run_verification
+    - record_review
+    - export_runtime_assets
+    - apply_learning_patch
 
 harness:
   required_checks:
@@ -417,7 +471,7 @@ promotion_criteria:
 - harness failure를 prompt patch로 연결
 - 모델별 prompt variant 관리
 
-# Long-running Workflow Control
+# Artifact Pipeline Control
 
 ## 제어 항목
 
@@ -435,9 +489,9 @@ promotion_criteria:
 
 ## 상태 관리
 
-- 각 workflow는 현재 goal, sub-goal, node state, evidence, pending approval, failure reason을 저장
-- 사용자는 중간 상태를 확인하고, 특정 node부터 재실행 가능
-- 실패한 workflow도 evidence로 남겨 다음 실행의 개선 재료로 활용
+- 각 pipeline run은 현재 artifact node, evidence, pending approval, failure reason을 저장
+- 사용자는 중간 상태를 확인하고, 특정 artifact processing node부터 재실행 가능
+- 실패한 외부 agent run도 evidence로 남겨 다음 package 개선 재료로 활용
 
 # Human-in-the-Loop Design
 
@@ -471,14 +525,14 @@ promotion_criteria:
 - /capture, /promote, /replay, /eval 등 명령 제공
 - 기존 coding agent 또는 chat agent와 함께 사용할 수 있는 얇은 command layer 제공
 
-## Workflow Orchestrator
+## Artifact Pipeline Orchestrator
 
-- LangGraph 기반 node orchestration 담당
-- 상태 전이, 재시도, 중단, 승인, checkpoint, resume 처리
+- LangGraph 기반 artifact processing node orchestration 담당
+- capture, structure, verify, promote, learn 단계의 상태 전이, 중단, 승인, checkpoint, resume 처리
 
 ## Capability Registry
 
-- capability manifest 저장
+- capability package metadata 저장
 - versioning, dependency, owner, runtime compatibility, evaluation result 관리
 
 ## Evidence Store
@@ -498,30 +552,34 @@ promotion_criteria:
 
 ## Runtime Adapter
 
-- OpenAI, Anthropic, local LLM, Claude Code, Codex, Hermes, shell, MCP, browser 등 런타임 연결
-- 모델/도구별 실행 차이를 capability 상위 계층에서 흡수
+- Codex, Claude Code, Hermes 등 외부 agent runtime의 run artifact import 담당
 - Codex / Claude Code / Hermes 같은 외부 agent runtime은 직접 재구현하지 않고, run log, diff, test result, command output, artifact를 evidence로 import하는 adapter를 제공
 - runtime matrix replay/eval은 capability portability를 검증하기 위한 artifact를 생성하며, agent 자체의 장시간 실행 loop를 대체하지 않음
+
+## Runtime Exporter
+
+- canonical capability package를 외부 agent runtime별 instruction/skill bundle로 변환
+- Codex target은 `AGENTS.md`, capability instruction, context policy, harness guide 생성
+- Claude Code target은 `CLAUDE.md`와 project memory style instruction 생성
+- Hermes target은 `SOUL.md`, skill markdown, profile patch 생성
+- Generic target은 `skill.md`, `context.policy.yaml`, `harness.yaml` 생성
 
 ## Learning Pipeline
 
 - evidence를 prompt patch, eval set, few-shot example, fine-tuning dataset으로 변환
 - 모델 학습 또는 runtime policy 개선에 활용
-- prompt patch뿐 아니라 context patch와 harness patch도 accept/reject decision을 거쳐 capability manifest에 반영
+- prompt patch뿐 아니라 context patch와 harness patch도 accept/reject decision을 거쳐 capability package에 반영
 - patch decision은 before/after eval, pass-rate delta, reviewer note, integrity link를 보존
 
 # Data Flow
 
-- 사용자 목표 입력
-- goal normalization 및 sub-goal decomposition
-- 관련 context 검색 및 압축
-- workflow graph 생성 또는 기존 capability 검색
-- node 단위 실행
-- tool call 및 artifact 생성
-- harness 검증
-- 실패 시 reflection 및 retry
-- 성공 시 evidence 저장
-- 반복 성공 시 capability promotion
+- 외부 agent runtime이 사용자 목표를 수행
+- omf가 run log, diff, test result, command output, artifact를 evidence로 import
+- evidence에서 goal, context, runtime metadata, harness signal, user intervention 추출
+- required/optional/forbidden context policy 구성
+- harness 검증과 integrity verification 수행
+- 실패 시 reflection 및 patch 후보 생성
+- 검증 가능한 evidence set을 capability package로 promotion
 - promotion은 success run count, harness pass rate, human intervention rate, retry rate, runtime profile, eval pass rate를 계산해 candidate / validated / stable 상태를 산출
 - 누적 evidence 기반 prompt/context/harness/model 개선
 - integrity verification은 evidence → capability → replay → eval → review → learning/export lineage가 변조되지 않았는지 확인
@@ -569,12 +627,13 @@ promotion_criteria:
 ## 필수 기능
 
 - /capture: agent 작업 세션 수집
-- /promote: 성공 workflow의 capability manifest 생성
+- /import-run: 외부 agent runtime run artifact를 evidence로 import
+- /promote: 검증 가능한 evidence의 capability package 생성
 - /replay: 기존 capability 재실행
 - evidence store 기본 구현
 - capability registry 기본 구현
 - shell/git/test 기반 harness 실행
-- LangGraph 기반 node workflow prototype
+- LangGraph 기반 artifact pipeline prototype
 
 # Product Positioning
 
@@ -600,12 +659,12 @@ promotion_criteria:
 - CLI-first 사용 경험 제공
 - 로컬 파일시스템 기반 artifact 저장을 기본값으로 제공하되, 추후 object storage 연동 가능
 
-# Agent Runtime
+# Agent Runtime Integration
 
-- omf는 다양한 coding agent 및 general-purpose agent와 함께 사용할 수 있는 companion runtime 지향
+- omf는 다양한 coding agent 및 general-purpose agent와 함께 사용할 수 있는 companion operating layer 지향
 - Codex, Claude Code, Hermes, OpenCode, OpenAI API, Anthropic API, local LLM runtime 등과 연동 가능한 구조 선호
-- 단일 agent provider에 종속되지 않고, capability manifest와 evidence schema를 중심으로 agent 실행 계층을 추상화
-- agent는 다음 작업을 수행할 수 있어야 함
+- 단일 agent provider에 종속되지 않고, capability package와 evidence schema를 중심으로 import/export 계층을 추상화
+- 외부 agent runtime은 다음 작업을 수행하고, omf는 그 결과물을 evidence로 수집
   - 사용자 목표 해석
   - 작업 계획 수립
   - 파일 읽기/수정
@@ -616,32 +675,31 @@ promotion_criteria:
   - 사용자 승인 요청
   - 결과물 및 evidence 저장
 
-# Workflow Orchestration
+# Artifact Pipeline Orchestration
 
-- LangGraph 기반 node workflow 구성을 우선 고려
-- 각 workflow는 명확한 node와 state transition으로 표현
+- LangGraph 기반 artifact pipeline 구성을 우선 고려
+- 각 pipeline은 명확한 node와 state transition으로 표현
 - node는 다음과 같은 책임 단위로 분리 가능
-  - goal parsing
-  - context collection
-  - plan building
-  - tool execution
+  - evidence import
+  - context packaging
+  - harness building
+  - integrity verification
   - artifact generation
-  - harness running
-  - evidence collection
   - reflection
   - human review
   - capability packaging
+  - runtime export
   - learning export
-- workflow는 실패, 재시도, 보류, 사용자 승인, 중단, 재개 상태를 명시적으로 표현해야 함
-- omf는 agent의 작업을 “대화 흐름”이 아니라 “상태를 가진 실행 graph”로 관리하는 것을 선호
+- pipeline은 실패, 보류, 사용자 승인, 중단, 재개 상태를 명시적으로 표현해야 함
+- omf는 agent의 작업을 직접 실행하기보다, agent가 만든 artifact를 “상태를 가진 검증 graph”로 관리하는 것을 선호
 
 # Backend
 
-- Python 기반 API 및 workflow runtime 우선
+- Python 기반 API 및 artifact processing runtime 우선
 - FastAPI, Litestar 등 ASGI framework 사용 가능
 - CLI, MCP server, local API server, web dashboard가 동일한 capability registry와 evidence store를 공유하는 구조 지향
 - 업무 도메인별 tool adapter는 독립 모듈로 분리
-- agent runtime, tool execution, evidence storage, harness execution은 느슨하게 결합
+- agent runtime import/export, evidence storage, harness verification은 느슨하게 결합
 
 # Database / Storage
 
@@ -664,7 +722,7 @@ promotion_criteria:
 
 ## 저장 대상
 
-- capability manifest
+- capability package metadata
 - workflow run metadata
 - prompts
 - context snapshots
@@ -732,14 +790,14 @@ promotion_criteria:
   - database connector
 
 - MCP 기반 tool integration을 우선 고려
-- tool adapter는 capability manifest에 명시되어야 함
+- tool adapter는 capability package metadata에 명시되어야 함
 - 각 tool은 권한 수준과 실행 조건을 가져야 함
 - destructive action, external API call, credential access, production write, paid operation 등은 approval gate를 통해 제어
 
 # Model Configuration
 
 - omf는 모델 성능 차이를 전제로 설계
-- 초기 capability 설계, workflow decomposition, harness 생성, report drafting 등에는 frontier model을 사용할 수 있음
+- 초기 capability 설계, context/harness 구성, report drafting 등에는 frontier model을 사용할 수 있음
 - 반복 실행, metadata extraction, formatting, local validation 등은 smaller model 또는 local model로 대체 가능
 - capability별 model profile 관리 필요
 - model profile 예시
@@ -756,7 +814,7 @@ promotion_criteria:
 
 - omf는 폐쇄망 또는 제한된 네트워크 환경에서도 실행 가능한 구조를 지향
 - 외부 API 호출이 불가능한 경우 local file, internal document, local model, internal package registry, local database를 활용
-- capability manifest에는 offline compatibility와 runtime dependency를 명시
+- capability package에는 offline compatibility와 runtime dependency를 명시
 - closed-network mode에서는 다음 제약을 기본값으로 둘 수 있음
   - external network disabled
   - local model only
@@ -799,16 +857,13 @@ promotion_criteria:
 
 # Observability
 
-- 모든 workflow run은 session 단위로 추적
-- node별 input, output, tool call, error, retry, latency, cost, artifact, user intervention 기록
+- 모든 imported run과 artifact pipeline run은 session 단위로 추적
+- node별 input, output, error, retry, latency, cost, artifact, user intervention 기록
 - 실패한 작업도 성공 작업과 동일하게 evidence로 저장
-- long-running workflow에서는 다음 상태를 확인 가능해야 함
-  - current goal
-  - current sub-goal
+- artifact pipeline에서는 다음 상태를 확인 가능해야 함
   - current node
   - last successful checkpoint
   - pending approval
-  - remaining budget
   - last failure reason
   - generated artifacts
   - next planned action
@@ -817,10 +872,10 @@ promotion_criteria:
 
 # Security / Permission Boundary
 
-- omf는 agent가 장시간 실행되는 것을 전제로 하기 때문에 명시적 권한 경계 필요
+- omf는 agent가 만든 artifact를 검증하고 이식하는 도구이므로 명시적 권한 경계 필요
 - 기본적으로 read-only dry-run을 우선 수행
 - write action, destructive command, credential access, external upload, production API call, paid API call 등은 사용자 승인 필요
-- capability manifest에는 다음 정보를 명시
+- capability package에는 다음 정보를 명시
   - allowed tools
   - disallowed tools
   - approval-required actions

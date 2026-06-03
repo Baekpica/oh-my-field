@@ -63,6 +63,7 @@ def test_registry_lists_capabilities_with_eval_results(tmp_path: Path) -> None:
     assert entries[0]["promotion_eval_pass_rate"] == 1.0
     assert entries[0]["promotion_criteria_met"]
     assert entries[0]["integrity_status"] == "fail"
+    assert entries[0]["next_action"] == "run `omf verify capability repo_issue_triage`"
 
 
 def test_registry_filters_to_single_capability(tmp_path: Path) -> None:

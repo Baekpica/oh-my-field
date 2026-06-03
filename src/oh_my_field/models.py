@@ -604,6 +604,7 @@ class CapabilityRegistryEntry(StrictModel):
     promotion_eval_pass_rate: float = Field(default=0.0, ge=0.0, le=1.0)
     promotion_criteria_met: bool = False
     integrity_status: IntegrityVerificationStatus = "fail"
+    next_action: str = Field(min_length=1)
     manifest_path: str = Field(min_length=1)
 
 

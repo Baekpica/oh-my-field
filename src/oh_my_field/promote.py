@@ -30,7 +30,11 @@ from oh_my_field.models import (
     WorkflowControl,
     WorkflowManifest,
 )
-from oh_my_field.storage import list_eval_results, load_evidence, write_manifest
+from oh_my_field.storage import (
+    list_eval_results,
+    load_evidence,
+    write_capability_package,
+)
 
 PROMOTE_NODES: Final = (
     "load_evidence",
@@ -40,14 +44,12 @@ PROMOTE_NODES: Final = (
     "summarize",
 )
 CAPABILITY_WORKFLOW_NODES: Final = (
-    "parse_goal",
-    "collect_context",
-    "plan_execution",
-    "execute_tools",
-    "run_harness",
-    "collect_evidence",
-    "human_review",
-    "package_learning",
+    "import_evidence",
+    "pack_context",
+    "run_verification",
+    "record_review",
+    "export_runtime_assets",
+    "apply_learning_patch",
 )
 EVIDENCE_STORE_FIELDS: Final = (
     "prompts",
@@ -108,6 +110,11 @@ class PromoteRequest(StrictModel):
 class PromoteSummary(StrictModel):
     capability_name: str
     manifest_path: str
+    package_path: str
+    capability_path: str
+    instructions_path: str
+    harness_path: str
+    card_path: str
     status: str
 
 
@@ -565,7 +572,8 @@ def _validate_manifest(state: PromoteState) -> PromoteState:
 def _write_capability(state: PromoteState) -> PromoteState:
     request = _state_request(state)
     manifest = _state_manifest(state)
-    manifest_path = write_manifest(manifest, request.capabilities_dir)
+    paths = write_capability_package(manifest, request.capabilities_dir)
+    manifest_path = paths.capability_path
     return PromoteState(manifest_path=manifest_path)
 
 
@@ -575,6 +583,11 @@ def _summarize(state: PromoteState) -> PromoteState:
     summary = PromoteSummary(
         capability_name=manifest.name,
         manifest_path=str(manifest_path),
+        package_path=str(manifest_path.parent),
+        capability_path=str(manifest_path),
+        instructions_path=str(manifest_path.parent / "instructions.md"),
+        harness_path=str(manifest_path.parent / "harness.yaml"),
+        card_path=str(manifest_path.parent / "README.md"),
         status=manifest.status,
     )
     return PromoteState(summary=summary)
