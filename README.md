@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/oh-my-field-logo.png" alt="oh-my-field logo" width="760">
+</p>
+
 # oh-my-field
 
 Field-fit agents to real work. oh-my-field turns one-off agent sessions into
