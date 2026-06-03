@@ -250,6 +250,7 @@ metadata-only.
 - Install guide: [docs/install.md](docs/install.md)
 - 5-minute quickstart: [docs/quickstart.md](docs/quickstart.md)
 - Security model: [docs/security.md](docs/security.md)
+- Architecture overview: [docs/architecture/overview.md](docs/architecture/overview.md)
 - CLI command reference: [Command Interface](oh-my-field.md#command-interface)
 - Capability package shape: [Capability Package](oh-my-field.md#capability-package)
 - Artifact pipeline design:
