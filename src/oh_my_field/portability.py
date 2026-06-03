@@ -1,3 +1,4 @@
+import json
 import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -7,7 +8,7 @@ from typing import Literal, cast
 import yaml
 from pydantic import Field
 
-from oh_my_field.integrity import append_integrity_link
+from oh_my_field.integrity import append_integrity_link, model_sha256
 from oh_my_field.models import (
     CAPABILITY_NAME_PATTERN,
     CapabilityManifest,
@@ -20,6 +21,8 @@ from oh_my_field.models import (
 )
 from oh_my_field.storage import (
     DuplicateWriteError,
+    StorageError,
+    load_evidence,
     load_manifest,
     write_capability_package,
     write_eval_result,
@@ -29,11 +32,13 @@ from oh_my_field.storage import (
 type ExportTarget = Literal["codex", "claude_code", "hermes", "generic"]
 type ValidationStatus = Literal["needs_validation", "needs_adaptation"]
 type ToolCompatibilityStatus = Literal["pass", "partial", "unknown"]
+type EvidenceInclusionMode = Literal["none", "summary", "redacted", "full"]
 type YamlValue = (
     str | int | float | bool | None | list["YamlValue"] | dict[str, "YamlValue"]
 )
 
 PORTABILITY_REQUIRED_PASS_RATE = 0.8
+REDACTED_MARKER = "[REDACTED]"
 
 
 class PortabilityError(Exception):
@@ -122,6 +127,34 @@ class PortabilityManifest(StrictModel):
     validation: PortabilityValidation = Field(default_factory=PortabilityValidation)
 
 
+class EvidenceProof(StrictModel):
+    evidence_id: str = Field(min_length=1)
+    available: bool
+    sha256: str | None = None
+    integrity_verified: bool = False
+    summary_path: str | None = None
+    snapshot_path: str | None = None
+
+
+class EvidenceProvenancePack(StrictModel):
+    mode: EvidenceInclusionMode
+    proofs: tuple[EvidenceProof, ...] = ()
+
+
+class EvidenceIntegrityProof(StrictModel):
+    evidence_id: str = Field(min_length=1)
+    available: bool
+    sha256: str | None = None
+    integrity_verified: bool = False
+
+
+class ProvenanceIntegrity(StrictModel):
+    capability: str = Field(pattern=CAPABILITY_NAME_PATTERN)
+    capability_sha256: str | None = None
+    capability_integrity_verified: bool = False
+    evidence: tuple[EvidenceIntegrityProof, ...] = ()
+
+
 class TargetValidationReport(StrictModel):
     capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
     source: PortabilitySource
@@ -154,6 +187,8 @@ class CapabilityPortabilityExportRequest(StrictModel):
     source_reasoning_effort: str | None = None
     source_context_tokens: int | None = Field(default=None, ge=1)
     target_context_tokens: int | None = Field(default=None, ge=1)
+    evidence_dir: Path = Path(".omf/evidence")
+    include_evidence: EvidenceInclusionMode = "summary"
 
 
 class CapabilityPortabilityExportSummary(StrictModel):
@@ -163,6 +198,8 @@ class CapabilityPortabilityExportSummary(StrictModel):
     runtime_export_path: str
     target_runtime: ExportTarget
     target_model: str | None = None
+    evidence_mode: EvidenceInclusionMode = "summary"
+    evidence_proof_count: int = Field(default=0, ge=0)
 
 
 class CapabilityPortabilityImportRequest(StrictModel):
@@ -196,7 +233,17 @@ def export_capability_package(
     manifest = load_manifest(request.capability_name, request.capabilities_dir)
     _ensure_new_directory(request.out)
     portability = _portability_manifest(manifest, request)
+    records = _load_source_evidence(
+        evidence_ids=portability.source.evidence_ids,
+        evidence_dir=request.evidence_dir,
+    )
     _write_export_bundle(request.out, manifest, portability)
+    pack = _write_evidence_provenance(
+        bundle_path=request.out,
+        mode=request.include_evidence,
+        manifest=manifest,
+        records=records,
+    )
     runtime_path = _write_runtime_target(request.out, manifest, portability)
     return CapabilityPortabilityExportSummary(
         capability_name=manifest.name,
@@ -205,6 +252,8 @@ def export_capability_package(
         runtime_export_path=str(runtime_path),
         target_runtime=request.target,
         target_model=request.target_model,
+        evidence_mode=request.include_evidence,
+        evidence_proof_count=len(pack.proofs),
     )
 
 
@@ -398,6 +447,182 @@ def _write_export_bundle(
             {"evidence_ids": list(portability.source.evidence_ids)},
             sort_keys=False,
         ),
+    )
+
+
+def _load_source_evidence(
+    *,
+    evidence_ids: tuple[str, ...],
+    evidence_dir: Path,
+) -> tuple[tuple[str, EvidenceRecord | None], ...]:
+    records: list[tuple[str, EvidenceRecord | None]] = []
+    for evidence_id in evidence_ids:
+        try:
+            records.append((evidence_id, load_evidence(evidence_id, evidence_dir)))
+        except StorageError:
+            records.append((evidence_id, None))
+    return tuple(records)
+
+
+def _write_evidence_provenance(
+    *,
+    bundle_path: Path,
+    mode: EvidenceInclusionMode,
+    manifest: CapabilityManifest,
+    records: tuple[tuple[str, EvidenceRecord | None], ...],
+) -> EvidenceProvenancePack:
+    _write_text_exclusive(
+        bundle_path / "provenance" / "integrity.yaml",
+        _yaml_dump(_provenance_integrity(manifest, records)),
+    )
+    if mode == "none":
+        return EvidenceProvenancePack(mode=mode)
+    proofs: list[EvidenceProof] = []
+    for evidence_id, record in records:
+        summary_path: str | None = None
+        snapshot_path: str | None = None
+        if record is not None:
+            summary_path = f"source_evidence_summaries/{evidence_id}.md"
+            _write_text_exclusive(
+                bundle_path / "provenance" / summary_path,
+                _evidence_summary_markdown(evidence_id, record),
+            )
+            if mode in ("redacted", "full"):
+                snapshot_path = f"source_evidence/{evidence_id}.json"
+                _write_text_exclusive(
+                    bundle_path / "provenance" / snapshot_path,
+                    _evidence_snapshot(record, redacted=mode == "redacted"),
+                )
+        proofs.append(
+            EvidenceProof(
+                evidence_id=evidence_id,
+                available=record is not None,
+                sha256=_evidence_sha(record),
+                integrity_verified=_evidence_integrity_ok(record),
+                summary_path=summary_path,
+                snapshot_path=snapshot_path,
+            ),
+        )
+    pack = EvidenceProvenancePack(mode=mode, proofs=tuple(proofs))
+    _write_text_exclusive(
+        bundle_path / "provenance" / "evidence_proofs.yaml",
+        _yaml_dump(pack),
+    )
+    if mode == "redacted":
+        _write_text_exclusive(
+            bundle_path / "provenance" / "redactions.yaml",
+            _redactions_yaml(),
+        )
+    return pack
+
+
+def _provenance_integrity(
+    manifest: CapabilityManifest,
+    records: tuple[tuple[str, EvidenceRecord | None], ...],
+) -> ProvenanceIntegrity:
+    capability_sha = (
+        manifest.integrity_chain[-1].sha256 if manifest.integrity_chain else None
+    )
+    capability_verified = bool(manifest.integrity_chain) and (
+        model_sha256(manifest) == manifest.integrity_chain[-1].sha256
+    )
+    return ProvenanceIntegrity(
+        capability=manifest.name,
+        capability_sha256=capability_sha,
+        capability_integrity_verified=capability_verified,
+        evidence=tuple(
+            EvidenceIntegrityProof(
+                evidence_id=evidence_id,
+                available=record is not None,
+                sha256=_evidence_sha(record),
+                integrity_verified=_evidence_integrity_ok(record),
+            )
+            for evidence_id, record in records
+        ),
+    )
+
+
+def _evidence_sha(record: EvidenceRecord | None) -> str | None:
+    if record is None:
+        return None
+    if record.integrity_chain:
+        return record.integrity_chain[-1].sha256
+    return model_sha256(record)
+
+
+def _evidence_integrity_ok(record: EvidenceRecord | None) -> bool:
+    if record is None or not record.integrity_chain:
+        return False
+    return model_sha256(record) == record.integrity_chain[-1].sha256
+
+
+def _evidence_summary_markdown(evidence_id: str, record: EvidenceRecord) -> str:
+    runtime = f"{record.runtime.name}/{record.runtime.model or 'model_unknown'}"
+    return "\n".join(
+        [
+            f"# Evidence {evidence_id}",
+            "",
+            f"- Goal: {record.goal}",
+            f"- Normalized goal: {record.normalized_goal or 'not recorded'}",
+            f"- Field: {record.field}",
+            f"- Runtime: {runtime}",
+            f"- Harness: {record.harness.status}",
+            f"- Result: {record.success_or_failure_label}",
+            f"- Files captured: {len(record.files)}",
+            f"- Commands executed: {len(record.command_executions)}",
+            f"- Errors: {len(record.errors)}",
+            f"- Integrity head: {_evidence_sha(record) or 'not recorded'}",
+            "",
+        ],
+    )
+
+
+def _evidence_snapshot(record: EvidenceRecord, *, redacted: bool) -> str:
+    data = cast("dict[str, YamlValue]", record.model_dump(mode="json"))
+    if redacted:
+        data = _redact_evidence(data)
+    return json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+
+
+def _redact_evidence(data: dict[str, YamlValue]) -> dict[str, YamlValue]:
+    _redact_list_fields(data.get("files"), ("content",))
+    _redact_list_fields(data.get("command_executions"), ("stdout", "stderr"))
+    _redact_list_fields(data.get("tool_calls"), ("input", "output"))
+    outputs = data.get("execution_outputs")
+    if isinstance(outputs, list):
+        data["execution_outputs"] = [REDACTED_MARKER for _ in outputs]
+    return data
+
+
+def _redact_list_fields(value: YamlValue, keys: tuple[str, ...]) -> None:
+    if not isinstance(value, list):
+        return
+    for entry in value:
+        if isinstance(entry, dict):
+            for key in keys:
+                if entry.get(key):
+                    entry[key] = REDACTED_MARKER
+
+
+def _redactions_yaml() -> str:
+    return yaml.safe_dump(
+        {
+            "mode": "redacted",
+            "redacted_paths": [
+                "files[].content",
+                "command_executions[].stdout",
+                "command_executions[].stderr",
+                "execution_outputs[]",
+                "tool_calls[].input",
+                "tool_calls[].output",
+            ],
+            "note": (
+                "Content fields are removed; evidence ids, hashes, and metadata "
+                "are retained for offline lineage verification."
+            ),
+        },
+        sort_keys=False,
+        allow_unicode=True,
     )
 
 

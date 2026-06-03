@@ -369,8 +369,15 @@ def _capability_export(
         int | None,
         typer.Option("--target-context-tokens"),
     ] = None,
+    include_evidence: Annotated[
+        Literal["none", "summary", "redacted", "full"],
+        typer.Option("--include-evidence"),
+    ] = "summary",
     capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
         "capabilities",
+    ),
+    evidence_dir: Annotated[Path, typer.Option("--evidence-dir")] = Path(
+        ".omf/evidence",
     ),
 ) -> None:
     try:
@@ -384,8 +391,10 @@ def _capability_export(
                 source_reasoning_effort=source_reasoning_effort,
                 source_context_tokens=source_context_tokens,
                 target_context_tokens=target_context_tokens,
+                include_evidence=include_evidence,
                 out=out,
                 capabilities_dir=capabilities_dir,
+                evidence_dir=evidence_dir,
             ),
         )
     except (PortabilityError, StorageError, ValidationError) as exc:

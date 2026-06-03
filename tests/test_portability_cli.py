@@ -1,3 +1,6 @@
+import hashlib
+import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -6,16 +9,19 @@ from pydantic import BaseModel, ConfigDict
 from typer.testing import CliRunner
 
 from oh_my_field.cli import app
+from oh_my_field.integrity import append_integrity_link
 from oh_my_field.models import (
     CapabilityManifest,
+    CapturedTextFile,
     ContextPolicy,
+    EvidenceRecord,
     HarnessResult,
     PromotionCriteria,
     RuntimeInfo,
     WorkflowControl,
     WorkflowManifest,
 )
-from oh_my_field.storage import load_manifest, write_manifest
+from oh_my_field.storage import load_manifest, write_evidence, write_manifest
 
 
 class CapabilityExportOutput(BaseModel):
@@ -27,6 +33,8 @@ class CapabilityExportOutput(BaseModel):
     runtime_export_path: str
     target_runtime: str
     target_model: str | None
+    evidence_mode: str
+    evidence_proof_count: int
 
 
 class CapabilityImportOutput(BaseModel):
@@ -257,6 +265,150 @@ def test_capability_export_writes_runtime_specific_skill_assets(
     runtime_dir = export_dir / "runtime" / target
     for expected_file in expected_files:
         assert runtime_dir.joinpath(expected_file).exists()
+
+
+def test_capability_export_includes_evidence_proof_pack(tmp_path: Path) -> None:
+    capabilities_dir = tmp_path / "capabilities"
+    evidence_dir = tmp_path / "evidence"
+    write_manifest(make_manifest(), capabilities_dir)
+    write_evidence(make_evidence(), evidence_dir)
+
+    full_dir = tmp_path / "exports" / "full"
+    full_result = CliRunner().invoke(
+        app,
+        [
+            "capability",
+            "export",
+            "repo_issue_triage",
+            "--target",
+            "hermes",
+            "--target-model",
+            "qwen3.6-27b",
+            "--include-evidence",
+            "full",
+            "--out",
+            str(full_dir),
+            "--capabilities-dir",
+            str(capabilities_dir),
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
+    )
+
+    assert full_result.exit_code == 0
+    full_output = CapabilityExportOutput.model_validate_json(full_result.stdout)
+    assert full_output.evidence_mode == "full"
+    assert full_output.evidence_proof_count == 1
+    provenance = full_dir / "provenance"
+    snapshot = provenance / "source_evidence" / "20260602T010203Z-deadbeef.json"
+    snapshot_data = json.loads(snapshot.read_text(encoding="utf-8"))
+    assert snapshot_data["files"][0]["content"] == "API_KEY=supersecret\nrun log\n"
+    assert (
+        provenance / "source_evidence_summaries" / "20260602T010203Z-deadbeef.md"
+    ).exists()
+    integrity = yaml.safe_load((provenance / "integrity.yaml").read_text("utf-8"))
+    assert integrity["evidence"][0]["evidence_id"] == "20260602T010203Z-deadbeef"
+    assert integrity["evidence"][0]["integrity_verified"]
+    proofs = yaml.safe_load((provenance / "evidence_proofs.yaml").read_text("utf-8"))
+    assert proofs["mode"] == "full"
+    assert proofs["proofs"][0]["available"]
+    assert (
+        proofs["proofs"][0]["snapshot_path"]
+        == "source_evidence/20260602T010203Z-deadbeef.json"
+    )
+
+
+def test_capability_export_redacts_and_omits_evidence(tmp_path: Path) -> None:
+    capabilities_dir = tmp_path / "capabilities"
+    evidence_dir = tmp_path / "evidence"
+    write_manifest(make_manifest(), capabilities_dir)
+    write_evidence(make_evidence(), evidence_dir)
+
+    redacted_dir = tmp_path / "exports" / "redacted"
+    redacted_result = CliRunner().invoke(
+        app,
+        [
+            "capability",
+            "export",
+            "repo_issue_triage",
+            "--target",
+            "hermes",
+            "--include-evidence",
+            "redacted",
+            "--out",
+            str(redacted_dir),
+            "--capabilities-dir",
+            str(capabilities_dir),
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
+    )
+    none_dir = tmp_path / "exports" / "none"
+    none_result = CliRunner().invoke(
+        app,
+        [
+            "capability",
+            "export",
+            "repo_issue_triage",
+            "--target",
+            "hermes",
+            "--include-evidence",
+            "none",
+            "--out",
+            str(none_dir),
+            "--capabilities-dir",
+            str(capabilities_dir),
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
+    )
+
+    assert redacted_result.exit_code == 0
+    redacted_provenance = redacted_dir / "provenance"
+    redacted_snapshot = (
+        redacted_provenance / "source_evidence" / "20260602T010203Z-deadbeef.json"
+    )
+    redacted_text = redacted_snapshot.read_text(encoding="utf-8")
+    assert json.loads(redacted_text)["files"][0]["content"] == "[REDACTED]"
+    assert "supersecret" not in redacted_text
+    assert (redacted_provenance / "redactions.yaml").exists()
+
+    assert none_result.exit_code == 0
+    none_output = CapabilityExportOutput.model_validate_json(none_result.stdout)
+    none_provenance = none_dir / "provenance"
+    assert none_output.evidence_proof_count == 0
+    assert (none_provenance / "integrity.yaml").exists()
+    assert not (none_provenance / "source_evidence").exists()
+    assert not (none_provenance / "evidence_proofs.yaml").exists()
+
+
+def make_evidence() -> EvidenceRecord:
+    content = "API_KEY=supersecret\nrun log\n"
+    raw = content.encode("utf-8")
+    record = EvidenceRecord(
+        id="20260602T010203Z-deadbeef",
+        created_at=datetime(2026, 6, 2, 1, 2, 3, tzinfo=UTC),
+        goal="triage repo issue",
+        normalized_goal="triage repo issue",
+        field="local",
+        runtime=RuntimeInfo(name="codex", model="gpt-5.5", tools=("shell",)),
+        files=(
+            CapturedTextFile(
+                role="command_output",
+                path="run.log",
+                content=content,
+                size_bytes=len(raw),
+                sha256=hashlib.sha256(raw).hexdigest(),
+            ),
+        ),
+        harness=HarnessResult(status="pass", checks=("schema_valid",)),
+        success_or_failure_label="success",
+    )
+    return append_integrity_link(
+        record,
+        artifact_type="evidence",
+        artifact_id=record.id,
+    )
 
 
 def make_manifest() -> CapabilityManifest:
