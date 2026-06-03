@@ -3,7 +3,7 @@ from typing import Annotated, Literal
 
 import typer
 
-from oh_my_field.adapters import (
+from oh_my_field.application.import_run import (
     AdapterError,
     AgentArtifactInput,
     AgentImportRequest,

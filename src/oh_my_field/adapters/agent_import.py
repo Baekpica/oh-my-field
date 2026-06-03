@@ -11,8 +11,7 @@ from typing import Final
 
 from pydantic import Field
 
-from oh_my_field.integrity import append_integrity_link
-from oh_my_field.models import (
+from oh_my_field.domain.models import (
     AgentImporterName,
     AgentImporterSpec,
     AgentRunSource,
@@ -26,7 +25,9 @@ from oh_my_field.models import (
     TaskOutcome,
     ToolCallRecord,
 )
-from oh_my_field.storage import write_evidence
+from oh_my_field.domain.runtime.registry import AdapterRegistry
+from oh_my_field.infrastructure.fs.hashing import append_integrity_link
+from oh_my_field.infrastructure.fs.storage import write_evidence
 
 type Clock = Callable[[], datetime]
 type TokenFactory = Callable[[], str]
@@ -132,7 +133,39 @@ class AgentImportSummary(StrictModel):
     artifact_count: int
 
 
+class ImporterAdapter:
+    """Generic runtime adapter that imports a run without runtime-specific parsing.
+
+    Every built-in runtime shares this importer today; a runtime that needs its
+    own log parsing implements the RuntimeAdapter protocol and registers itself.
+    """
+
+    def __init__(self, spec: AgentImporterSpec) -> None:
+        """Bind the adapter to its runtime importer spec."""
+        self.spec = spec
+
+    def import_run(
+        self,
+        request: AgentImportRequest,
+        dependencies: AgentImportDependencies | None = None,
+    ) -> AgentImportSummary:
+        return _run_agent_import(request, dependencies)
+
+
+BUILTIN_ADAPTERS = AdapterRegistry()
+for _spec in IMPORTER_SPECS:
+    BUILTIN_ADAPTERS.register(_spec.name, ImporterAdapter(_spec))
+
+
 def import_agent_run(
+    request: AgentImportRequest,
+    dependencies: AgentImportDependencies | None = None,
+) -> AgentImportSummary:
+    """Import an external agent run through its registered runtime adapter."""
+    return BUILTIN_ADAPTERS.get(request.adapter).import_run(request, dependencies)
+
+
+def _run_agent_import(
     request: AgentImportRequest,
     dependencies: AgentImportDependencies | None = None,
 ) -> AgentImportSummary:
