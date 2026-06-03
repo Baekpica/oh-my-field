@@ -17,6 +17,7 @@ from oh_my_field.models import (
     EvidenceRecord,
     HarnessResult,
     PromotionCriteria,
+    PromotionMetrics,
     RuntimeInfo,
     WorkflowControl,
     WorkflowManifest,
@@ -1167,6 +1168,74 @@ def test_capability_remap_resolves_context_for_validation(tmp_path: Path) -> Non
     assert (
         CapabilityValidateOutput.model_validate_json(after.stdout).status == "validated"
     )
+
+
+def test_validation_report_compares_eval_pass_rate(tmp_path: Path) -> None:
+    source_caps = tmp_path / "src"
+    target_caps = tmp_path / "tgt"
+    export_dir = tmp_path / "bundle"
+    eval_dir = tmp_path / "evals"
+    evidence_dir = tmp_path / "evidence"
+    metrics = PromotionMetrics(
+        evidence_count=4,
+        successful_evidence_count=3,
+        failed_evidence_count=1,
+        harness_pass_rate=0.9,
+        human_intervention_rate=0.1,
+        retry_rate=0.0,
+        eval_pass_rate=0.8,
+    )
+    write_manifest(
+        make_manifest().model_copy(update={"promotion_metrics": metrics}),
+        source_caps,
+    )
+    _run_ok(
+        [
+            "capability",
+            "export",
+            "repo_issue_triage",
+            "--target",
+            "codex",
+            "--target-model",
+            "gpt-5.5",
+            "--out",
+            str(export_dir),
+            "--capabilities-dir",
+            str(source_caps),
+        ],
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "capability",
+            "import",
+            str(export_dir),
+            "--runtime",
+            "codex",
+            "--model",
+            "gpt-5.5",
+            "--available-tool",
+            "shell",
+            "--validate",
+            "--capabilities-dir",
+            str(target_caps),
+            "--eval-dir",
+            str(eval_dir),
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = CapabilityImportOutput.model_validate_json(result.stdout)
+    report = yaml.safe_load(
+        Path(output.validation_report_path).read_text(encoding="utf-8"),
+    )
+    comparison = report["pass_rate_comparison"]
+    assert comparison["source_pass_rate"] == 0.8
+    assert comparison["target_pass_rate"] == 1.0
+    assert comparison["delta"] == 0.2
 
 
 def test_model_profile_marks_downgrade(tmp_path: Path) -> None:

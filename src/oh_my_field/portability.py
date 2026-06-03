@@ -247,6 +247,12 @@ class PortabilityReadiness(StrictModel):
     factors: tuple[ReadinessFactor, ...] = ()
 
 
+class EvalPassRateComparison(StrictModel):
+    source_pass_rate: float | None = Field(default=None, ge=0.0, le=1.0)
+    target_pass_rate: float | None = Field(default=None, ge=0.0, le=1.0)
+    delta: float | None = None
+
+
 class TargetRunPlan(StrictModel):
     target_run_command: str | None = None
     manual_run_required: bool = True
@@ -269,6 +275,7 @@ class TargetValidationReport(StrictModel):
     readiness: PortabilityReadiness
     model_delta: PortabilityModelDelta
     target_run: TargetRunPlan | None = None
+    pass_rate_comparison: EvalPassRateComparison | None = None
     eval_id: str | None = None
     eval_path: str | None = None
     failure_evidence_id: str | None = None
@@ -521,7 +528,11 @@ def import_capability_package(
             eval_dir=request.eval_dir,
         )
         report = report.model_copy(
-            update={"eval_id": eval_result.id, "eval_path": str(eval_path)},
+            update={
+                "eval_id": eval_result.id,
+                "eval_path": str(eval_path),
+                "pass_rate_comparison": _pass_rate_comparison(manifest, eval_result),
+            },
         )
         if eval_result.status == "fail":
             evidence, evidence_path = _write_failure_evidence(
@@ -644,6 +655,7 @@ def validate_capability_package(
             "eval_id": eval_result.id,
             "eval_path": str(eval_path),
             "target_run": run_plan,
+            "pass_rate_comparison": _pass_rate_comparison(manifest, eval_result),
         },
     )
     if eval_result.status == "fail":
@@ -1469,6 +1481,33 @@ def _write_target_eval(
     )
     result = append_integrity_link(result, artifact_type="eval", artifact_id=result.id)
     return result, write_eval_result(result, eval_dir)
+
+
+def _pass_rate_comparison(
+    manifest: CapabilityManifest,
+    eval_result: EvalResult,
+) -> EvalPassRateComparison:
+    source = (
+        manifest.promotion_metrics.eval_pass_rate
+        if manifest.promotion_metrics is not None
+        else None
+    )
+    total = len(eval_result.checks)
+    target = (
+        sum(check.status == "pass" for check in eval_result.checks) / total
+        if total
+        else None
+    )
+    delta = (
+        round(target - source, 2)
+        if source is not None and target is not None
+        else None
+    )
+    return EvalPassRateComparison(
+        source_pass_rate=source,
+        target_pass_rate=target,
+        delta=delta,
+    )
 
 
 def _write_failure_evidence(
