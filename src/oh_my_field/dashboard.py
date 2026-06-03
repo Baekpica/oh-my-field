@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field, ValidationError
 
+from oh_my_field.integrity import model_sha256
 from oh_my_field.models import (
     CapabilityManifest,
     CommandExecution,
@@ -120,6 +121,11 @@ class DashboardCapabilitySummary(StrictModel):
     eval_count: int
     pass_rate: float
     patch_count: int
+    promotion_success_runs: int
+    promotion_harness_pass_rate: float
+    promotion_eval_pass_rate: float
+    promotion_criteria_met: bool
+    integrity_status: str
     manifest_path: str
 
 
@@ -1140,8 +1146,37 @@ def _capability_summary(
         eval_count=len(capability_evals),
         pass_rate=pass_count / len(capability_evals) if capability_evals else 0.0,
         patch_count=patch_count,
+        promotion_success_runs=(
+            0
+            if manifest.promotion_metrics is None
+            else manifest.promotion_metrics.successful_evidence_count
+        ),
+        promotion_harness_pass_rate=(
+            0.0
+            if manifest.promotion_metrics is None
+            else manifest.promotion_metrics.harness_pass_rate
+        ),
+        promotion_eval_pass_rate=(
+            0.0
+            if manifest.promotion_metrics is None
+            else manifest.promotion_metrics.eval_pass_rate
+        ),
+        promotion_criteria_met=(
+            False
+            if manifest.promotion_metrics is None
+            else manifest.promotion_metrics.criteria_met
+        ),
+        integrity_status=_manifest_integrity_status(manifest),
         manifest_path=str(path),
     )
+
+
+def _manifest_integrity_status(manifest: CapabilityManifest) -> str:
+    if not manifest.integrity_chain:
+        return "fail"
+    if model_sha256(manifest) == manifest.integrity_chain[-1].sha256:
+        return "pass"
+    return "fail"
 
 
 def _replay_summary(record: ReplayRecord) -> DashboardReplaySummary:

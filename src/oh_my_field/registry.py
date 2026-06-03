@@ -5,12 +5,14 @@ from pathlib import Path
 
 from pydantic import Field
 
+from oh_my_field.integrity import model_sha256
 from oh_my_field.models import (
     CAPABILITY_NAME_PATTERN,
     CapabilityManifest,
     CapabilityRegistry,
     CapabilityRegistryEntry,
     EvalResult,
+    IntegrityVerificationStatus,
     StrictModel,
 )
 from oh_my_field.storage import list_eval_results, list_manifests
@@ -122,8 +124,39 @@ def _entry_from_manifest(
             + len(manifest.patches.context)
             + len(manifest.patches.harness)
         ),
+        promotion_success_runs=(
+            0
+            if manifest.promotion_metrics is None
+            else manifest.promotion_metrics.successful_evidence_count
+        ),
+        promotion_harness_pass_rate=(
+            0.0
+            if manifest.promotion_metrics is None
+            else manifest.promotion_metrics.harness_pass_rate
+        ),
+        promotion_eval_pass_rate=(
+            0.0
+            if manifest.promotion_metrics is None
+            else manifest.promotion_metrics.eval_pass_rate
+        ),
+        promotion_criteria_met=(
+            False
+            if manifest.promotion_metrics is None
+            else manifest.promotion_metrics.criteria_met
+        ),
+        integrity_status=_manifest_integrity_status(manifest),
         manifest_path=str(manifest_path),
     )
+
+
+def _manifest_integrity_status(
+    manifest: CapabilityManifest,
+) -> IntegrityVerificationStatus:
+    if not manifest.integrity_chain:
+        return "fail"
+    if model_sha256(manifest) == manifest.integrity_chain[-1].sha256:
+        return "pass"
+    return "fail"
 
 
 def _runtime_compatibility(manifest: CapabilityManifest) -> tuple[str, ...]:

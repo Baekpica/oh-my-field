@@ -22,6 +22,7 @@ from oh_my_field.models import (
     EvidenceRecord,
     HarnessResult,
     PromotionCriteria,
+    PromotionMetrics,
     RuntimeInfo,
     WorkflowManifest,
     WorkflowNodeResult,
@@ -72,6 +73,11 @@ def test_dashboard_snapshot_surfaces_runtime_state_and_approvals(
     assert snapshot.capabilities[0].network_policy == "disabled"
     assert snapshot.capabilities[0].eval_count == 1
     assert snapshot.capabilities[0].pass_rate == 0.0
+    assert snapshot.capabilities[0].promotion_success_runs == 2
+    assert snapshot.capabilities[0].promotion_harness_pass_rate == 0.67
+    assert snapshot.capabilities[0].promotion_eval_pass_rate == 0.0
+    assert not snapshot.capabilities[0].promotion_criteria_met
+    assert snapshot.capabilities[0].integrity_status == "fail"
     assert snapshot.comparisons[0].capability_name == "repo_issue_triage"
     assert snapshot.comparisons[0].eval_count == 1
     assert {action.kind for action in snapshot.console_actions} == {
@@ -234,6 +240,19 @@ def make_manifest(evidence_id: str, eval_id: str) -> CapabilityManifest:
             min_success_runs=3,
             max_human_intervention_rate=0.3,
             required_harness_pass_rate=0.9,
+        ),
+        promotion_metrics=PromotionMetrics(
+            evidence_count=3,
+            successful_evidence_count=2,
+            failed_evidence_count=1,
+            harness_pass_rate=0.67,
+            human_intervention_rate=0.33,
+            retry_rate=0.0,
+            eval_count=1,
+            eval_pass_rate=0.0,
+            runtime_profiles=("runtime:codex",),
+            criteria_met=False,
+            eval_gate_met=False,
         ),
     )
 

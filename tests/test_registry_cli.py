@@ -11,6 +11,7 @@ from oh_my_field.models import (
     EvalResult,
     HarnessResult,
     PromotionCriteria,
+    PromotionMetrics,
     RuntimeInfo,
     WorkflowManifest,
 )
@@ -57,6 +58,11 @@ def test_registry_lists_capabilities_with_eval_results(tmp_path: Path) -> None:
     assert entries[0]["pass_rate"] == 1.0
     assert entries[0]["source_evidence_count"] == 1
     assert entries[0]["runtime_profiles"] == ["codex:gpt-5.5"]
+    assert entries[0]["promotion_success_runs"] == 3
+    assert entries[0]["promotion_harness_pass_rate"] == 1.0
+    assert entries[0]["promotion_eval_pass_rate"] == 1.0
+    assert entries[0]["promotion_criteria_met"]
+    assert entries[0]["integrity_status"] == "fail"
 
 
 def test_registry_filters_to_single_capability(tmp_path: Path) -> None:
@@ -100,6 +106,18 @@ def make_manifest() -> CapabilityManifest:
             min_success_runs=3,
             max_human_intervention_rate=0.3,
             required_harness_pass_rate=0.9,
+        ),
+        promotion_metrics=PromotionMetrics(
+            evidence_count=3,
+            successful_evidence_count=3,
+            failed_evidence_count=0,
+            harness_pass_rate=1.0,
+            human_intervention_rate=0.0,
+            retry_rate=0.0,
+            eval_count=1,
+            eval_pass_rate=1.0,
+            runtime_profiles=("runtime:codex",),
+            criteria_met=True,
         ),
     )
 
