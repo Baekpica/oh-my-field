@@ -13,6 +13,10 @@ OMF is not an agent runtime. Codex, Claude Code, Hermes, or another agent does
 the work. OMF imports that run, preserves the evidence, and promotes repeatable
 work into a package that can be reviewed, hardened, and exported.
 
+The OMF CLI is Apache-2.0 licensed. Capability artifacts generated from your
+work remain owned by you or the project that generated them unless you choose to
+publish them under separate terms.
+
 ## Why OMF
 
 Most agent tools help you run the next prompt. OMF focuses on what happens after
