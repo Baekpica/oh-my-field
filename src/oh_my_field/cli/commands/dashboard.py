@@ -4,7 +4,7 @@ from typing import Annotated, cast
 import typer
 from pydantic import ValidationError
 
-from oh_my_field.dashboard import (
+from oh_my_field.infrastructure.dashboard.server import (
     DEFAULT_DASHBOARD_PORT,
     DashboardError,
     DashboardPaths,
@@ -12,7 +12,7 @@ from oh_my_field.dashboard import (
     build_dashboard_snapshot,
     create_dashboard_server,
 )
-from oh_my_field.storage import StorageError
+from oh_my_field.infrastructure.fs.storage import StorageError
 
 
 def dashboard(

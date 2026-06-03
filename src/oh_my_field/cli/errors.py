@@ -4,7 +4,7 @@ from contextlib import contextmanager
 import typer
 from pydantic import ValidationError
 
-from oh_my_field.storage import StorageError
+from oh_my_field.infrastructure.fs.storage import StorageError
 
 
 @contextmanager
