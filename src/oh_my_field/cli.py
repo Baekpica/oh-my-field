@@ -884,6 +884,10 @@ def _learn_patch(
         Literal["accept", "reject", "accepted", "rejected"],
         typer.Option("--decision"),
     ],
+    patch_kind: Annotated[
+        Literal["prompt", "context", "harness"],
+        typer.Option("--patch-kind"),
+    ] = "prompt",
     reviewer: Annotated[str | None, typer.Option("--reviewer")] = None,
     note: Annotated[list[str] | None, typer.Option("--note")] = None,
     before_eval_id: Annotated[
@@ -911,6 +915,7 @@ def _learn_patch(
             LearningPatchRequest(
                 capability_name=capability_name,
                 learning_id=learning_id,
+                patch_kind=patch_kind,
                 patch_index=patch_index,
                 decision=_patch_decision(decision),
                 reviewer=reviewer,

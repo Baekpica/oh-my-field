@@ -66,6 +66,7 @@ type HumanReviewStatus = Literal[
 type WorkflowRunStatus = Literal["running", "completed", "failed", "pending_review"]
 type WorkflowNodeStatus = Literal["pending", "pass", "fail", "skipped"]
 type PatchDecisionStatus = Literal["accepted", "rejected"]
+type PatchKind = Literal["prompt", "context", "harness"]
 type IntegrityVerificationStatus = Literal["pass", "fail"]
 
 COMMAND_RISK_CATEGORIES: Final[tuple[CommandRiskCategory, ...]] = (
@@ -481,6 +482,8 @@ class LearningExport(StrictModel):
     few_shot_examples: tuple[str, ...] = ()
     preference_signals: tuple[str, ...] = ()
     prompt_patches: tuple[str, ...] = ()
+    context_patches: tuple[str, ...] = ()
+    harness_patches: tuple[str, ...] = ()
     eval_set_candidates: tuple[str, ...] = ()
     fine_tuning_candidates: tuple[str, ...] = ()
     fine_tuning_export_format: str = "jsonl"
@@ -496,6 +499,7 @@ class LearningPatchDecision(StrictModel):
     created_at: datetime
     capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
     learning_id: str = Field(pattern=EVIDENCE_ID_PATTERN)
+    patch_kind: PatchKind = "prompt"
     patch: str = Field(min_length=1)
     decision: PatchDecisionStatus
     reviewer: str | None = None

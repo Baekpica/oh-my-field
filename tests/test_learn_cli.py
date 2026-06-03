@@ -38,6 +38,7 @@ class LearningPatchOutput(BaseModel):
     decision_path: str
     capability_name: str
     decision: str
+    patch_kind: str
     manifest_path: str | None
 
 
@@ -144,6 +145,14 @@ def test_learn_exports_evidence_as_learning_assets(tmp_path: Path) -> None:
         "Add instruction: always run parser regression tests",
         "Add instruction: prefer smaller diffs",
     )
+    assert export.context_patches == (
+        "Add context preference: prefer smaller diffs",
+        "Add context preference: user added edge case",
+    )
+    assert export.harness_patches == (
+        "Add regression harness: test failed before parser fix",
+        "Add regression harness: regression_missing",
+    )
     assert export.eval_set_candidates == (
         "goal: triage repo issue\nregression: test failed before parser fix",
         "goal: triage repo issue\nregression: regression_missing",
@@ -211,6 +220,7 @@ def test_learn_patch_accepts_and_rejects_prompt_patches(tmp_path: Path) -> None:
         learning_patch_dir,
     )
     assert accept_output.decision == "accepted"
+    assert accept_output.patch_kind == "prompt"
     assert updated_manifest.patches.prompt == (
         "Add instruction: always run parser regression tests",
     )
@@ -247,8 +257,101 @@ def test_learn_patch_accepts_and_rejects_prompt_patches(tmp_path: Path) -> None:
         learning_patch_dir,
     )
     assert reject_output.decision == "rejected"
+    assert reject_output.patch_kind == "prompt"
     assert reject_output.manifest_path is None
     assert rejected_decision.notes == ("too broad",)
     assert load_manifest(manifest.name, capabilities_dir).patches.prompt == (
         "Add instruction: always run parser regression tests",
     )
+
+
+def test_learn_patch_accepts_context_and_harness_patches(tmp_path: Path) -> None:
+    evidence_dir = tmp_path / "evidence"
+    capabilities_dir = tmp_path / "capabilities"
+    learning_dir = tmp_path / "learning"
+    learning_patch_dir = tmp_path / "learning_patches"
+    evidence = make_evidence_record()
+    manifest = make_manifest()
+    write_evidence(evidence, evidence_dir)
+    write_manifest(manifest, capabilities_dir)
+    learn_result = CliRunner().invoke(
+        app,
+        [
+            "learn",
+            manifest.name,
+            "--capabilities-dir",
+            str(capabilities_dir),
+            "--evidence-dir",
+            str(evidence_dir),
+            "--learning-dir",
+            str(learning_dir),
+        ],
+    )
+    learning_id = LearnOutput.model_validate_json(learn_result.stdout).learning_id
+
+    context_result = CliRunner().invoke(
+        app,
+        [
+            "learn-patch",
+            manifest.name,
+            "--learning-id",
+            learning_id,
+            "--patch-index",
+            "1",
+            "--patch-kind",
+            "context",
+            "--decision",
+            "accept",
+            "--capabilities-dir",
+            str(capabilities_dir),
+            "--learning-dir",
+            str(learning_dir),
+            "--learning-patch-dir",
+            str(learning_patch_dir),
+        ],
+    )
+    harness_result = CliRunner().invoke(
+        app,
+        [
+            "learn-patch",
+            manifest.name,
+            "--learning-id",
+            learning_id,
+            "--patch-index",
+            "1",
+            "--patch-kind",
+            "harness",
+            "--decision",
+            "accept",
+            "--capabilities-dir",
+            str(capabilities_dir),
+            "--learning-dir",
+            str(learning_dir),
+            "--learning-patch-dir",
+            str(learning_patch_dir),
+        ],
+    )
+
+    assert context_result.exit_code == 0
+    assert harness_result.exit_code == 0
+    context_output = LearningPatchOutput.model_validate_json(context_result.stdout)
+    harness_output = LearningPatchOutput.model_validate_json(harness_result.stdout)
+    updated_manifest = load_manifest(manifest.name, capabilities_dir)
+    context_decision = load_learning_patch_decision(
+        context_output.decision_id,
+        learning_patch_dir,
+    )
+    harness_decision = load_learning_patch_decision(
+        harness_output.decision_id,
+        learning_patch_dir,
+    )
+    assert context_output.patch_kind == "context"
+    assert harness_output.patch_kind == "harness"
+    assert updated_manifest.patches.context == (
+        "Add context preference: prefer smaller diffs",
+    )
+    assert updated_manifest.patches.harness == (
+        "Add regression harness: test failed before parser fix",
+    )
+    assert context_decision.patch_kind == "context"
+    assert harness_decision.patch_kind == "harness"

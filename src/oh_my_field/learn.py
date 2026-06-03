@@ -167,6 +167,8 @@ def _build_learning_export(state: LearnState) -> LearnState:
         few_shot_examples=few_shot_examples,
         preference_signals=preference_signals,
         prompt_patches=_prompt_patches(prompt_improvement_candidates),
+        context_patches=_context_patches(preference_signals),
+        harness_patches=_harness_patches(regression_eval_candidates),
         eval_set_candidates=_eval_set_candidates(
             goal=evidence.normalized_goal or evidence.goal,
             regression_eval_candidates=regression_eval_candidates,
@@ -234,6 +236,14 @@ def _few_shot_examples(files: tuple[CapturedTextFile, ...]) -> tuple[str, ...]:
 
 def _prompt_patches(candidates: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(f"Add instruction: {candidate}" for candidate in candidates)
+
+
+def _context_patches(candidates: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(f"Add context preference: {candidate}" for candidate in candidates)
+
+
+def _harness_patches(candidates: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(f"Add regression harness: {candidate}" for candidate in candidates)
 
 
 def _eval_set_candidates(
