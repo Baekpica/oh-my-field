@@ -7,11 +7,13 @@ from typer.testing import CliRunner
 from oh_my_field.cli import app
 from oh_my_field.models import (
     CapturedTextFile,
+    EvalCheck,
+    EvalResult,
     EvidenceRecord,
     HarnessResult,
     RuntimeInfo,
 )
-from oh_my_field.storage import load_manifest, write_evidence
+from oh_my_field.storage import load_manifest, write_eval_result, write_evidence
 
 
 class PromoteOutput(BaseModel):
@@ -85,6 +87,10 @@ def test_promote_creates_capability_manifest_from_evidence(tmp_path: Path) -> No
     assert f"- {evidence.id}" in manifest_text
     manifest = load_manifest("repo_issue_triage", capabilities_dir)
     assert manifest.source_evidence_ids == (evidence.id,)
+    assert manifest.promotion_metrics is not None
+    assert manifest.promotion_metrics.evidence_count == 1
+    assert manifest.promotion_metrics.harness_pass_rate == 1.0
+    assert manifest.promotion_metrics.eval_gate_met
     assert manifest.field is not None
     assert manifest.field.name == "local"
     assert manifest.field.policies.forbidden_context == (
@@ -165,7 +171,67 @@ def test_promote_creates_manifest_from_evidence_set(tmp_path: Path) -> None:
     manifest = load_manifest(output.capability_name, capabilities_dir)
     assert manifest.status == "validated"
     assert manifest.source_evidence_ids == evidence_ids
+    assert manifest.promotion_metrics is not None
+    assert manifest.promotion_metrics.criteria_met
+    assert manifest.promotion_metrics.successful_evidence_count == 3
     assert len(manifest.integrity_chain) == 4
+
+
+def test_promote_uses_eval_results_for_stable_status(tmp_path: Path) -> None:
+    evidence_dir = tmp_path / "evidence"
+    eval_dir = tmp_path / "evals"
+    capabilities_dir = tmp_path / "capabilities"
+    evidence_ids = (
+        "20260602T010203Z-deadbeef",
+        "20260602T010204Z-feedface",
+        "20260602T010205Z-cafebabe",
+    )
+    for evidence_id in evidence_ids:
+        write_evidence(make_evidence_record_with_id(evidence_id), evidence_dir)
+    write_eval_result(
+        EvalResult(
+            id="20260602T010206Z-f00dbabe",
+            created_at=datetime(2026, 6, 2, 1, 2, 6, tzinfo=UTC),
+            capability_name="repo_issue_triage",
+            source_evidence_id=evidence_ids[0],
+            runtime_profile="codex",
+            status="pass",
+            checks=(EvalCheck(name="schema_valid", status="pass", message="ok"),),
+        ),
+        eval_dir,
+    )
+    evidence_set_path = tmp_path / "evidence-set.yaml"
+    evidence_set_path.write_text(
+        "".join(f"- {evidence_id}\n" for evidence_id in evidence_ids),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "promote",
+            "--from-evidence-set",
+            str(evidence_set_path),
+            "--name",
+            "repo_issue_triage",
+            "--description",
+            "GitHub issue triage capability",
+            "--evidence-dir",
+            str(evidence_dir),
+            "--eval-dir",
+            str(eval_dir),
+            "--capabilities-dir",
+            str(capabilities_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = PromoteOutput.model_validate_json(result.stdout)
+    manifest = load_manifest(output.capability_name, capabilities_dir)
+    assert manifest.status == "stable"
+    assert manifest.promotion_metrics is not None
+    assert manifest.promotion_metrics.eval_count == 1
+    assert manifest.promotion_metrics.eval_pass_rate == 1.0
 
 
 def test_promote_refuses_duplicate_capability_name(tmp_path: Path) -> None:

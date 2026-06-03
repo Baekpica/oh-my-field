@@ -309,6 +309,21 @@ class PromotionCriteria(StrictModel):
     min_runtime_profiles: tuple[str, ...] = ()
 
 
+class PromotionMetrics(StrictModel):
+    evidence_count: int = Field(ge=0)
+    successful_evidence_count: int = Field(ge=0)
+    failed_evidence_count: int = Field(ge=0)
+    harness_pass_rate: float = Field(ge=0.0, le=1.0)
+    human_intervention_rate: float = Field(ge=0.0, le=1.0)
+    retry_rate: float = Field(ge=0.0)
+    eval_count: int = Field(default=0, ge=0)
+    eval_pass_rate: float = Field(default=0.0, ge=0.0, le=1.0)
+    runtime_profiles: tuple[str, ...] = ()
+    criteria_met: bool = False
+    eval_gate_met: bool = True
+    recommended_version_bump: str = "patch"
+
+
 class CapabilityPatchSet(StrictModel):
     prompt: tuple[str, ...] = ()
     context: tuple[str, ...] = ()
@@ -337,6 +352,7 @@ class CapabilityManifest(StrictModel):
     workflow_control: WorkflowControl = Field(default_factory=WorkflowControl)
     human_review: HumanReview = Field(default_factory=HumanReview)
     promotion_criteria: PromotionCriteria
+    promotion_metrics: PromotionMetrics | None = None
     patches: CapabilityPatchSet = Field(default_factory=CapabilityPatchSet)
     integrity_chain: tuple[ArtifactIntegrityLink, ...] = ()
 

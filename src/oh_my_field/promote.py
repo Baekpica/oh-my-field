@@ -15,6 +15,7 @@ from oh_my_field.models import (
     CapabilityStatus,
     ContextPolicy,
     ContextSource,
+    EvalResult,
     EvidencePolicy,
     EvidenceRecord,
     FieldFailureHistory,
@@ -23,12 +24,13 @@ from oh_my_field.models import (
     FieldQualityBar,
     HarnessResult,
     PromotionCriteria,
+    PromotionMetrics,
     RuntimeInfo,
     StrictModel,
     WorkflowControl,
     WorkflowManifest,
 )
-from oh_my_field.storage import load_evidence, write_manifest
+from oh_my_field.storage import list_eval_results, load_evidence, write_manifest
 
 PROMOTE_NODES: Final = (
     "load_evidence",
@@ -99,6 +101,7 @@ class PromoteRequest(StrictModel):
     description: str = Field(min_length=1)
     version: str = Field(min_length=1)
     evidence_dir: Path
+    eval_dir: Path = Path(".omf/evals")
     capabilities_dir: Path
 
 
@@ -167,11 +170,22 @@ def _build_manifest(state: PromoteState) -> PromoteState:
         required_harness_pass_rate=0.9,
         min_runtime_profiles=_min_runtime_profiles(evidence_records),
     )
+    relevant_evals = tuple(
+        result
+        for result in list_eval_results(request.eval_dir)
+        if result.source_evidence_id in source_evidence_ids
+        or result.capability_name == request.name
+    )
+    promotion_metrics = _promotion_metrics(
+        evidence_records,
+        relevant_evals,
+        promotion_criteria,
+    )
     manifest = CapabilityManifest(
         name=request.name,
         version=request.version,
         description=request.description,
-        status=_capability_status(evidence_records, promotion_criteria),
+        status=_capability_status(promotion_metrics),
         runtime_compatibility=_runtime_compatibility(evidence_records, runtime_tools),
         source_evidence_id=evidence.id,
         source_evidence_ids=source_evidence_ids,
@@ -207,6 +221,7 @@ def _build_manifest(state: PromoteState) -> PromoteState:
             checkpoint_interval=1,
         ),
         promotion_criteria=promotion_criteria,
+        promotion_metrics=promotion_metrics,
     )
     evidence_links = tuple(
         _evidence_integrity_link(record) for record in evidence_records
@@ -443,32 +458,102 @@ def _min_runtime_profiles(
     )
 
 
-def _capability_status(
+def _promotion_metrics(
     evidence_records: tuple[EvidenceRecord, ...],
+    eval_results: tuple[EvalResult, ...],
     criteria: PromotionCriteria,
-) -> CapabilityStatus:
+) -> PromotionMetrics:
+    evidence_count = len(evidence_records)
     success_count = sum(
         1
         for evidence in evidence_records
-        if evidence.success_or_failure_label == "success"
-        or evidence.harness.status == "pass"
+        if _evidence_successful(evidence)
     )
-    pass_rate = success_count / len(evidence_records)
+    failure_count = sum(
+        1 for evidence in evidence_records if _evidence_failed(evidence)
+    )
+    harness_pass_count = sum(
+        1 for evidence in evidence_records if evidence.harness.status == "pass"
+    )
+    harness_pass_rate = harness_pass_count / evidence_count
     intervention_rate = (
         sum(1 for evidence in evidence_records if evidence.user_interventions)
-        / len(evidence_records)
+        / evidence_count
     )
-    runtime_profiles = _min_runtime_profiles(evidence_records)
-    if (
+    retry_rate = sum(evidence.retries for evidence in evidence_records) / evidence_count
+    eval_count = len(eval_results)
+    eval_pass_rate = (
+        sum(1 for result in eval_results if result.status == "pass") / eval_count
+        if eval_count
+        else 0.0
+    )
+    runtime_profiles = _promotion_runtime_profiles(evidence_records, eval_results)
+    criteria_met = (
         success_count >= criteria.min_success_runs
-        and pass_rate >= criteria.required_harness_pass_rate
+        and harness_pass_rate >= criteria.required_harness_pass_rate
         and intervention_rate <= criteria.max_human_intervention_rate
         and all(
             profile in runtime_profiles for profile in criteria.min_runtime_profiles
         )
-    ):
+    )
+    eval_gate_met = (
+        True
+        if eval_count == 0
+        else eval_pass_rate >= criteria.required_harness_pass_rate
+    )
+    return PromotionMetrics(
+        evidence_count=evidence_count,
+        successful_evidence_count=success_count,
+        failed_evidence_count=failure_count,
+        harness_pass_rate=harness_pass_rate,
+        human_intervention_rate=intervention_rate,
+        retry_rate=retry_rate,
+        eval_count=eval_count,
+        eval_pass_rate=eval_pass_rate,
+        runtime_profiles=runtime_profiles,
+        criteria_met=criteria_met,
+        eval_gate_met=eval_gate_met,
+        recommended_version_bump="minor" if criteria_met else "patch",
+    )
+
+
+def _capability_status(metrics: PromotionMetrics) -> CapabilityStatus:
+    if metrics.criteria_met and metrics.eval_gate_met and metrics.eval_count > 0:
+        return "stable"
+    if metrics.criteria_met and metrics.eval_gate_met:
         return "validated"
     return "candidate"
+
+
+def _evidence_successful(evidence: EvidenceRecord) -> bool:
+    return (
+        evidence.success_or_failure_label == "success"
+        or evidence.harness.status == "pass"
+    )
+
+
+def _evidence_failed(evidence: EvidenceRecord) -> bool:
+    return (
+        evidence.success_or_failure_label == "failure"
+        or evidence.harness.status == "fail"
+    )
+
+
+def _promotion_runtime_profiles(
+    evidence_records: tuple[EvidenceRecord, ...],
+    eval_results: tuple[EvalResult, ...],
+) -> tuple[str, ...]:
+    profiles: list[str] = []
+    for evidence in evidence_records:
+        profiles.append(f"runtime:{evidence.runtime.name}")
+        if evidence.runtime.model is not None:
+            profiles.append(f"model:{evidence.runtime.model}")
+    profiles.extend(
+        f"eval:{result.runtime_profile}"
+        for result in eval_results
+        if result.runtime_profile is not None
+    )
+    return tuple(dict.fromkeys(profiles))
 
 
 def _validate_manifest(state: PromoteState) -> PromoteState:

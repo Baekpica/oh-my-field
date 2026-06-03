@@ -210,6 +210,7 @@ def _promote(
     evidence_dir: Annotated[Path, typer.Option("--evidence-dir")] = Path(
         ".omf/evidence",
     ),
+    eval_dir: Annotated[Path, typer.Option("--eval-dir")] = Path(".omf/evals"),
     capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
         "capabilities",
     ),
@@ -223,6 +224,7 @@ def _promote(
                 description=description,
                 version=version,
                 evidence_dir=evidence_dir,
+                eval_dir=eval_dir,
                 capabilities_dir=capabilities_dir,
             ),
         )
