@@ -66,10 +66,12 @@ from oh_my_field.orchestrate import (
 from oh_my_field.portability import (
     CapabilityPortabilityExportRequest,
     CapabilityPortabilityImportRequest,
+    CapabilityRemapRequest,
     CapabilityValidationRequest,
     PortabilityError,
     export_capability_package,
     import_capability_package,
+    remap_capability_package,
     validate_capability_package,
 )
 from oh_my_field.promote import PromoteError, PromoteRequest, run_promote_workflow
@@ -532,6 +534,56 @@ capability_app.command(
     "validate",
     help="Re-validate an imported capability against its target runtime.",
 )(_capability_validate)
+
+
+def _parse_map(items: list[str] | None) -> tuple[tuple[str, str], ...]:
+    pairs: list[tuple[str, str]] = []
+    for item in items or []:
+        key, separator, value = item.partition("=")
+        if not separator or not key or not value:
+            msg = f"--map expects key=value, got {item!r}"
+            raise typer.BadParameter(msg)
+        pairs.append((key, value))
+    return tuple(pairs)
+
+
+def _capability_remap(
+    capability_name: Annotated[str, typer.Argument()],
+    target: Annotated[
+        Literal["codex", "claude_code", "hermes", "generic"],
+        typer.Option("--target"),
+    ],
+    model: Annotated[str | None, typer.Option("--model")] = None,
+    target_project: Annotated[str | None, typer.Option("--target-project")] = None,
+    map_: Annotated[list[str] | None, typer.Option("--map")] = None,
+    unresolved: Annotated[list[str] | None, typer.Option("--unresolved")] = None,
+    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
+        "capabilities",
+    ),
+) -> None:
+    try:
+        summary = remap_capability_package(
+            CapabilityRemapRequest(
+                capability_name=capability_name,
+                capabilities_dir=capabilities_dir,
+                target=target,
+                model=model,
+                target_project=target_project,
+                mappings=_parse_map(map_),
+                unresolved=tuple(unresolved or ()),
+            ),
+        )
+    except (PortabilityError, StorageError, ValidationError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(summary.model_dump_json())
+
+
+capability_app.command(
+    "remap",
+    help="Record a context remap plan for an imported target.",
+)(_capability_remap)
 
 
 def _replay(

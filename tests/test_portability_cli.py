@@ -78,6 +78,16 @@ class HardenOutput(BaseModel):
     recommended_actions: list[str]
 
 
+class CapabilityRemapOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    capability_name: str
+    remap_path: str
+    binding_count: int
+    unresolved: list[str]
+    complete: bool
+
+
 def test_capability_export_writes_portability_bundle(tmp_path: Path) -> None:
     capabilities_dir = tmp_path / "capabilities"
     export_dir = tmp_path / "exports" / "repo_issue_triage-hermes"
@@ -1024,6 +1034,139 @@ def test_harden_connects_target_validation_failure(tmp_path: Path) -> None:
         for action in output.recommended_actions
     )
     assert any("omf learn" in action for action in output.recommended_actions)
+
+
+def _seed_project_transfer_import(tmp_path: Path) -> tuple[Path, Path, Path]:
+    source_caps = tmp_path / "src"
+    target_caps = tmp_path / "tgt"
+    export_dir = tmp_path / "bundle"
+    eval_dir = tmp_path / "evals"
+    evidence_dir = tmp_path / "evidence"
+    write_manifest(make_manifest(), source_caps)
+    _run_ok(
+        [
+            "capability",
+            "export",
+            "repo_issue_triage",
+            "--target",
+            "codex",
+            "--target-model",
+            "gpt-5.5",
+            "--source-project",
+            "source-repo",
+            "--target-project",
+            "target-repo",
+            "--out",
+            str(export_dir),
+            "--capabilities-dir",
+            str(source_caps),
+        ],
+    )
+    _run_ok(
+        [
+            "capability",
+            "import",
+            str(export_dir),
+            "--runtime",
+            "codex",
+            "--model",
+            "gpt-5.5",
+            "--available-tool",
+            "shell",
+            "--capabilities-dir",
+            str(target_caps),
+            "--eval-dir",
+            str(eval_dir),
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
+    )
+    return target_caps, eval_dir, evidence_dir
+
+
+def test_capability_remap_writes_plan(tmp_path: Path) -> None:
+    target_caps, _, _ = _seed_project_transfer_import(tmp_path)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "capability",
+            "remap",
+            "repo_issue_triage",
+            "--target",
+            "codex",
+            "--model",
+            "gpt-5.5",
+            "--map",
+            "repository_path=/target",
+            "--map",
+            "test_command=pytest",
+            "--capabilities-dir",
+            str(target_caps),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = CapabilityRemapOutput.model_validate_json(result.stdout)
+    assert output.binding_count == 2
+    assert output.complete
+    plan = yaml.safe_load(Path(output.remap_path).read_text(encoding="utf-8"))
+    assert {binding["key"] for binding in plan["bindings"]} == {
+        "repository_path",
+        "test_command",
+    }
+
+
+def test_capability_remap_resolves_context_for_validation(tmp_path: Path) -> None:
+    target_caps, eval_dir, evidence_dir = _seed_project_transfer_import(tmp_path)
+    validate_args = [
+        "capability",
+        "validate",
+        "repo_issue_triage",
+        "--target",
+        "codex",
+        "--model",
+        "gpt-5.5",
+        "--available-tool",
+        "shell",
+        "--run-command",
+        "true",
+        "--capabilities-dir",
+        str(target_caps),
+        "--eval-dir",
+        str(eval_dir),
+        "--evidence-dir",
+        str(evidence_dir),
+    ]
+
+    before = CliRunner().invoke(app, validate_args)
+    assert before.exit_code == 0
+    assert (
+        CapabilityValidateOutput.model_validate_json(before.stdout).status
+        == "needs_adaptation"
+    )
+
+    _run_ok(
+        [
+            "capability",
+            "remap",
+            "repo_issue_triage",
+            "--target",
+            "codex",
+            "--model",
+            "gpt-5.5",
+            "--map",
+            "repository_path=/target",
+            "--capabilities-dir",
+            str(target_caps),
+        ],
+    )
+
+    after = CliRunner().invoke(app, validate_args)
+    assert after.exit_code == 0
+    assert (
+        CapabilityValidateOutput.model_validate_json(after.stdout).status == "validated"
+    )
 
 
 class HealthEntriesOutput(BaseModel):

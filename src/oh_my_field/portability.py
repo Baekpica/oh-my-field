@@ -365,6 +365,36 @@ class CapabilityValidationSummary(StrictModel):
     manual_run_required: bool = True
 
 
+class RemapBinding(StrictModel):
+    key: str = Field(min_length=1)
+    value: str = Field(min_length=1)
+
+
+class ContextRemapPlan(StrictModel):
+    capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
+    target: PortabilityTarget
+    bindings: tuple[RemapBinding, ...] = ()
+    unresolved: tuple[str, ...] = ()
+
+
+class CapabilityRemapRequest(StrictModel):
+    capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
+    capabilities_dir: Path
+    target: ExportTarget
+    model: str | None = None
+    target_project: str | None = None
+    mappings: tuple[tuple[str, str], ...] = ()
+    unresolved: tuple[str, ...] = ()
+
+
+class CapabilityRemapSummary(StrictModel):
+    capability_name: str
+    remap_path: str
+    binding_count: int = Field(ge=0)
+    unresolved: tuple[str, ...] = ()
+    complete: bool
+
+
 def export_capability_package(
     request: CapabilityPortabilityExportRequest,
 ) -> CapabilityPortabilityExportSummary:
@@ -554,10 +584,14 @@ def validate_capability_package(
         },
     )
     portability = _portability_from_overlay(manifest, overlay, target)
+    target_dir = package_dir / "imports" / _target_slug(target)
+    remap_plan = _load_remap_plan(target_dir)
+    context_remapped = remap_plan is not None and not remap_plan.unresolved
     report = _validation_report(
         manifest=manifest,
         portability=portability,
         available_tools=request.available_tools,
+        context_remapped=context_remapped,
     )
     run_plan, run_check = _run_target_hook(request)
     eval_result, eval_path = _write_target_eval(
@@ -592,7 +626,6 @@ def validate_capability_package(
                 "failure_evidence_path": str(evidence_path),
             },
         )
-    target_dir = package_dir / "imports" / _target_slug(target)
     report_path = target_dir / "validation_report.yaml"
     _write_text(report_path, _yaml_dump(report), overwrite=True)
     overlay_path = _write_target_overlay(
@@ -617,6 +650,49 @@ def validate_capability_package(
         target_run_exit_code=run_plan.exit_code,
         manual_run_required=run_plan.manual_run_required,
     )
+
+
+def remap_capability_package(
+    request: CapabilityRemapRequest,
+) -> CapabilityRemapSummary:
+    package_dir = capability_package_paths(
+        request.capability_name,
+        request.capabilities_dir,
+    ).package_dir
+    overlay = _find_overlay(package_dir, runtime=request.target, model=request.model)
+    target = overlay.target.model_copy(
+        update={"project": request.target_project or overlay.target.project},
+    )
+    plan = ContextRemapPlan(
+        capability_name=request.capability_name,
+        target=target,
+        bindings=tuple(
+            RemapBinding(key=key, value=value) for key, value in request.mappings
+        ),
+        unresolved=request.unresolved,
+    )
+    target_dir = package_dir / "imports" / _target_slug(target)
+    remap_path = target_dir / "context.remap.yaml"
+    _write_text(remap_path, _yaml_dump(plan), overwrite=True)
+    return CapabilityRemapSummary(
+        capability_name=request.capability_name,
+        remap_path=str(remap_path),
+        binding_count=len(plan.bindings),
+        unresolved=plan.unresolved,
+        complete=not plan.unresolved,
+    )
+
+
+def _load_remap_plan(target_dir: Path) -> ContextRemapPlan | None:
+    remap_path = target_dir / "context.remap.yaml"
+    try:
+        data = yaml.safe_load(remap_path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError):
+        return None
+    try:
+        return ContextRemapPlan.model_validate(data)
+    except ValidationError:
+        return None
 
 
 def _run_target_hook(
@@ -1266,6 +1342,7 @@ def _validation_report(
     manifest: CapabilityManifest,
     portability: PortabilityManifest,
     available_tools: tuple[str, ...],
+    context_remapped: bool = False,
 ) -> TargetValidationReport:
     unavailable_tools = _unavailable_tools(
         required_tools=portability.compatibility.required_tools,
@@ -1279,6 +1356,9 @@ def _validation_report(
         portability=portability,
         unavailable_tools=unavailable_tools,
     )
+    context_remap_required = (
+        _context_remap_required(portability) and not context_remapped
+    )
     status: ValidationStatus = (
         "needs_adaptation"
         if unavailable_tools
@@ -1291,7 +1371,7 @@ def _validation_report(
         target=portability.target,
         tool_compatibility=tool_compatibility,
         unavailable_tools=unavailable_tools,
-        context_remap_required=_context_remap_required(portability),
+        context_remap_required=context_remap_required,
         eval_set=portability.validation.eval_set,
         initial_pass_rate=portability.validation.current_pass_rate,
         readiness=readiness,
