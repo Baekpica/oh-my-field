@@ -1,7 +1,5 @@
 from pathlib import Path
-from typing import Literal, cast
 
-import yaml
 from pydantic import Field
 
 from oh_my_field.integrity import model_sha256
@@ -9,19 +7,23 @@ from oh_my_field.models import (
     CAPABILITY_NAME_PATTERN,
     CapabilityManifest,
     EvalResult,
+    ExportStatus,
+    ImportStatus,
     IntegrityVerificationStatus,
+    PortabilityHealth,
     StrictModel,
+    TargetStatusEntry,
+    TargetValidationStatus,
 )
 from oh_my_field.storage import (
     capability_package_paths,
     list_eval_results,
     list_manifests,
     load_manifest,
+    read_portability_health,
     render_capability_card,
     update_manifest,
 )
-
-type PortabilityStatus = Literal["not_exported", "needs_validation", "needs_adaptation"]
 
 
 class HealthError(Exception):
@@ -44,7 +46,13 @@ class CapabilityHealthEntry(StrictModel):
     pass_rate: float = Field(ge=0.0, le=1.0)
     integrity_status: str
     runtime_coverage: tuple[str, ...] = ()
-    portability_status: PortabilityStatus
+    export_status: ExportStatus
+    import_status: ImportStatus
+    validation_status: TargetValidationStatus
+    export_count: int = Field(ge=0)
+    import_count: int = Field(ge=0)
+    target_validation_count: int = Field(ge=0)
+    target_statuses: tuple[TargetStatusEntry, ...] = ()
     next_action: str = Field(min_length=1)
 
 
@@ -116,7 +124,10 @@ def run_card_workflow(
     content = (
         paths.card_path.read_text(encoding="utf-8")
         if paths.card_path.exists()
-        else render_capability_card(manifest)
+        else render_capability_card(
+            manifest,
+            read_portability_health(paths.package_dir),
+        )
     )
     return CapabilityCardSummary(
         capability_name=manifest.name,
@@ -138,7 +149,7 @@ def health_entry_from_manifest(
     pass_count = sum(result.status == "pass" for result in capability_evals)
     failed_count = sum(result.status == "fail" for result in capability_evals)
     integrity_status = manifest_integrity_status(manifest)
-    portability_status = _portability_status(package_dir)
+    portability = read_portability_health(package_dir)
     return CapabilityHealthEntry(
         name=manifest.name,
         status=manifest.status,
@@ -149,12 +160,18 @@ def health_entry_from_manifest(
         pass_rate=pass_count / len(capability_evals) if capability_evals else 0.0,
         integrity_status=integrity_status,
         runtime_coverage=_runtime_coverage(manifest),
-        portability_status=portability_status,
+        export_status=portability.export_status,
+        import_status=portability.import_status,
+        validation_status=portability.validation_status,
+        export_count=portability.export_count,
+        import_count=portability.import_count,
+        target_validation_count=portability.target_validation_count,
+        target_statuses=portability.target_statuses,
         next_action=next_action_for_capability(
             manifest=manifest,
             eval_results=capability_evals,
             integrity_status=integrity_status,
-            portability_status=portability_status,
+            portability=portability,
         ),
     )
 
@@ -174,19 +191,22 @@ def next_action_for_capability(
     manifest: CapabilityManifest,
     eval_results: tuple[EvalResult, ...],
     integrity_status: str,
-    portability_status: PortabilityStatus,
+    portability: PortabilityHealth,
 ) -> str:
     action: str
+    validation = portability.validation_status
     if integrity_status == "fail":
         action = f"run `omf verify capability {manifest.name}`"
     elif not eval_results:
         action = f"run eval set `{manifest.name}_regression`"
     elif any(result.status == "fail" for result in eval_results):
         action = "add regression cases for failed evals, then rerun eval"
-    elif portability_status == "not_exported":
+    elif portability.import_count and validation == "needs_adaptation":
+        action = "adapt target import before marking portable"
+    elif portability.import_count and validation == "needs_validation":
+        action = f"run `omf capability validate {manifest.name}` on the target"
+    elif portability.export_status == "not_exported" and portability.import_count == 0:
         action = "export to a target runtime and validate portability"
-    elif portability_status == "needs_adaptation":
-        action = "adapt target import report before marking portable"
     elif manifest.status == "candidate":
         action = "collect more passing evidence or promote from an evidence set"
     else:
@@ -202,8 +222,19 @@ def _harden_actions(entry: CapabilityHealthEntry) -> tuple[str, ...]:
         actions.append(
             f"run `omf eval {entry.name} --eval-set {entry.name}_regression`",
         )
-    if entry.portability_status == "not_exported":
+    if entry.export_status == "not_exported" and entry.import_count == 0:
         actions.append("export to Codex, Claude Code, Hermes, or generic target")
+    if entry.validation_status == "needs_adaptation":
+        actions.append(
+            "adapt the failing target import (tools/context), then re-run "
+            f"`omf capability validate {entry.name}`",
+        )
+        actions.append("triage the target failure evidence via `omf learn`")
+    elif entry.import_count and entry.validation_status == "needs_validation":
+        actions.append(
+            f"run `omf capability validate {entry.name} --run-command ...` "
+            "on the imported target",
+        )
     actions.append("review learning patch candidates after `omf learn`")
     return tuple(dict.fromkeys(actions))
 
@@ -226,25 +257,3 @@ def _runtime_coverage(manifest: CapabilityManifest) -> tuple[str, ...]:
     values = [f"{manifest.runtime.name}:{manifest.runtime.model or 'model_unknown'}"]
     values.extend(f"tool:{tool}" for tool in manifest.runtime.tools)
     return tuple(values)
-
-
-def _portability_status(package_dir: Path) -> PortabilityStatus:
-    reports = sorted(package_dir.glob("imports/*/validation_report.yaml"))
-    if not reports:
-        return "not_exported"
-    statuses: list[str] = []
-    for report in reports:
-        try:
-            parsed = yaml.safe_load(report.read_text(encoding="utf-8"))
-        except (OSError, yaml.YAMLError):
-            statuses.append("needs_adaptation")
-            continue
-        if not isinstance(parsed, dict):
-            statuses.append("needs_adaptation")
-            continue
-        raw_status = cast("dict[object, object]", parsed).get("status")
-        if isinstance(raw_status, str):
-            statuses.append(raw_status)
-    if "needs_adaptation" in statuses:
-        return "needs_adaptation"
-    return "needs_validation"

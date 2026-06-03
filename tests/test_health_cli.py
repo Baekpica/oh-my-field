@@ -58,7 +58,9 @@ def test_health_reports_next_action(tmp_path: Path) -> None:
     output = HealthOutput.model_validate_json(result.stdout)
     entry = output.entries[0]
     assert output.capability_name == "repo_issue_triage"
-    assert entry["portability_status"] == "not_exported"
+    assert entry["export_status"] == "not_exported"
+    assert entry["import_status"] == "not_imported"
+    assert entry["validation_status"] == "not_run"
     assert entry["next_action"] == "run `omf verify capability repo_issue_triage`"
 
 

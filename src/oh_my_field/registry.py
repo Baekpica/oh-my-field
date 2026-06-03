@@ -17,7 +17,11 @@ from oh_my_field.models import (
     EvalResult,
     StrictModel,
 )
-from oh_my_field.storage import list_eval_results, list_manifests
+from oh_my_field.storage import (
+    list_eval_results,
+    list_manifests,
+    read_portability_health,
+)
 
 type Clock = Callable[[], datetime]
 
@@ -151,7 +155,7 @@ def _entry_from_manifest(
             manifest=manifest,
             eval_results=capability_evals,
             integrity_status=manifest_integrity_status(manifest),
-            portability_status="not_exported",
+            portability=read_portability_health(manifest_path.parent),
         ),
         manifest_path=str(manifest_path),
     )

@@ -69,6 +69,15 @@ type WorkflowNodeStatus = Literal["pending", "pass", "fail", "skipped"]
 type PatchDecisionStatus = Literal["accepted", "rejected"]
 type PatchKind = Literal["prompt", "context", "harness"]
 type IntegrityVerificationStatus = Literal["pass", "fail"]
+type ArtifactStorageMode = Literal["inline", "external"]
+type ExportStatus = Literal["not_exported", "exported"]
+type ImportStatus = Literal["not_imported", "imported"]
+type TargetValidationStatus = Literal[
+    "not_run",
+    "needs_validation",
+    "needs_adaptation",
+    "validated",
+]
 
 COMMAND_RISK_CATEGORIES: Final[tuple[CommandRiskCategory, ...]] = (
     "write",
@@ -235,6 +244,23 @@ class IntegrityVerificationResult(StrictModel):
     checks: tuple[IntegrityVerificationCheck, ...]
 
 
+class TargetStatusEntry(StrictModel):
+    target: str = Field(min_length=1)
+    validation_status: TargetValidationStatus
+    portability_readiness_score: float | None = Field(default=None, ge=0.0, le=1.0)
+    eval_recorded: bool = False
+
+
+class PortabilityHealth(StrictModel):
+    export_status: ExportStatus = "not_exported"
+    import_status: ImportStatus = "not_imported"
+    validation_status: TargetValidationStatus = "not_run"
+    export_count: int = Field(default=0, ge=0)
+    import_count: int = Field(default=0, ge=0)
+    target_validation_count: int = Field(default=0, ge=0)
+    target_statuses: tuple[TargetStatusEntry, ...] = ()
+
+
 class HumanReview(StrictModel):
     status: HumanReviewStatus = "pending"
     reviewer: str | None = None
@@ -255,6 +281,9 @@ class CapturedTextFile(StrictModel):
     content: str
     size_bytes: int = Field(ge=0)
     sha256: str = Field(pattern=SHA256_PATTERN)
+    mime_type: str | None = None
+    storage_mode: ArtifactStorageMode = "inline"
+    redacted: bool = False
 
 
 class HarnessResult(StrictModel):

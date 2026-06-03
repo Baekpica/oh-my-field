@@ -1,3 +1,4 @@
+import json
 import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -5,12 +6,18 @@ from pathlib import Path
 from typing import Literal, cast
 
 import yaml
-from pydantic import Field
+from pydantic import Field, ValidationError
 
-from oh_my_field.integrity import append_integrity_link
+from oh_my_field.execution import (
+    CommandExecutionRequest,
+    assess_command_risk,
+    execute_shell_command,
+)
+from oh_my_field.integrity import append_integrity_link, model_sha256
 from oh_my_field.models import (
     CAPABILITY_NAME_PATTERN,
     CapabilityManifest,
+    CommandRiskCategory,
     EvalCheck,
     EvalResult,
     EvidenceRecord,
@@ -20,20 +27,30 @@ from oh_my_field.models import (
 )
 from oh_my_field.storage import (
     DuplicateWriteError,
+    StorageError,
+    capability_package_paths,
+    load_evidence,
     load_manifest,
+    manifest_path_for_capability,
+    update_manifest,
     write_capability_package,
     write_eval_result,
     write_evidence,
 )
 
 type ExportTarget = Literal["codex", "claude_code", "hermes", "generic"]
-type ValidationStatus = Literal["needs_validation", "needs_adaptation"]
+type ValidationStatus = Literal["needs_validation", "needs_adaptation", "validated"]
 type ToolCompatibilityStatus = Literal["pass", "partial", "unknown"]
+type EvidenceInclusionMode = Literal["none", "summary", "redacted", "full"]
+type ImportCollisionPolicy = Literal["fail", "merge", "version", "overwrite"]
+type ModelClass = Literal["frontier", "standard", "local"]
+type CapabilityTier = Literal["high", "medium", "low"]
 type YamlValue = (
     str | int | float | bool | None | list["YamlValue"] | dict[str, "YamlValue"]
 )
 
 PORTABILITY_REQUIRED_PASS_RATE = 0.8
+REDACTED_MARKER = "[REDACTED]"
 
 
 class PortabilityError(Exception):
@@ -55,6 +72,44 @@ class PortabilityBundleParseError(PortabilityError):
 
     def __str__(self) -> str:
         return f"could not parse portability bundle {self.path}: {self.reason}"
+
+
+@dataclass
+class PortabilityImportNotFoundError(PortabilityError):
+    capability: str
+    runtime: str
+    model: str | None
+
+    def __str__(self) -> str:
+        target = self.runtime if self.model is None else f"{self.runtime}/{self.model}"
+        return (
+            f"no imported target {target!r} for capability {self.capability!r}; "
+            "run `omf capability import` first"
+        )
+
+
+@dataclass
+class PortabilityAmbiguousTargetError(PortabilityError):
+    capability: str
+    runtime: str
+
+    def __str__(self) -> str:
+        return (
+            f"multiple imported targets for runtime {self.runtime!r} on capability "
+            f"{self.capability!r}; pass --model to disambiguate"
+        )
+
+
+@dataclass
+class PortabilityImportExistsError(PortabilityError):
+    capability: str
+    capabilities_dir: Path
+
+    def __str__(self) -> str:
+        return (
+            f"capability {self.capability!r} already exists in "
+            f"{self.capabilities_dir}; pass --if-exists overwrite|version|merge"
+        )
 
 
 class PortabilitySource(StrictModel):
@@ -84,11 +139,41 @@ class PortabilityCompatibility(StrictModel):
     compression_required: bool = False
 
 
+class ModelProfile(StrictModel):
+    model_class: ModelClass = "standard"
+    context_tokens: int | None = Field(default=None, ge=1)
+    tool_use: CapabilityTier = "medium"
+    reasoning: CapabilityTier = "medium"
+
+
+DEFAULT_MODEL_PROFILES: dict[str, ModelProfile] = {
+    "gpt-5.5": ModelProfile(
+        model_class="frontier",
+        context_tokens=256000,
+        tool_use="high",
+        reasoning="high",
+    ),
+    "qwen3.6-27b": ModelProfile(
+        model_class="local",
+        context_tokens=32768,
+        tool_use="medium",
+        reasoning="medium",
+    ),
+}
+_LOCAL_MODEL_MARKERS = ("mini", "small", "local", "qwen", "7b", "13b", "27b")
+_FRONTIER_MODEL_MARKERS = ("gpt-5", "opus", "sonnet", "gemini-2", "frontier")
+_CLASS_RANK: dict[ModelClass, int] = {"local": 1, "standard": 2, "frontier": 3}
+_TIER_RANK: dict[CapabilityTier, int] = {"low": 1, "medium": 2, "high": 3}
+
+
 class PortabilityModelDelta(StrictModel):
     source_model: str | None = None
     target_model: str | None = None
     model_changed: bool = False
     transfer_type: tuple[str, ...] = ()
+    source_profile: ModelProfile | None = None
+    target_profile: ModelProfile | None = None
+    downgrade: bool = False
 
 
 class PortabilityAdaptation(StrictModel):
@@ -122,6 +207,62 @@ class PortabilityManifest(StrictModel):
     validation: PortabilityValidation = Field(default_factory=PortabilityValidation)
 
 
+class EvidenceProof(StrictModel):
+    evidence_id: str = Field(min_length=1)
+    available: bool
+    sha256: str | None = None
+    integrity_verified: bool = False
+    summary_path: str | None = None
+    snapshot_path: str | None = None
+
+
+class EvidenceProvenancePack(StrictModel):
+    mode: EvidenceInclusionMode
+    proofs: tuple[EvidenceProof, ...] = ()
+
+
+class EvidenceIntegrityProof(StrictModel):
+    evidence_id: str = Field(min_length=1)
+    available: bool
+    sha256: str | None = None
+    integrity_verified: bool = False
+
+
+class ProvenanceIntegrity(StrictModel):
+    capability: str = Field(pattern=CAPABILITY_NAME_PATTERN)
+    capability_sha256: str | None = None
+    capability_integrity_verified: bool = False
+    evidence: tuple[EvidenceIntegrityProof, ...] = ()
+
+
+class ReadinessFactor(StrictModel):
+    name: str = Field(min_length=1)
+    delta: float
+    reason: str = Field(min_length=1)
+
+
+class PortabilityReadiness(StrictModel):
+    score: float = Field(ge=0.0, le=1.0)
+    required_pass_rate: float = Field(ge=0.0, le=1.0)
+    factors: tuple[ReadinessFactor, ...] = ()
+
+
+class EvalPassRateComparison(StrictModel):
+    source_pass_rate: float | None = Field(default=None, ge=0.0, le=1.0)
+    target_pass_rate: float | None = Field(default=None, ge=0.0, le=1.0)
+    delta: float | None = None
+
+
+class TargetRunPlan(StrictModel):
+    target_run_command: str | None = None
+    manual_run_required: bool = True
+    expected_artifacts: tuple[str, ...] = ()
+    executed: bool = False
+    approved: bool = False
+    exit_code: int | None = None
+    risk_categories: tuple[CommandRiskCategory, ...] = ()
+
+
 class TargetValidationReport(StrictModel):
     capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
     source: PortabilitySource
@@ -131,8 +272,10 @@ class TargetValidationReport(StrictModel):
     context_remap_required: bool = False
     eval_set: str | None = None
     initial_pass_rate: float | None = Field(default=None, ge=0.0, le=1.0)
-    portability_score: float = Field(ge=0.0, le=1.0)
+    readiness: PortabilityReadiness
     model_delta: PortabilityModelDelta
+    target_run: TargetRunPlan | None = None
+    pass_rate_comparison: EvalPassRateComparison | None = None
     eval_id: str | None = None
     eval_path: str | None = None
     failure_evidence_id: str | None = None
@@ -141,6 +284,28 @@ class TargetValidationReport(StrictModel):
     compressed_context_path: str | None = None
     status: ValidationStatus
     next_action: str = Field(min_length=1)
+
+
+class TargetOverrides(StrictModel):
+    instruction_variant: str = "base"
+    context_variant: str = "full"
+    required_human_review: bool = True
+
+
+class TargetOverlay(StrictModel):
+    capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
+    source: PortabilitySource
+    target: PortabilityTarget
+    status: ValidationStatus
+    tool_compatibility: ToolCompatibilityStatus
+    portability_readiness_score: float = Field(ge=0.0, le=1.0)
+    transfer_type: tuple[str, ...] = ()
+    overrides: TargetOverrides = Field(default_factory=TargetOverrides)
+    validation_report_path: str = "validation_report.yaml"
+    instructions_path: str = "instructions.md"
+    context_pack_path: str = "context.pack.md"
+    eval_id: str | None = None
+    failure_evidence_id: str | None = None
 
 
 class CapabilityPortabilityExportRequest(StrictModel):
@@ -154,6 +319,8 @@ class CapabilityPortabilityExportRequest(StrictModel):
     source_reasoning_effort: str | None = None
     source_context_tokens: int | None = Field(default=None, ge=1)
     target_context_tokens: int | None = Field(default=None, ge=1)
+    evidence_dir: Path = Path(".omf/evidence")
+    include_evidence: EvidenceInclusionMode = "summary"
 
 
 class CapabilityPortabilityExportSummary(StrictModel):
@@ -163,6 +330,17 @@ class CapabilityPortabilityExportSummary(StrictModel):
     runtime_export_path: str
     target_runtime: ExportTarget
     target_model: str | None = None
+    evidence_mode: EvidenceInclusionMode = "summary"
+    evidence_proof_count: int = Field(default=0, ge=0)
+
+
+class CapabilityExportRecord(StrictModel):
+    capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
+    target: PortabilityTarget
+    transfer_type: tuple[str, ...] = ()
+    bundle_path: str = Field(min_length=1)
+    evidence_mode: EvidenceInclusionMode = "summary"
+    evidence_proof_count: int = Field(default=0, ge=0)
 
 
 class CapabilityPortabilityImportRequest(StrictModel):
@@ -175,19 +353,103 @@ class CapabilityPortabilityImportRequest(StrictModel):
     project: str | None = None
     validate_import: bool = False
     available_tools: tuple[str, ...] = ()
+    as_name: str | None = Field(default=None, pattern=CAPABILITY_NAME_PATTERN)
+    namespace: str | None = Field(default=None, pattern=CAPABILITY_NAME_PATTERN)
+    if_exists: ImportCollisionPolicy = "fail"
 
 
 class CapabilityPortabilityImportSummary(StrictModel):
     capability_name: str
     imported_package_path: str
     validation_report_path: str
+    overlay_path: str
     status: ValidationStatus
     tool_compatibility: ToolCompatibilityStatus
-    portability_score: float = Field(ge=0.0, le=1.0)
+    portability_readiness_score: float = Field(ge=0.0, le=1.0)
     eval_id: str | None = None
     eval_path: str | None = None
     failure_evidence_id: str | None = None
     failure_evidence_path: str | None = None
+
+
+class CapabilityValidationRequest(StrictModel):
+    capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
+    capabilities_dir: Path
+    eval_dir: Path
+    evidence_dir: Path
+    target: ExportTarget
+    model: str | None = None
+    project: str | None = None
+    available_tools: tuple[str, ...] = ()
+    run_command: str | None = None
+    expected_artifacts: tuple[str, ...] = ()
+    command_cwd: Path = Path()
+    command_timeout_seconds: int = Field(default=600, ge=1)
+    approve_command_risk: bool = False
+
+
+class CapabilityValidationSummary(StrictModel):
+    capability_name: str
+    overlay_path: str
+    validation_report_path: str
+    status: ValidationStatus
+    tool_compatibility: ToolCompatibilityStatus
+    portability_readiness_score: float = Field(ge=0.0, le=1.0)
+    eval_id: str | None = None
+    eval_path: str | None = None
+    failure_evidence_id: str | None = None
+    failure_evidence_path: str | None = None
+    target_run_executed: bool = False
+    target_run_exit_code: int | None = None
+    manual_run_required: bool = True
+
+
+class RemapBinding(StrictModel):
+    key: str = Field(min_length=1)
+    value: str = Field(min_length=1)
+
+
+class ContextRemapPlan(StrictModel):
+    capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
+    target: PortabilityTarget
+    bindings: tuple[RemapBinding, ...] = ()
+    unresolved: tuple[str, ...] = ()
+
+
+class CapabilityRemapRequest(StrictModel):
+    capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
+    capabilities_dir: Path
+    target: ExportTarget
+    model: str | None = None
+    target_project: str | None = None
+    mappings: tuple[tuple[str, str], ...] = ()
+    unresolved: tuple[str, ...] = ()
+
+
+class CapabilityRemapSummary(StrictModel):
+    capability_name: str
+    remap_path: str
+    binding_count: int = Field(ge=0)
+    unresolved: tuple[str, ...] = ()
+    complete: bool
+
+
+class CapabilityAdaptRequest(StrictModel):
+    capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
+    capabilities_dir: Path
+    target: ExportTarget
+    model: str | None = None
+    instruction_variant: Literal["base", "compact"] | None = None
+    context_variant: Literal["full", "compressed"] | None = None
+    require_human_review: bool | None = None
+
+
+class CapabilityAdaptSummary(StrictModel):
+    capability_name: str
+    overlay_path: str
+    instruction_variant: str
+    context_variant: str
+    required_human_review: bool
 
 
 def export_capability_package(
@@ -196,8 +458,29 @@ def export_capability_package(
     manifest = load_manifest(request.capability_name, request.capabilities_dir)
     _ensure_new_directory(request.out)
     portability = _portability_manifest(manifest, request)
+    records = _load_source_evidence(
+        evidence_ids=portability.source.evidence_ids,
+        evidence_dir=request.evidence_dir,
+    )
     _write_export_bundle(request.out, manifest, portability)
+    pack = _write_evidence_provenance(
+        bundle_path=request.out,
+        mode=request.include_evidence,
+        manifest=manifest,
+        records=records,
+    )
     runtime_path = _write_runtime_target(request.out, manifest, portability)
+    _write_export_record(
+        capabilities_dir=request.capabilities_dir,
+        record=CapabilityExportRecord(
+            capability_name=manifest.name,
+            target=portability.target,
+            transfer_type=portability.adaptation.transfer_type,
+            bundle_path=str(request.out),
+            evidence_mode=request.include_evidence,
+            evidence_proof_count=len(pack.proofs),
+        ),
+    )
     return CapabilityPortabilityExportSummary(
         capability_name=manifest.name,
         export_path=str(request.out),
@@ -205,7 +488,26 @@ def export_capability_package(
         runtime_export_path=str(runtime_path),
         target_runtime=request.target,
         target_model=request.target_model,
+        evidence_mode=request.include_evidence,
+        evidence_proof_count=len(pack.proofs),
     )
+
+
+def _write_export_record(
+    *,
+    capabilities_dir: Path,
+    record: CapabilityExportRecord,
+) -> Path:
+    record_path = (
+        capabilities_dir
+        / record.capability_name
+        / "exports"
+        / _target_slug(record.target)
+        / "export.yaml"
+    )
+    record_path.parent.mkdir(parents=True, exist_ok=True)
+    record_path.write_text(_yaml_dump(record), encoding="utf-8")
+    return record_path
 
 
 def import_capability_package(
@@ -219,13 +521,22 @@ def import_capability_package(
             "project": request.project or portability.target.project,
         },
     )
-    imported_path = write_capability_package(
-        manifest,
-        request.capabilities_dir,
-    ).package_dir
+    resolved = portability.model_copy(update={"target": target})
+    target_caps = (
+        request.capabilities_dir / request.namespace
+        if request.namespace
+        else request.capabilities_dir
+    )
+    if request.as_name is not None:
+        manifest = manifest.model_copy(update={"name": request.as_name})
+    manifest, imported_path, overwrite_target = _materialize_package(
+        manifest=manifest,
+        capabilities_dir=target_caps,
+        if_exists=request.if_exists,
+    )
     report = _validation_report(
         manifest=manifest,
-        portability=portability.model_copy(update={"target": target}),
+        portability=resolved,
         available_tools=request.available_tools,
     )
     if request.validate_import:
@@ -235,7 +546,11 @@ def import_capability_package(
             eval_dir=request.eval_dir,
         )
         report = report.model_copy(
-            update={"eval_id": eval_result.id, "eval_path": str(eval_path)},
+            update={
+                "eval_id": eval_result.id,
+                "eval_path": str(eval_path),
+                "pass_rate_comparison": _pass_rate_comparison(manifest, eval_result),
+            },
         )
         if eval_result.status == "fail":
             evidence, evidence_path = _write_failure_evidence(
@@ -249,24 +564,480 @@ def import_capability_package(
                     "failure_evidence_path": str(evidence_path),
                 },
             )
-    report_path = (
-        imported_path
-        / "imports"
-        / _target_slug(report.target)
-        / "validation_report.yaml"
+    target_dir = imported_path / "imports" / _target_slug(report.target)
+    report_path = target_dir / "validation_report.yaml"
+    overlay_path = _write_target_overlay(
+        target_dir=target_dir,
+        overlay=_build_overlay(report, resolved),
+        portability=resolved,
+        manifest=manifest,
+        overwrite=overwrite_target,
     )
-    _write_text_exclusive(report_path, _yaml_dump(report))
+    _write_text(report_path, _yaml_dump(report), overwrite=overwrite_target)
     return CapabilityPortabilityImportSummary(
         capability_name=manifest.name,
         imported_package_path=str(imported_path),
         validation_report_path=str(report_path),
+        overlay_path=str(overlay_path),
         status=report.status,
         tool_compatibility=report.tool_compatibility,
-        portability_score=report.portability_score,
+        portability_readiness_score=report.readiness.score,
         eval_id=report.eval_id,
         eval_path=report.eval_path,
         failure_evidence_id=report.failure_evidence_id,
         failure_evidence_path=report.failure_evidence_path,
+    )
+
+
+def _materialize_package(
+    *,
+    manifest: CapabilityManifest,
+    capabilities_dir: Path,
+    if_exists: ImportCollisionPolicy,
+) -> tuple[CapabilityManifest, Path, bool]:
+    exists = manifest_path_for_capability(manifest.name, capabilities_dir) is not None
+    if if_exists == "version" and exists:
+        manifest = manifest.model_copy(
+            update={"name": _next_versioned_name(manifest.name, capabilities_dir)},
+        )
+        exists = False
+    package_dir = capability_package_paths(
+        manifest.name,
+        capabilities_dir,
+    ).package_dir
+    if not exists:
+        write_capability_package(manifest, capabilities_dir)
+        return manifest, package_dir, False
+    if if_exists == "fail":
+        raise PortabilityImportExistsError(
+            capability=manifest.name,
+            capabilities_dir=capabilities_dir,
+        )
+    if if_exists == "overwrite":
+        update_manifest(manifest, capabilities_dir)
+    # "merge" keeps the existing canonical package and only rewrites the
+    # target import directory below.
+    return manifest, package_dir, True
+
+
+def _next_versioned_name(name: str, capabilities_dir: Path) -> str:
+    index = 2
+    while True:
+        candidate = f"{name}_v{index}"
+        if manifest_path_for_capability(candidate, capabilities_dir) is None:
+            return candidate
+        index += 1
+
+
+def validate_capability_package(
+    request: CapabilityValidationRequest,
+) -> CapabilityValidationSummary:
+    manifest = load_manifest(request.capability_name, request.capabilities_dir)
+    package_dir = capability_package_paths(
+        request.capability_name,
+        request.capabilities_dir,
+    ).package_dir
+    overlay = _find_overlay(package_dir, runtime=request.target, model=request.model)
+    target = overlay.target.model_copy(
+        update={
+            "model": request.model or overlay.target.model,
+            "project": request.project or overlay.target.project,
+        },
+    )
+    portability = _portability_from_overlay(manifest, overlay, target)
+    target_dir = package_dir / "imports" / _target_slug(target)
+    remap_plan = _load_remap_plan(target_dir)
+    context_remapped = remap_plan is not None and not remap_plan.unresolved
+    report = _validation_report(
+        manifest=manifest,
+        portability=portability,
+        available_tools=request.available_tools,
+        context_remapped=context_remapped,
+    )
+    run_plan, run_check = _run_target_hook(request)
+    eval_result, eval_path = _write_target_eval(
+        report=report,
+        manifest=manifest,
+        eval_dir=request.eval_dir,
+        extra_checks=(run_check,) if run_check is not None else (),
+    )
+    final_status = _validated_status(
+        report=report,
+        eval_result=eval_result,
+        run_executed=run_plan.executed,
+    )
+    report = report.model_copy(
+        update={
+            "status": final_status,
+            "next_action": _next_action(final_status),
+            "eval_id": eval_result.id,
+            "eval_path": str(eval_path),
+            "target_run": run_plan,
+            "pass_rate_comparison": _pass_rate_comparison(manifest, eval_result),
+        },
+    )
+    if eval_result.status == "fail":
+        evidence, evidence_path = _write_failure_evidence(
+            report=report,
+            eval_result=eval_result,
+            evidence_dir=request.evidence_dir,
+        )
+        report = report.model_copy(
+            update={
+                "failure_evidence_id": evidence.id,
+                "failure_evidence_path": str(evidence_path),
+            },
+        )
+    report_path = target_dir / "validation_report.yaml"
+    _write_text(report_path, _yaml_dump(report), overwrite=True)
+    overlay_path = _write_target_overlay(
+        target_dir=target_dir,
+        overlay=_build_overlay(report, portability, overrides=overlay.overrides),
+        portability=portability,
+        manifest=manifest,
+        overwrite=True,
+    )
+    return CapabilityValidationSummary(
+        capability_name=manifest.name,
+        overlay_path=str(overlay_path),
+        validation_report_path=str(report_path),
+        status=report.status,
+        tool_compatibility=report.tool_compatibility,
+        portability_readiness_score=report.readiness.score,
+        eval_id=report.eval_id,
+        eval_path=report.eval_path,
+        failure_evidence_id=report.failure_evidence_id,
+        failure_evidence_path=report.failure_evidence_path,
+        target_run_executed=run_plan.executed,
+        target_run_exit_code=run_plan.exit_code,
+        manual_run_required=run_plan.manual_run_required,
+    )
+
+
+def remap_capability_package(
+    request: CapabilityRemapRequest,
+) -> CapabilityRemapSummary:
+    package_dir = capability_package_paths(
+        request.capability_name,
+        request.capabilities_dir,
+    ).package_dir
+    overlay = _find_overlay(package_dir, runtime=request.target, model=request.model)
+    target = overlay.target.model_copy(
+        update={"project": request.target_project or overlay.target.project},
+    )
+    plan = ContextRemapPlan(
+        capability_name=request.capability_name,
+        target=target,
+        bindings=tuple(
+            RemapBinding(key=key, value=value) for key, value in request.mappings
+        ),
+        unresolved=request.unresolved,
+    )
+    target_dir = package_dir / "imports" / _target_slug(target)
+    remap_path = target_dir / "context.remap.yaml"
+    _write_text(remap_path, _yaml_dump(plan), overwrite=True)
+    return CapabilityRemapSummary(
+        capability_name=request.capability_name,
+        remap_path=str(remap_path),
+        binding_count=len(plan.bindings),
+        unresolved=plan.unresolved,
+        complete=not plan.unresolved,
+    )
+
+
+def adapt_capability_package(
+    request: CapabilityAdaptRequest,
+) -> CapabilityAdaptSummary:
+    manifest = load_manifest(request.capability_name, request.capabilities_dir)
+    package_dir = capability_package_paths(
+        request.capability_name,
+        request.capabilities_dir,
+    ).package_dir
+    overlay = _find_overlay(package_dir, runtime=request.target, model=request.model)
+    portability = _portability_from_overlay(manifest, overlay, overlay.target)
+    review_required = (
+        overlay.overrides.required_human_review
+        if request.require_human_review is None
+        else request.require_human_review
+    )
+    overrides = TargetOverrides(
+        instruction_variant=(
+            request.instruction_variant or overlay.overrides.instruction_variant
+        ),
+        context_variant=request.context_variant or overlay.overrides.context_variant,
+        required_human_review=review_required,
+    )
+    new_overlay = overlay.model_copy(update={"overrides": overrides})
+    target_dir = package_dir / "imports" / _target_slug(overlay.target)
+    overlay_path = _write_target_overlay(
+        target_dir=target_dir,
+        overlay=new_overlay,
+        portability=portability,
+        manifest=manifest,
+        overwrite=True,
+    )
+    return CapabilityAdaptSummary(
+        capability_name=manifest.name,
+        overlay_path=str(overlay_path),
+        instruction_variant=overrides.instruction_variant,
+        context_variant=overrides.context_variant,
+        required_human_review=overrides.required_human_review,
+    )
+
+
+def _load_remap_plan(target_dir: Path) -> ContextRemapPlan | None:
+    remap_path = target_dir / "context.remap.yaml"
+    try:
+        data = yaml.safe_load(remap_path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError):
+        return None
+    try:
+        return ContextRemapPlan.model_validate(data)
+    except ValidationError:
+        return None
+
+
+def _run_target_hook(
+    request: CapabilityValidationRequest,
+) -> tuple[TargetRunPlan, EvalCheck | None]:
+    if request.run_command is None:
+        return (
+            TargetRunPlan(
+                manual_run_required=True,
+                expected_artifacts=request.expected_artifacts,
+            ),
+            None,
+        )
+    risk = assess_command_risk(request.run_command)
+    if risk.approval_required and not request.approve_command_risk:
+        return (
+            TargetRunPlan(
+                target_run_command=request.run_command,
+                manual_run_required=True,
+                expected_artifacts=request.expected_artifacts,
+                executed=False,
+                approved=False,
+                risk_categories=risk.categories,
+            ),
+            None,
+        )
+    execution = execute_shell_command(
+        CommandExecutionRequest(
+            command=request.run_command,
+            cwd=request.command_cwd,
+            timeout_seconds=request.command_timeout_seconds,
+            approve_risk=request.approve_command_risk,
+        ),
+    )
+    plan = TargetRunPlan(
+        target_run_command=request.run_command,
+        manual_run_required=False,
+        expected_artifacts=request.expected_artifacts,
+        executed=True,
+        approved=execution.approved,
+        exit_code=execution.exit_code,
+        risk_categories=execution.risk_categories,
+    )
+    check = EvalCheck(
+        name="target_run",
+        status="pass" if execution.exit_code == 0 else "fail",
+        message=f"target run exit code {execution.exit_code}",
+    )
+    return plan, check
+
+
+def _find_overlay(
+    package_dir: Path,
+    *,
+    runtime: ExportTarget,
+    model: str | None,
+) -> TargetOverlay:
+    matches: list[TargetOverlay] = []
+    for overlay_path in sorted(package_dir.glob("imports/*/target.overlay.yaml")):
+        overlay = _load_overlay(overlay_path)
+        if overlay is None or overlay.target.runtime != runtime:
+            continue
+        if model is not None and overlay.target.model != model:
+            continue
+        matches.append(overlay)
+    if not matches:
+        raise PortabilityImportNotFoundError(
+            capability=package_dir.name,
+            runtime=runtime,
+            model=model,
+        )
+    if len(matches) > 1:
+        raise PortabilityAmbiguousTargetError(
+            capability=package_dir.name,
+            runtime=runtime,
+        )
+    return matches[0]
+
+
+def _load_overlay(overlay_path: Path) -> TargetOverlay | None:
+    try:
+        data = yaml.safe_load(overlay_path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError):
+        return None
+    try:
+        return TargetOverlay.model_validate(data)
+    except ValidationError:
+        return None
+
+
+def _portability_from_overlay(
+    manifest: CapabilityManifest,
+    overlay: TargetOverlay,
+    target: PortabilityTarget,
+) -> PortabilityManifest:
+    required_tools = manifest.workflow_control.allowed_tools or manifest.runtime.tools
+    optional_tools = tuple(
+        tool for tool in manifest.runtime.tools if tool not in required_tools
+    )
+    compressed = overlay.overrides.context_variant == "compressed"
+    return PortabilityManifest(
+        capability=manifest.name,
+        version=manifest.version,
+        source=overlay.source,
+        target=target,
+        compatibility=PortabilityCompatibility(
+            required_tools=required_tools,
+            optional_tools=optional_tools,
+            compression_required=compressed,
+        ),
+        adaptation=PortabilityAdaptation(
+            transfer_type=overlay.transfer_type,
+            prompt_variant=overlay.overrides.instruction_variant,
+            context_variant=overlay.overrides.context_variant,
+            human_review_required=overlay.overrides.required_human_review,
+        ),
+        validation=PortabilityValidation(eval_set=f"{manifest.name}_regression"),
+    )
+
+
+def _validated_status(
+    *,
+    report: TargetValidationReport,
+    eval_result: EvalResult,
+    run_executed: bool,
+) -> ValidationStatus:
+    if (
+        report.unavailable_tools
+        or report.readiness.score < PORTABILITY_REQUIRED_PASS_RATE
+    ):
+        return "needs_adaptation"
+    if eval_result.status == "fail":
+        return "needs_adaptation"
+    # Static target-side checks pass. Only an executed, passing target run
+    # earns "validated"; otherwise the import still needs a real target run.
+    return "validated" if run_executed else "needs_validation"
+
+
+def _write_target_overlay(
+    *,
+    target_dir: Path,
+    overlay: TargetOverlay,
+    portability: PortabilityManifest,
+    manifest: CapabilityManifest,
+    overwrite: bool = False,
+) -> Path:
+    overlay_path = target_dir / "target.overlay.yaml"
+    _write_text(overlay_path, _yaml_dump(overlay), overwrite=overwrite)
+    _write_text(target_dir / "README.md", _target_readme(overlay), overwrite=overwrite)
+    compact = overlay.overrides.instruction_variant == "compact"
+    _write_text(
+        target_dir / "instructions.md",
+        _compact_instructions(manifest) if compact else _base_instructions(manifest),
+        overwrite=overwrite,
+    )
+    _write_text(
+        target_dir / "context.pack.md",
+        _target_context_pack(
+            manifest,
+            portability,
+            compressed=overlay.overrides.context_variant == "compressed",
+        ),
+        overwrite=overwrite,
+    )
+    return overlay_path
+
+
+def _build_overlay(
+    report: TargetValidationReport,
+    portability: PortabilityManifest,
+    overrides: TargetOverrides | None = None,
+) -> TargetOverlay:
+    return TargetOverlay(
+        capability_name=report.capability_name,
+        source=report.source,
+        target=report.target,
+        status=report.status,
+        tool_compatibility=report.tool_compatibility,
+        portability_readiness_score=report.readiness.score,
+        transfer_type=portability.adaptation.transfer_type,
+        overrides=overrides
+        or TargetOverrides(
+            instruction_variant="compact" if _model_downgrade(portability) else "base",
+            context_variant=(
+                "compressed"
+                if portability.compatibility.compression_required
+                else "full"
+            ),
+            required_human_review=portability.adaptation.human_review_required,
+        ),
+        eval_id=report.eval_id,
+        failure_evidence_id=report.failure_evidence_id,
+    )
+
+
+def _target_readme(overlay: TargetOverlay) -> str:
+    source_model = overlay.source.model or "model_unknown"
+    target_model = overlay.target.model or "model_unknown"
+    return "\n".join(
+        [
+            f"# {overlay.capability_name} ({overlay.target.runtime})",
+            "",
+            "## Imported Target",
+            f"- Source: {overlay.source.runtime}/{source_model}",
+            f"- Target: {overlay.target.runtime}/{target_model}",
+            f"- Project: {overlay.target.project or 'not recorded'}",
+            f"- Status: {overlay.status}",
+            f"- Tool compatibility: {overlay.tool_compatibility}",
+            f"- Portability readiness: {overlay.portability_readiness_score:.2f}",
+            "",
+            "## Adaptation",
+            f"- Instruction variant: {overlay.overrides.instruction_variant}",
+            f"- Context variant: {overlay.overrides.context_variant}",
+            f"- Human review required: {overlay.overrides.required_human_review}",
+            "",
+            "## Next Action",
+            f"- {_next_action(overlay.status)}",
+            "",
+        ],
+    )
+
+
+def _target_context_pack(
+    manifest: CapabilityManifest,
+    portability: PortabilityManifest,
+    *,
+    compressed: bool,
+) -> str:
+    if compressed:
+        return _compressed_context_pack(manifest, portability)
+    required = "\n".join(f"- {item}" for item in manifest.context.required)
+    optional = "\n".join(f"- {item}" for item in manifest.context.optional)
+    return "\n".join(
+        [
+            "# Context Pack",
+            "",
+            "## Required",
+            required or "- No required context recorded.",
+            "",
+            "## Optional",
+            optional or "- No optional context recorded.",
+            "",
+        ],
     )
 
 
@@ -401,6 +1172,182 @@ def _write_export_bundle(
     )
 
 
+def _load_source_evidence(
+    *,
+    evidence_ids: tuple[str, ...],
+    evidence_dir: Path,
+) -> tuple[tuple[str, EvidenceRecord | None], ...]:
+    records: list[tuple[str, EvidenceRecord | None]] = []
+    for evidence_id in evidence_ids:
+        try:
+            records.append((evidence_id, load_evidence(evidence_id, evidence_dir)))
+        except StorageError:
+            records.append((evidence_id, None))
+    return tuple(records)
+
+
+def _write_evidence_provenance(
+    *,
+    bundle_path: Path,
+    mode: EvidenceInclusionMode,
+    manifest: CapabilityManifest,
+    records: tuple[tuple[str, EvidenceRecord | None], ...],
+) -> EvidenceProvenancePack:
+    _write_text_exclusive(
+        bundle_path / "provenance" / "integrity.yaml",
+        _yaml_dump(_provenance_integrity(manifest, records)),
+    )
+    if mode == "none":
+        return EvidenceProvenancePack(mode=mode)
+    proofs: list[EvidenceProof] = []
+    for evidence_id, record in records:
+        summary_path: str | None = None
+        snapshot_path: str | None = None
+        if record is not None:
+            summary_path = f"source_evidence_summaries/{evidence_id}.md"
+            _write_text_exclusive(
+                bundle_path / "provenance" / summary_path,
+                _evidence_summary_markdown(evidence_id, record),
+            )
+            if mode in ("redacted", "full"):
+                snapshot_path = f"source_evidence/{evidence_id}.json"
+                _write_text_exclusive(
+                    bundle_path / "provenance" / snapshot_path,
+                    _evidence_snapshot(record, redacted=mode == "redacted"),
+                )
+        proofs.append(
+            EvidenceProof(
+                evidence_id=evidence_id,
+                available=record is not None,
+                sha256=_evidence_sha(record),
+                integrity_verified=_evidence_integrity_ok(record),
+                summary_path=summary_path,
+                snapshot_path=snapshot_path,
+            ),
+        )
+    pack = EvidenceProvenancePack(mode=mode, proofs=tuple(proofs))
+    _write_text_exclusive(
+        bundle_path / "provenance" / "evidence_proofs.yaml",
+        _yaml_dump(pack),
+    )
+    if mode == "redacted":
+        _write_text_exclusive(
+            bundle_path / "provenance" / "redactions.yaml",
+            _redactions_yaml(),
+        )
+    return pack
+
+
+def _provenance_integrity(
+    manifest: CapabilityManifest,
+    records: tuple[tuple[str, EvidenceRecord | None], ...],
+) -> ProvenanceIntegrity:
+    capability_sha = (
+        manifest.integrity_chain[-1].sha256 if manifest.integrity_chain else None
+    )
+    capability_verified = bool(manifest.integrity_chain) and (
+        model_sha256(manifest) == manifest.integrity_chain[-1].sha256
+    )
+    return ProvenanceIntegrity(
+        capability=manifest.name,
+        capability_sha256=capability_sha,
+        capability_integrity_verified=capability_verified,
+        evidence=tuple(
+            EvidenceIntegrityProof(
+                evidence_id=evidence_id,
+                available=record is not None,
+                sha256=_evidence_sha(record),
+                integrity_verified=_evidence_integrity_ok(record),
+            )
+            for evidence_id, record in records
+        ),
+    )
+
+
+def _evidence_sha(record: EvidenceRecord | None) -> str | None:
+    if record is None:
+        return None
+    if record.integrity_chain:
+        return record.integrity_chain[-1].sha256
+    return model_sha256(record)
+
+
+def _evidence_integrity_ok(record: EvidenceRecord | None) -> bool:
+    if record is None or not record.integrity_chain:
+        return False
+    return model_sha256(record) == record.integrity_chain[-1].sha256
+
+
+def _evidence_summary_markdown(evidence_id: str, record: EvidenceRecord) -> str:
+    runtime = f"{record.runtime.name}/{record.runtime.model or 'model_unknown'}"
+    return "\n".join(
+        [
+            f"# Evidence {evidence_id}",
+            "",
+            f"- Goal: {record.goal}",
+            f"- Normalized goal: {record.normalized_goal or 'not recorded'}",
+            f"- Field: {record.field}",
+            f"- Runtime: {runtime}",
+            f"- Harness: {record.harness.status}",
+            f"- Result: {record.success_or_failure_label}",
+            f"- Files captured: {len(record.files)}",
+            f"- Commands executed: {len(record.command_executions)}",
+            f"- Errors: {len(record.errors)}",
+            f"- Integrity head: {_evidence_sha(record) or 'not recorded'}",
+            "",
+        ],
+    )
+
+
+def _evidence_snapshot(record: EvidenceRecord, *, redacted: bool) -> str:
+    data = cast("dict[str, YamlValue]", record.model_dump(mode="json"))
+    if redacted:
+        data = _redact_evidence(data)
+    return json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+
+
+def _redact_evidence(data: dict[str, YamlValue]) -> dict[str, YamlValue]:
+    _redact_list_fields(data.get("files"), ("content",))
+    _redact_list_fields(data.get("command_executions"), ("stdout", "stderr"))
+    _redact_list_fields(data.get("tool_calls"), ("input", "output"))
+    outputs = data.get("execution_outputs")
+    if isinstance(outputs, list):
+        data["execution_outputs"] = [REDACTED_MARKER for _ in outputs]
+    return data
+
+
+def _redact_list_fields(value: YamlValue, keys: tuple[str, ...]) -> None:
+    if not isinstance(value, list):
+        return
+    for entry in value:
+        if isinstance(entry, dict):
+            for key in keys:
+                if entry.get(key):
+                    entry[key] = REDACTED_MARKER
+
+
+def _redactions_yaml() -> str:
+    return yaml.safe_dump(
+        {
+            "mode": "redacted",
+            "redacted_paths": [
+                "files[].content",
+                "command_executions[].stdout",
+                "command_executions[].stderr",
+                "execution_outputs[]",
+                "tool_calls[].input",
+                "tool_calls[].output",
+            ],
+            "note": (
+                "Content fields are removed; evidence ids, hashes, and metadata "
+                "are retained for offline lineage verification."
+            ),
+        },
+        sort_keys=False,
+        allow_unicode=True,
+    )
+
+
 def _write_runtime_target(
     bundle_path: Path,
     manifest: CapabilityManifest,
@@ -408,7 +1355,10 @@ def _write_runtime_target(
 ) -> Path:
     runtime_path = bundle_path / "runtime" / portability.target.runtime
     if portability.target.runtime == "codex":
-        _write_text_exclusive(runtime_path / "AGENTS.md", _runtime_memory(manifest))
+        _write_text_exclusive(
+            runtime_path / "AGENTS.md",
+            _codex_agents_markdown(manifest),
+        )
         _write_text_exclusive(
             runtime_path / "capability.md",
             _base_instructions(manifest),
@@ -433,7 +1383,7 @@ def _write_runtime_target(
         _write_text_exclusive(runtime_path / "SOUL.md", _runtime_memory(manifest))
         _write_text_exclusive(
             runtime_path / "skills" / f"{manifest.name}.md",
-            _base_instructions(manifest),
+            _skill_markdown(manifest),
         )
         _write_text_exclusive(runtime_path / "harness.md", _harness_markdown(manifest))
         _write_text_exclusive(
@@ -447,7 +1397,7 @@ def _write_runtime_target(
             ),
         )
     else:
-        _write_text_exclusive(runtime_path / "skill.md", _base_instructions(manifest))
+        _write_text_exclusive(runtime_path / "skill.md", _skill_markdown(manifest))
         _write_text_exclusive(
             runtime_path / "context.policy.yaml",
             _yaml_dump(manifest.context),
@@ -495,6 +1445,7 @@ def _validation_report(
     manifest: CapabilityManifest,
     portability: PortabilityManifest,
     available_tools: tuple[str, ...],
+    context_remapped: bool = False,
 ) -> TargetValidationReport:
     unavailable_tools = _unavailable_tools(
         required_tools=portability.compatibility.required_tools,
@@ -504,14 +1455,17 @@ def _validation_report(
         available_tools=available_tools,
         unavailable_tools=unavailable_tools,
     )
-    portability_score = _portability_score(
+    readiness = _portability_readiness(
         portability=portability,
         unavailable_tools=unavailable_tools,
+    )
+    context_remap_required = (
+        _context_remap_required(portability) and not context_remapped
     )
     status: ValidationStatus = (
         "needs_adaptation"
         if unavailable_tools
-        or portability_score < portability.validation.required_pass_rate
+        or readiness.score < portability.validation.required_pass_rate
         else "needs_validation"
     )
     return TargetValidationReport(
@@ -520,10 +1474,10 @@ def _validation_report(
         target=portability.target,
         tool_compatibility=tool_compatibility,
         unavailable_tools=unavailable_tools,
-        context_remap_required=_context_remap_required(portability),
+        context_remap_required=context_remap_required,
         eval_set=portability.validation.eval_set,
         initial_pass_rate=portability.validation.current_pass_rate,
-        portability_score=portability_score,
+        readiness=readiness,
         model_delta=_model_delta(portability),
         compact_instruction_path=(
             "instructions/compact.md" if _model_downgrade(portability) else None
@@ -543,6 +1497,7 @@ def _write_target_eval(
     report: TargetValidationReport,
     manifest: CapabilityManifest,
     eval_dir: Path,
+    extra_checks: tuple[EvalCheck, ...] = (),
 ) -> tuple[EvalResult, Path]:
     created_at = datetime.now(UTC)
     checks = (
@@ -561,14 +1516,15 @@ def _write_target_eval(
             ),
         ),
         EvalCheck(
-            name="portability_score",
+            name="portability_readiness",
             status=(
                 "pass"
-                if report.portability_score >= PORTABILITY_REQUIRED_PASS_RATE
+                if report.readiness.score >= PORTABILITY_REQUIRED_PASS_RATE
                 else "fail"
             ),
-            message=f"portability score {report.portability_score:.2f}",
+            message=f"portability readiness {report.readiness.score:.2f}",
         ),
+        *extra_checks,
     )
     failures = tuple(check.message for check in checks if check.status == "fail")
     result = EvalResult(
@@ -584,6 +1540,33 @@ def _write_target_eval(
     )
     result = append_integrity_link(result, artifact_type="eval", artifact_id=result.id)
     return result, write_eval_result(result, eval_dir)
+
+
+def _pass_rate_comparison(
+    manifest: CapabilityManifest,
+    eval_result: EvalResult,
+) -> EvalPassRateComparison:
+    source = (
+        manifest.promotion_metrics.eval_pass_rate
+        if manifest.promotion_metrics is not None
+        else None
+    )
+    total = len(eval_result.checks)
+    target = (
+        sum(check.status == "pass" for check in eval_result.checks) / total
+        if total
+        else None
+    )
+    delta = (
+        round(target - source, 2)
+        if source is not None and target is not None
+        else None
+    )
+    return EvalPassRateComparison(
+        source_pass_rate=source,
+        target_pass_rate=target,
+        delta=delta,
+    )
 
 
 def _write_failure_evidence(
@@ -603,14 +1586,14 @@ def _write_failure_evidence(
         runtime=RuntimeInfo(name=report.target.runtime, model=report.target.model),
         errors=eval_result.failures,
         feedback=(
-            f"portability score {report.portability_score:.2f}",
+            f"portability readiness {report.readiness.score:.2f}",
             f"target eval {eval_result.id} failed",
         ),
         harness=HarnessResult(
             status="fail",
             checks=tuple(check.name for check in eval_result.checks),
             failures=eval_result.failures,
-            required_checks=("tool_compatibility", "portability_score"),
+            required_checks=("tool_compatibility", "portability_readiness"),
             human_review_required=True,
         ),
         success_or_failure_label="failure",
@@ -649,41 +1632,112 @@ def _tool_compatibility(
     return "pass"
 
 
-def _portability_score(
+def _portability_readiness(
     *,
     portability: PortabilityManifest,
     unavailable_tools: tuple[str, ...],
-) -> float:
+) -> PortabilityReadiness:
+    source = portability.source
+    target = portability.target
+    factors: list[ReadinessFactor] = []
     score = 1.0
-    if portability.source.runtime != portability.target.runtime:
+    if source.runtime != target.runtime:
         score -= 0.1
-    if portability.source.model != portability.target.model:
+        factors.append(
+            ReadinessFactor(
+                name="cross_runtime",
+                delta=-0.1,
+                reason=f"{source.runtime} → {target.runtime}",
+            ),
+        )
+    if source.model != target.model:
         score -= 0.15
-    if portability.source.project != portability.target.project:
+        factors.append(
+            ReadinessFactor(
+                name="model_transfer",
+                delta=-0.15,
+                reason=f"{source.model or 'unknown'} → {target.model or 'unknown'}",
+            ),
+        )
+    if source.project != target.project:
         score -= 0.1
+        factors.append(
+            ReadinessFactor(
+                name="project_transfer",
+                delta=-0.1,
+                reason=f"{source.project} → {target.project or 'unknown'}",
+            ),
+        )
     if portability.compatibility.compression_required:
         score -= 0.1
-    score -= min(0.4, 0.2 * len(unavailable_tools))
-    return max(0.0, round(score, 2))
+        factors.append(
+            ReadinessFactor(
+                name="context_compression",
+                delta=-0.1,
+                reason="target context budget smaller than source",
+            ),
+        )
+    if unavailable_tools:
+        tool_delta = min(0.4, 0.2 * len(unavailable_tools))
+        score -= tool_delta
+        factors.append(
+            ReadinessFactor(
+                name="unavailable_tool",
+                delta=-round(tool_delta, 2),
+                reason=f"{', '.join(unavailable_tools)} not available",
+            ),
+        )
+    return PortabilityReadiness(
+        score=max(0.0, round(score, 2)),
+        required_pass_rate=PORTABILITY_REQUIRED_PASS_RATE,
+        factors=tuple(factors),
+    )
 
 
 def _model_delta(portability: PortabilityManifest) -> PortabilityModelDelta:
+    source_model = portability.source.model
+    target_model = portability.target.model
     return PortabilityModelDelta(
-        source_model=portability.source.model,
-        target_model=portability.target.model,
-        model_changed=portability.source.model != portability.target.model,
+        source_model=source_model,
+        target_model=target_model,
+        model_changed=source_model != target_model,
         transfer_type=portability.adaptation.transfer_type,
+        source_profile=None if source_model is None else _model_profile(source_model),
+        target_profile=None if target_model is None else _model_profile(target_model),
+        downgrade=_model_downgrade(portability),
     )
 
 
 def _model_downgrade(portability: PortabilityManifest) -> bool:
-    if portability.source.model is None or portability.target.model is None:
+    source = portability.source.model
+    target = portability.target.model
+    if source is None or target is None or source == target:
         return False
-    if portability.source.model == portability.target.model:
-        return False
-    target = portability.target.model.casefold()
-    downgrade_markers = ("mini", "small", "local", "qwen", "27b", "7b")
-    return any(marker in target for marker in downgrade_markers)
+    return _profile_rank(_model_profile(target)) < _profile_rank(_model_profile(source))
+
+
+def _model_profile(model: str) -> ModelProfile:
+    profile = DEFAULT_MODEL_PROFILES.get(model.casefold())
+    if profile is not None:
+        return profile
+    return _infer_model_profile(model)
+
+
+def _infer_model_profile(model: str) -> ModelProfile:
+    name = model.casefold()
+    if any(marker in name for marker in _LOCAL_MODEL_MARKERS):
+        return ModelProfile(model_class="local", tool_use="medium", reasoning="medium")
+    if any(marker in name for marker in _FRONTIER_MODEL_MARKERS):
+        return ModelProfile(model_class="frontier", tool_use="high", reasoning="high")
+    return ModelProfile()
+
+
+def _profile_rank(profile: ModelProfile) -> tuple[int, int, int]:
+    return (
+        _CLASS_RANK[profile.model_class],
+        _TIER_RANK[profile.reasoning],
+        _TIER_RANK[profile.tool_use],
+    )
 
 
 def _context_remap_required(portability: PortabilityManifest) -> bool:
@@ -696,6 +1750,8 @@ def _context_remap_required(portability: PortabilityManifest) -> bool:
 def _next_action(status: ValidationStatus) -> str:
     if status == "needs_adaptation":
         return "review unavailable tools and adapt the target package"
+    if status == "validated":
+        return "target import validated; monitor or promote the capability"
     return "run the target eval set before marking the import validated"
 
 
@@ -828,6 +1884,9 @@ def _runtime_memory(manifest: CapabilityManifest) -> str:
 
 
 def _claude_memory(manifest: CapabilityManifest) -> str:
+    control = manifest.workflow_control
+    allowed = _join_or(control.allowed_tools, "inherit from runtime")
+    disallowed = _join_or(control.disallowed_tools, "none")
     return "\n".join(
         [
             f"# {manifest.name}",
@@ -835,16 +1894,104 @@ def _claude_memory(manifest: CapabilityManifest) -> str:
             "Project memory for an imported OMF capability package.",
             "Use this guidance when the current task matches the capability.",
             "",
+            "## Capability",
+            manifest.description,
+            "",
+            "## When To Use",
+            f"- {manifest.normalized_goal}",
+            "",
+            "## Tool Use Policy",
+            f"- Allowed tools: {allowed}.",
+            f"- Disallowed tools: {disallowed}.",
+            "- Request approval before write, destructive, or external commands.",
+            "",
             "## Instructions",
             "- Read capability.md before acting.",
             "- Follow checks.md before marking the result complete.",
             "- Preserve target-specific failures as OMF evidence.",
             "",
-            "## Capability",
-            manifest.description,
+            "## Completion Criteria",
+            _bullets(manifest.harness.required_checks, "Harness checks pass."),
+            "- No unrelated changes.",
             "",
         ],
     )
+
+
+def _skill_markdown(manifest: CapabilityManifest) -> str:
+    return "\n".join(
+        [
+            f"# {manifest.name}",
+            "",
+            "## Trigger",
+            f"Use this skill when the task matches: {manifest.normalized_goal}.",
+            "",
+            "## Inputs",
+            _bullets(manifest.inputs, "No specific inputs recorded."),
+            "",
+            "## Context Policy",
+            "",
+            "### Required",
+            _bullets(manifest.context.required, "No required context recorded."),
+            "",
+            "### Forbidden",
+            _bullets(manifest.context.forbidden, "No forbidden context recorded."),
+            "",
+            "## Procedure",
+            "1. Load the required context before acting.",
+            "2. Identify the smallest relevant surface for the goal.",
+            "3. Make the minimal change or output that satisfies the goal.",
+            "4. Run the harness checks before accepting the result.",
+            "5. Record unresolved failures as evidence.",
+            "",
+            "## Completion Criteria",
+            _bullets(manifest.harness.required_checks, "Harness checks pass."),
+            "- No unrelated changes.",
+            "- Attach a regression case if the failure was novel.",
+            "",
+        ],
+    )
+
+
+def _codex_agents_markdown(manifest: CapabilityManifest) -> str:
+    control = manifest.workflow_control
+    approvals = _join_or(control.approval_required_actions, "none")
+    goal = manifest.normalized_goal
+    return "\n".join(
+        [
+            f"# {manifest.name}",
+            "",
+            "Repository instructions for an imported OMF capability. Use the local",
+            "agent runtime normally; OMF is not the runtime.",
+            "",
+            "## Activation",
+            f"- Apply this capability when the task matches: {goal}.",
+            "",
+            "## Capability",
+            manifest.description,
+            "",
+            "## Verification",
+            "Run the harness checks before accepting a result:",
+            _bullets(manifest.harness.required_checks, "No required checks recorded."),
+            "",
+            "## Safety Boundary",
+            f"- Network policy: {control.network_policy}.",
+            f"- Commands needing approval: {approvals}.",
+            "- Do not read forbidden context:",
+            _bullets(manifest.context.forbidden, "No forbidden context recorded."),
+            "",
+        ],
+    )
+
+
+def _bullets(values: tuple[str, ...], empty: str) -> str:
+    if not values:
+        return f"- {empty}"
+    return "\n".join(f"- {value}" for value in values)
+
+
+def _join_or(values: tuple[str, ...], empty: str) -> str:
+    return ", ".join(values) or empty
 
 
 def _examples_markdown(manifest: CapabilityManifest) -> str:
@@ -886,7 +2033,11 @@ def _yaml_dump(model: StrictModel) -> str:
 
 
 def _write_text_exclusive(target_path: Path, content: str) -> None:
+    _write_text(target_path, content, overwrite=False)
+
+
+def _write_text(target_path: Path, content: str, *, overwrite: bool) -> None:
     target_path.parent.mkdir(parents=True, exist_ok=True)
-    if target_path.exists():
+    if target_path.exists() and not overwrite:
         raise DuplicateWriteError(path=target_path)
     target_path.write_text(content, encoding="utf-8")

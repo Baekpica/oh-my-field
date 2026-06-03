@@ -61,6 +61,107 @@ def test_import_run_captures_external_agent_log_and_artifacts(
     assert evidence.integrity_chain[-1].artifact_type == "evidence"
 
 
+def test_import_run_redacts_secrets(tmp_path: Path) -> None:
+    log_path = tmp_path / "codex.log"
+    evidence_dir = tmp_path / "evidence"
+    log_path.write_text(
+        "API_KEY=supersecret\nAuthorization: Bearer abc123xyz\nrun ok\n",
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "import-run",
+            "codex",
+            "--log",
+            str(log_path),
+            "--goal",
+            "capture external agent run",
+            "--redact-secrets",
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = AgentImportOutput.model_validate_json(result.stdout)
+    evidence = load_evidence(output.evidence_id, evidence_dir)
+    log_file = evidence.files[0]
+    assert log_file.redacted
+    assert log_file.storage_mode == "inline"
+    assert "supersecret" not in log_file.content
+    assert "abc123xyz" not in log_file.content
+    assert "[REDACTED]" in log_file.content
+
+
+def test_import_run_externalizes_binary_artifact(tmp_path: Path) -> None:
+    log_path = tmp_path / "codex.log"
+    binary_path = tmp_path / "image.png"
+    evidence_dir = tmp_path / "evidence"
+    log_path.write_text("run ok", encoding="utf-8")
+    binary_path.write_bytes(b"\x89PNG\r\n\x1a\n\xff\xfe\x00\x01")
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "import-run",
+            "codex",
+            "--log",
+            str(log_path),
+            "--goal",
+            "capture external agent run",
+            "--artifact",
+            str(binary_path),
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = AgentImportOutput.model_validate_json(result.stdout)
+    evidence = load_evidence(output.evidence_id, evidence_dir)
+    binary_file = next(f for f in evidence.files if f.path.endswith("image.png"))
+    assert binary_file.storage_mode == "external"
+    assert binary_file.content == ""
+    assert binary_file.size_bytes > 0
+    assert binary_file.mime_type == "image/png"
+
+
+def test_import_run_externalizes_large_artifact(tmp_path: Path) -> None:
+    log_path = tmp_path / "codex.log"
+    big_path = tmp_path / "big.txt"
+    evidence_dir = tmp_path / "evidence"
+    log_path.write_text("run ok", encoding="utf-8")
+    big_path.write_text("x" * 5000, encoding="utf-8")
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "import-run",
+            "codex",
+            "--log",
+            str(log_path),
+            "--goal",
+            "capture external agent run",
+            "--artifact",
+            str(big_path),
+            "--max-artifact-bytes",
+            "1024",
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = AgentImportOutput.model_validate_json(result.stdout)
+    evidence = load_evidence(output.evidence_id, evidence_dir)
+    big_file = next(f for f in evidence.files if f.path.endswith("big.txt"))
+    assert big_file.storage_mode == "external"
+    assert big_file.content == ""
+    assert big_file.size_bytes == 5000
+
+
 def test_import_run_discovers_agent_artifact_root_roles(
     tmp_path: Path,
 ) -> None:

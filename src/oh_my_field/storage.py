@@ -17,8 +17,11 @@ from oh_my_field.models import (
     HumanReviewRecord,
     LearningExport,
     LearningPatchDecision,
+    PortabilityHealth,
     ReflectionReport,
     ReplayRecord,
+    TargetStatusEntry,
+    TargetValidationStatus,
     WorkflowRunRecord,
 )
 
@@ -202,7 +205,10 @@ def update_manifest(manifest: CapabilityManifest, capabilities_dir: Path) -> Pat
         _capability_instructions_markdown(manifest),
     )
     _write_text_atomic(paths.harness_path, _capability_harness_yaml(manifest))
-    _write_text_atomic(paths.card_path, render_capability_card(manifest))
+    _write_text_atomic(
+        paths.card_path,
+        render_capability_card(manifest, read_portability_health(paths.package_dir)),
+    )
     return paths.capability_path
 
 
@@ -714,7 +720,11 @@ def _capability_harness_yaml(manifest: CapabilityManifest) -> str:
     return yaml_text
 
 
-def render_capability_card(manifest: CapabilityManifest) -> str:
+def render_capability_card(
+    manifest: CapabilityManifest,
+    portability: PortabilityHealth | None = None,
+) -> str:
+    portability = portability or PortabilityHealth()
     lines = [
         f"# {manifest.name}",
         "",
@@ -746,8 +756,10 @@ def render_capability_card(manifest: CapabilityManifest) -> str:
         "## Portability",
         f"- Source runtime: {manifest.runtime.name}",
         f"- Source model: {manifest.runtime.model or 'not recorded'}",
-        "- Target exports: not exported",
-        "- Target validation: not run",
+        f"- Export status: {portability.export_status} ({portability.export_count})",
+        f"- Import status: {portability.import_status} ({portability.import_count})",
+        f"- Target validation: {portability.validation_status}",
+        *_target_status_lines(portability),
         "",
         "## Status",
         f"- Lifecycle: {manifest.status}",
@@ -784,3 +796,101 @@ def _patch_lines(manifest: CapabilityManifest) -> tuple[str, ...]:
         *(f"context: {patch}" for patch in manifest.patches.context),
         *(f"harness: {patch}" for patch in manifest.patches.harness),
     )
+
+
+def _target_status_lines(portability: PortabilityHealth) -> list[str]:
+    lines: list[str] = []
+    for target in portability.target_statuses:
+        suffix = (
+            f" (readiness {target.portability_readiness_score:.2f})"
+            if target.portability_readiness_score is not None
+            else ""
+        )
+        lines.append(f"- {target.target}: {target.validation_status}{suffix}")
+    return lines
+
+
+def read_portability_health(package_dir: Path) -> PortabilityHealth:
+    export_count = len(tuple(package_dir.glob("exports/*/export.yaml")))
+    targets = _read_target_statuses(package_dir)
+    return PortabilityHealth(
+        export_status="exported" if export_count else "not_exported",
+        import_status="imported" if targets else "not_imported",
+        validation_status=_aggregate_validation_status(targets),
+        export_count=export_count,
+        import_count=len(targets),
+        target_validation_count=sum(1 for target in targets if target.eval_recorded),
+        target_statuses=targets,
+    )
+
+
+def _read_target_statuses(package_dir: Path) -> tuple[TargetStatusEntry, ...]:
+    entries: list[TargetStatusEntry] = []
+    for overlay_path in sorted(package_dir.glob("imports/*/target.overlay.yaml")):
+        overlay = _safe_overlay(overlay_path)
+        if overlay is None:
+            continue
+        entries.append(
+            TargetStatusEntry(
+                target=_overlay_target_label(overlay),
+                validation_status=_overlay_validation_status(overlay),
+                portability_readiness_score=_overlay_score(overlay),
+                eval_recorded=overlay.get("eval_id") is not None,
+            ),
+        )
+    return tuple(entries)
+
+
+def _safe_overlay(overlay_path: Path) -> dict[str, YamlValue] | None:
+    try:
+        parsed = yaml.safe_load(overlay_path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError):
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    return cast("dict[str, YamlValue]", parsed)
+
+
+def _overlay_target_label(overlay: dict[str, YamlValue]) -> str:
+    target = overlay.get("target")
+    if not isinstance(target, dict):
+        return "unknown"
+    runtime = target.get("runtime")
+    model = target.get("model")
+    runtime_label = runtime if isinstance(runtime, str) else "unknown"
+    model_label = model if isinstance(model, str) else "model_unknown"
+    return f"{runtime_label}:{model_label}"
+
+
+def _overlay_validation_status(
+    overlay: dict[str, YamlValue],
+) -> TargetValidationStatus:
+    status = overlay.get("status")
+    known = ("not_run", "needs_validation", "needs_adaptation", "validated")
+    if status in known:
+        return status
+    return "needs_validation"
+
+
+def _overlay_score(overlay: dict[str, YamlValue]) -> float | None:
+    score = overlay.get("portability_readiness_score")
+    if isinstance(score, bool):
+        return None
+    if isinstance(score, (int, float)):
+        return float(score)
+    return None
+
+
+def _aggregate_validation_status(
+    targets: tuple[TargetStatusEntry, ...],
+) -> TargetValidationStatus:
+    if not targets:
+        return "not_run"
+    statuses = {target.validation_status for target in targets}
+    if "needs_adaptation" in statuses:
+        return "needs_adaptation"
+    if "needs_validation" in statuses:
+        return "needs_validation"
+    if statuses == {"validated"}:
+        return "validated"
+    return "needs_validation"

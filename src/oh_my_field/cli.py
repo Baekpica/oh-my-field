@@ -64,11 +64,17 @@ from oh_my_field.orchestrate import (
     run_resume_workflow,
 )
 from oh_my_field.portability import (
+    CapabilityAdaptRequest,
     CapabilityPortabilityExportRequest,
     CapabilityPortabilityImportRequest,
+    CapabilityRemapRequest,
+    CapabilityValidationRequest,
     PortabilityError,
+    adapt_capability_package,
     export_capability_package,
     import_capability_package,
+    remap_capability_package,
+    validate_capability_package,
 )
 from oh_my_field.promote import PromoteError, PromoteRequest, run_promote_workflow
 from oh_my_field.reflect import ReflectError, ReflectRequest, run_reflect_workflow
@@ -369,8 +375,15 @@ def _capability_export(
         int | None,
         typer.Option("--target-context-tokens"),
     ] = None,
+    include_evidence: Annotated[
+        Literal["none", "summary", "redacted", "full"],
+        typer.Option("--include-evidence"),
+    ] = "summary",
     capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
         "capabilities",
+    ),
+    evidence_dir: Annotated[Path, typer.Option("--evidence-dir")] = Path(
+        ".omf/evidence",
     ),
 ) -> None:
     try:
@@ -384,8 +397,10 @@ def _capability_export(
                 source_reasoning_effort=source_reasoning_effort,
                 source_context_tokens=source_context_tokens,
                 target_context_tokens=target_context_tokens,
+                include_evidence=include_evidence,
                 out=out,
                 capabilities_dir=capabilities_dir,
+                evidence_dir=evidence_dir,
             ),
         )
     except (PortabilityError, StorageError, ValidationError) as exc:
@@ -414,6 +429,12 @@ def _capability_import(
         list[str] | None,
         typer.Option("--available-tool"),
     ] = None,
+    as_name: Annotated[str | None, typer.Option("--as")] = None,
+    namespace: Annotated[str | None, typer.Option("--namespace")] = None,
+    if_exists: Annotated[
+        Literal["fail", "merge", "version", "overwrite"],
+        typer.Option("--if-exists"),
+    ] = "fail",
     capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
         "capabilities",
     ),
@@ -434,6 +455,9 @@ def _capability_import(
                 project=project,
                 validate_import=validate,
                 available_tools=tuple(available_tool or ()),
+                as_name=as_name,
+                namespace=namespace,
+                if_exists=if_exists,
             ),
         )
     except (PortabilityError, StorageError, ValidationError) as exc:
@@ -447,6 +471,169 @@ capability_app.command(
     "import",
     help="Import a portable capability package and write a target validation report.",
 )(_capability_import)
+
+
+def _capability_validate(
+    capability_name: Annotated[str, typer.Argument()],
+    target: Annotated[
+        Literal["codex", "claude_code", "hermes", "generic"],
+        typer.Option("--target"),
+    ],
+    model: Annotated[str | None, typer.Option("--model")] = None,
+    project: Annotated[str | None, typer.Option("--project")] = None,
+    available_tool: Annotated[
+        list[str] | None,
+        typer.Option("--available-tool"),
+    ] = None,
+    run_command: Annotated[str | None, typer.Option("--run-command")] = None,
+    expected_artifact: Annotated[
+        list[str] | None,
+        typer.Option("--expected-artifact"),
+    ] = None,
+    command_cwd: Annotated[Path, typer.Option("--command-cwd")] = Path(),
+    command_timeout_seconds: Annotated[
+        int,
+        typer.Option("--command-timeout-seconds"),
+    ] = 600,
+    approve_command_risk: Annotated[
+        bool,
+        typer.Option("--approve-command-risk"),
+    ] = False,
+    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
+        "capabilities",
+    ),
+    eval_dir: Annotated[Path, typer.Option("--eval-dir")] = Path(".omf/evals"),
+    evidence_dir: Annotated[Path, typer.Option("--evidence-dir")] = Path(
+        ".omf/evidence",
+    ),
+) -> None:
+    try:
+        summary = validate_capability_package(
+            CapabilityValidationRequest(
+                capability_name=capability_name,
+                capabilities_dir=capabilities_dir,
+                eval_dir=eval_dir,
+                evidence_dir=evidence_dir,
+                target=target,
+                model=model,
+                project=project,
+                available_tools=tuple(available_tool or ()),
+                run_command=run_command,
+                expected_artifacts=tuple(expected_artifact or ()),
+                command_cwd=command_cwd,
+                command_timeout_seconds=command_timeout_seconds,
+                approve_command_risk=approve_command_risk,
+            ),
+        )
+    except (PortabilityError, StorageError, ValidationError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(summary.model_dump_json())
+
+
+capability_app.command(
+    "validate",
+    help="Re-validate an imported capability against its target runtime.",
+)(_capability_validate)
+
+
+def _parse_map(items: list[str] | None) -> tuple[tuple[str, str], ...]:
+    pairs: list[tuple[str, str]] = []
+    for item in items or []:
+        key, separator, value = item.partition("=")
+        if not separator or not key or not value:
+            msg = f"--map expects key=value, got {item!r}"
+            raise typer.BadParameter(msg)
+        pairs.append((key, value))
+    return tuple(pairs)
+
+
+def _capability_remap(
+    capability_name: Annotated[str, typer.Argument()],
+    target: Annotated[
+        Literal["codex", "claude_code", "hermes", "generic"],
+        typer.Option("--target"),
+    ],
+    model: Annotated[str | None, typer.Option("--model")] = None,
+    target_project: Annotated[str | None, typer.Option("--target-project")] = None,
+    map_: Annotated[list[str] | None, typer.Option("--map")] = None,
+    unresolved: Annotated[list[str] | None, typer.Option("--unresolved")] = None,
+    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
+        "capabilities",
+    ),
+) -> None:
+    try:
+        summary = remap_capability_package(
+            CapabilityRemapRequest(
+                capability_name=capability_name,
+                capabilities_dir=capabilities_dir,
+                target=target,
+                model=model,
+                target_project=target_project,
+                mappings=_parse_map(map_),
+                unresolved=tuple(unresolved or ()),
+            ),
+        )
+    except (PortabilityError, StorageError, ValidationError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(summary.model_dump_json())
+
+
+capability_app.command(
+    "remap",
+    help="Record a context remap plan for an imported target.",
+)(_capability_remap)
+
+
+def _capability_adapt(
+    capability_name: Annotated[str, typer.Argument()],
+    target: Annotated[
+        Literal["codex", "claude_code", "hermes", "generic"],
+        typer.Option("--target"),
+    ],
+    model: Annotated[str | None, typer.Option("--model")] = None,
+    instruction_variant: Annotated[
+        Literal["base", "compact"] | None,
+        typer.Option("--instruction-variant"),
+    ] = None,
+    context_variant: Annotated[
+        Literal["full", "compressed"] | None,
+        typer.Option("--context-variant"),
+    ] = None,
+    require_human_review: Annotated[
+        bool | None,
+        typer.Option("--require-human-review/--no-require-human-review"),
+    ] = None,
+    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
+        "capabilities",
+    ),
+) -> None:
+    try:
+        summary = adapt_capability_package(
+            CapabilityAdaptRequest(
+                capability_name=capability_name,
+                capabilities_dir=capabilities_dir,
+                target=target,
+                model=model,
+                instruction_variant=instruction_variant,
+                context_variant=context_variant,
+                require_human_review=require_human_review,
+            ),
+        )
+    except (PortabilityError, StorageError, ValidationError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(summary.model_dump_json())
+
+
+capability_app.command(
+    "adapt",
+    help="Apply instruction/context/review overrides to an imported target.",
+)(_capability_adapt)
 
 
 def _replay(
@@ -961,6 +1148,11 @@ def _import_run(
     ] = None,
     field: Annotated[str, typer.Option("--field")] = "local",
     model: Annotated[str | None, typer.Option("--model")] = None,
+    max_artifact_bytes: Annotated[
+        int | None,
+        typer.Option("--max-artifact-bytes"),
+    ] = None,
+    redact_secrets: Annotated[bool, typer.Option("--redact-secrets")] = False,
     evidence_dir: Annotated[Path, typer.Option("--evidence-dir")] = Path(
         ".omf/evidence",
     ),
@@ -981,6 +1173,8 @@ def _import_run(
                     *_agent_artifacts("artifact", artifact),
                 ),
                 artifact_roots=tuple(artifact_root or ()),
+                max_artifact_bytes=max_artifact_bytes,
+                redact_secrets=redact_secrets,
             ),
         )
     except (AdapterError, StorageError, ValidationError) as exc:

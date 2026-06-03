@@ -208,6 +208,8 @@
 
 - Codex, Claude Code, Hermes 등 외부 agent runtime의 run log를 evidence로 import
 - log, diff, test result, command output, artifact root를 읽어 EvidenceRecord 생성
+- 바이너리/비-UTF-8 artifact는 실패 대신 메타데이터(mime_type, size, sha256)만 기록하고 storage_mode=external로 외부화
+- `--max-artifact-bytes`로 큰 artifact를 외부화하고, `--redact-secrets`로 stdout/로그의 api key/token/password/bearer/AWS key를 [REDACTED]로 치환
 - OMF가 agent를 실행하는 것이 아니라, 외부 agent가 만든 artifact를 OMF evidence로 가져오는 명령
 
 ## /capture
@@ -231,10 +233,27 @@
 - capability의 성능, 안정성, 비용, 재현성, 사용자 개입률 평가
 - 여러 모델 또는 runtime 간 비교 지원
 
+## Portability Lifecycle
+
+capability의 portability 상태는 네 단계로 구분한다. "export 가능"과 "target에서 실제로
+동작"을 섞지 않기 위함이다.
+
+- **exported**: capability가 target runtime용 bundle로 변환된 상태 (`/capability export`)
+- **imported**: bundle이 target project에 materialized된 상태 (`/capability import`)
+- **validated**: 실제 target run이 통과한 상태 (`/capability validate --run-command ...`).
+  정적 `import --validate`만으로는 needs_validation에 머문다
+- **portable**: 최소 하나 이상의 target import가 validated된 상태
+
+`/health`는 export_status, import_status, validation_status를 분리해 보고하므로 위
+상태가 혼동되지 않는다. export는 source package의 `exports/`에, import는
+`imports/<target>/target.overlay.yaml`에 흔적을 남긴다.
+
 ## /capability export
 
 - canonical capability package를 target runtime/model/project용 portability bundle로 export
 - `portability.yaml`, source runtime/model/project metadata, evidence links, context policy, harness metadata 생성
+- `provenance/`에 integrity proof와 source evidence pack 생성. `--include-evidence`로 `none|summary|redacted|full` 모드 선택(기본 `summary`)
+- source package의 `exports/<target>/export.yaml`에 export 흔적 기록
 - Codex target은 `AGENTS.md`, `capability.md`, `context.policy.md`, `harness.md` 생성
 - Claude Code target은 `CLAUDE.md`, `capability.md`, `examples.md`, `checks.md` 생성
 - Hermes target은 `SOUL.md`, `skills/<capability>.md`, `profile.patch.yaml`, `harness.md` 생성
@@ -242,11 +261,33 @@
 
 ## /capability import
 
-- portability bundle을 target project capability directory로 import
-- target runtime/model/project metadata를 확정하고 validation report 생성
-- tool compatibility, context remap 필요 여부, target eval set, next action 기록
+- portability bundle을 target project capability directory로 import (canonical `capability.yaml`은 source 기준 유지)
+- target 상태는 `imports/<target>/`에 분리 기록: `target.overlay.yaml`, `validation_report.yaml`, target용 `README.md`/`instructions.md`/`context.pack.md`
+- target.overlay에는 status, tool compatibility, portability readiness score, instruction/context variant, human review override 기록
 - `--validate` 사용 시 target-side eval result를 자동 생성하고, 실패한 target validation을 evidence로 수집
-- validation report에는 portability score, source/target model delta, compact instruction, compressed context path 기록
+- `--as`로 이름 변경, `--namespace`로 하위 디렉터리 격리, `--if-exists fail|merge|version|overwrite`로 충돌 정책 선택(기본 fail; version은 `<name>_vN`로 분기)
+- validation report에는 portability readiness breakdown(score, required_pass_rate, factor별 delta/reason), source/target model delta, compact instruction, compressed context path 기록
+
+## /capability validate
+
+- import된 capability를 동일 target에 대해 재검증(import와 validation을 분리). overlay를 읽어 portability를 재구성하고 overlay/validation report를 덮어씀
+- `--run-command`로 target runtime hook을 제공하면 해당 명령을 안전 실행 머신러리로 실행(`--approve-command-risk`로 risk 승인)하고 exit code를 target eval에 반영. OMF는 agent runtime을 직접 구현하지 않고 결과만 수집
+- `--run-command` 없이 실행하면 manual_run_required와 expected_artifacts를 기록해 사용자가 직접 실행 후 `import-run`으로 결과를 가져오도록 안내
+- 정적 검사만 통과하면 status는 needs_validation에 머물고, 실제 target run이 통과해야 validated로 승격. tool 누락/readiness 미달이거나 실제 run이 실패하면 needs_adaptation + failure evidence
+- export → import → validate → adapt → validate again 루프를 형성
+
+## /capability remap
+
+- target import의 project/context remap을 boolean이 아니라 실제 plan 객체로 기록
+- `--map key=value`로 target binding을, `--unresolved`로 미해결 항목을 선언해 `imports/<target>/context.remap.yaml` 생성
+- unresolved가 비어 있으면(complete) `/capability validate`가 context remap을 해결된 것으로 간주해 context_remap 검사를 통과시킴
+- project portability를 "다른 프로젝트라고 표시"에서 "실제 매핑"으로 끌어올림
+
+## /capability adapt
+
+- target overlay의 adaptation을 적용: `--instruction-variant base|compact`, `--context-variant full|compressed`, `--require-human-review/--no-require-human-review`
+- 선택한 variant로 `instructions.md`/`context.pack.md`를 재생성하고 overlay overrides를 갱신
+- 이후 `/capability validate`는 overrides를 재계산하지 않고 보존하므로 export → import → validate → adapt → validate 루프가 일관됨
 
 ## /health
 
@@ -329,7 +370,7 @@
 
 - Create: `import-run`, `capture`, `promote`
 - Harden: `harden`, `regression-case`, `eval`, `learn`, `learn-patch`
-- Port: `capability export`, `capability import`
+- Port: `capability export`, `capability import`, `capability validate`, `capability remap`, `capability adapt`
 - Operate: `health`, `registry`, `dashboard`, `verify`
 - Review: `approve`, `reject`, `revise`, `review`
 - Advanced: `replay`, `context`, `reflect`, `inspect`, `rollback`, `resume`, `run`, `export`
@@ -684,6 +725,7 @@ promotion_criteria:
 ## model portability score
 
 - 동일 capability가 서로 다른 모델/런타임에서 유지하는 품질 수준
+- validated target import의 eval pass rate로 측정하며, export 시 계산하는 heuristic portability readiness score(이식 난이도 진단)와는 구분한다
 
 ## time-to-capability
 
@@ -902,7 +944,7 @@ promotion_criteria:
 - 사용자-facing 문서는 다음 mental model 기준으로 명령을 그룹화
   - Create: import-run, capture, promote
   - Harden: harden, regression-case, eval, learn, learn-patch
-  - Port: capability export, capability import
+  - Port: capability export, capability import, capability validate, capability remap, capability adapt
   - Operate: health, registry, dashboard, verify
   - Review: approve, reject, revise, review
   - Advanced: replay, context, reflect, inspect, rollback, resume, run, export
