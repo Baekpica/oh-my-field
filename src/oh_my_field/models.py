@@ -246,7 +246,7 @@ class IntegrityVerificationResult(StrictModel):
 class TargetStatusEntry(StrictModel):
     target: str = Field(min_length=1)
     validation_status: TargetValidationStatus
-    portability_score: float | None = Field(default=None, ge=0.0, le=1.0)
+    portability_readiness_score: float | None = Field(default=None, ge=0.0, le=1.0)
     eval_recorded: bool = False
 
 

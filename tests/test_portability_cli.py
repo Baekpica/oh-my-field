@@ -46,7 +46,7 @@ class CapabilityImportOutput(BaseModel):
     overlay_path: str
     status: str
     tool_compatibility: str
-    portability_score: float
+    portability_readiness_score: float
     eval_id: str | None
     eval_path: str | None
     failure_evidence_id: str | None
@@ -61,7 +61,7 @@ class CapabilityValidateOutput(BaseModel):
     validation_report_path: str
     status: str
     tool_compatibility: str
-    portability_score: float
+    portability_readiness_score: float
     eval_id: str | None
     eval_path: str | None
     failure_evidence_id: str | None
@@ -191,7 +191,7 @@ def test_capability_import_writes_validation_report(tmp_path: Path) -> None:
     imported = load_manifest("repo_issue_triage", target_capabilities_dir)
     assert output.status == "needs_adaptation"
     assert output.tool_compatibility == "partial"
-    assert output.portability_score == 0.45
+    assert output.portability_readiness_score == 0.45
     assert output.eval_id is not None
     assert output.eval_path is not None
     assert output.failure_evidence_id is not None
@@ -204,7 +204,15 @@ def test_capability_import_writes_validation_report(tmp_path: Path) -> None:
     assert report["target"]["model"] == "small-local"
     assert report["context_remap_required"]
     assert report["unavailable_tools"] == ["shell"]
-    assert report["portability_score"] == 0.45
+    assert report["readiness"]["score"] == 0.45
+    assert report["readiness"]["required_pass_rate"] == 0.8
+    factor_names = {factor["name"] for factor in report["readiness"]["factors"]}
+    assert factor_names == {
+        "cross_runtime",
+        "model_transfer",
+        "project_transfer",
+        "unavailable_tool",
+    }
     assert report["model_delta"]["model_changed"]
     assert report["eval_id"] == output.eval_id
     assert report["failure_evidence_id"] == output.failure_evidence_id
@@ -477,7 +485,7 @@ def test_capability_validate_marks_validated_when_checks_pass(tmp_path: Path) ->
     output = CapabilityValidateOutput.model_validate_json(result.stdout)
     assert output.status == "validated"
     assert output.tool_compatibility == "pass"
-    assert output.portability_score == 1.0
+    assert output.portability_readiness_score == 1.0
     assert output.failure_evidence_id is None
     overlay = yaml.safe_load(Path(output.overlay_path).read_text(encoding="utf-8"))
     assert overlay["status"] == "validated"

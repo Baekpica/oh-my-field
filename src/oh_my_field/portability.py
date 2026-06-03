@@ -182,6 +182,18 @@ class ProvenanceIntegrity(StrictModel):
     evidence: tuple[EvidenceIntegrityProof, ...] = ()
 
 
+class ReadinessFactor(StrictModel):
+    name: str = Field(min_length=1)
+    delta: float
+    reason: str = Field(min_length=1)
+
+
+class PortabilityReadiness(StrictModel):
+    score: float = Field(ge=0.0, le=1.0)
+    required_pass_rate: float = Field(ge=0.0, le=1.0)
+    factors: tuple[ReadinessFactor, ...] = ()
+
+
 class TargetValidationReport(StrictModel):
     capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
     source: PortabilitySource
@@ -191,7 +203,7 @@ class TargetValidationReport(StrictModel):
     context_remap_required: bool = False
     eval_set: str | None = None
     initial_pass_rate: float | None = Field(default=None, ge=0.0, le=1.0)
-    portability_score: float = Field(ge=0.0, le=1.0)
+    readiness: PortabilityReadiness
     model_delta: PortabilityModelDelta
     eval_id: str | None = None
     eval_path: str | None = None
@@ -215,7 +227,7 @@ class TargetOverlay(StrictModel):
     target: PortabilityTarget
     status: ValidationStatus
     tool_compatibility: ToolCompatibilityStatus
-    portability_score: float = Field(ge=0.0, le=1.0)
+    portability_readiness_score: float = Field(ge=0.0, le=1.0)
     transfer_type: tuple[str, ...] = ()
     overrides: TargetOverrides = Field(default_factory=TargetOverrides)
     validation_report_path: str = "validation_report.yaml"
@@ -279,7 +291,7 @@ class CapabilityPortabilityImportSummary(StrictModel):
     overlay_path: str
     status: ValidationStatus
     tool_compatibility: ToolCompatibilityStatus
-    portability_score: float = Field(ge=0.0, le=1.0)
+    portability_readiness_score: float = Field(ge=0.0, le=1.0)
     eval_id: str | None = None
     eval_path: str | None = None
     failure_evidence_id: str | None = None
@@ -303,7 +315,7 @@ class CapabilityValidationSummary(StrictModel):
     validation_report_path: str
     status: ValidationStatus
     tool_compatibility: ToolCompatibilityStatus
-    portability_score: float = Field(ge=0.0, le=1.0)
+    portability_readiness_score: float = Field(ge=0.0, le=1.0)
     eval_id: str | None = None
     eval_path: str | None = None
     failure_evidence_id: str | None = None
@@ -426,7 +438,7 @@ def import_capability_package(
         overlay_path=str(overlay_path),
         status=report.status,
         tool_compatibility=report.tool_compatibility,
-        portability_score=report.portability_score,
+        portability_readiness_score=report.readiness.score,
         eval_id=report.eval_id,
         eval_path=report.eval_path,
         failure_evidence_id=report.failure_evidence_id,
@@ -497,7 +509,7 @@ def validate_capability_package(
         validation_report_path=str(report_path),
         status=report.status,
         tool_compatibility=report.tool_compatibility,
-        portability_score=report.portability_score,
+        portability_readiness_score=report.readiness.score,
         eval_id=report.eval_id,
         eval_path=report.eval_path,
         failure_evidence_id=report.failure_evidence_id,
@@ -581,7 +593,7 @@ def _validated_status(
 ) -> ValidationStatus:
     if (
         report.unavailable_tools
-        or report.portability_score < PORTABILITY_REQUIRED_PASS_RATE
+        or report.readiness.score < PORTABILITY_REQUIRED_PASS_RATE
     ):
         return "needs_adaptation"
     if eval_result.status == "pass":
@@ -629,7 +641,7 @@ def _build_overlay(
         target=report.target,
         status=report.status,
         tool_compatibility=report.tool_compatibility,
-        portability_score=report.portability_score,
+        portability_readiness_score=report.readiness.score,
         transfer_type=portability.adaptation.transfer_type,
         overrides=TargetOverrides(
             instruction_variant="compact" if _model_downgrade(portability) else "base",
@@ -658,7 +670,7 @@ def _target_readme(overlay: TargetOverlay) -> str:
             f"- Project: {overlay.target.project or 'not recorded'}",
             f"- Status: {overlay.status}",
             f"- Tool compatibility: {overlay.tool_compatibility}",
-            f"- Portability score: {overlay.portability_score:.2f}",
+            f"- Portability readiness: {overlay.portability_readiness_score:.2f}",
             "",
             "## Adaptation",
             f"- Instruction variant: {overlay.overrides.instruction_variant}",
@@ -1106,14 +1118,14 @@ def _validation_report(
         available_tools=available_tools,
         unavailable_tools=unavailable_tools,
     )
-    portability_score = _portability_score(
+    readiness = _portability_readiness(
         portability=portability,
         unavailable_tools=unavailable_tools,
     )
     status: ValidationStatus = (
         "needs_adaptation"
         if unavailable_tools
-        or portability_score < portability.validation.required_pass_rate
+        or readiness.score < portability.validation.required_pass_rate
         else "needs_validation"
     )
     return TargetValidationReport(
@@ -1125,7 +1137,7 @@ def _validation_report(
         context_remap_required=_context_remap_required(portability),
         eval_set=portability.validation.eval_set,
         initial_pass_rate=portability.validation.current_pass_rate,
-        portability_score=portability_score,
+        readiness=readiness,
         model_delta=_model_delta(portability),
         compact_instruction_path=(
             "instructions/compact.md" if _model_downgrade(portability) else None
@@ -1163,13 +1175,13 @@ def _write_target_eval(
             ),
         ),
         EvalCheck(
-            name="portability_score",
+            name="portability_readiness",
             status=(
                 "pass"
-                if report.portability_score >= PORTABILITY_REQUIRED_PASS_RATE
+                if report.readiness.score >= PORTABILITY_REQUIRED_PASS_RATE
                 else "fail"
             ),
-            message=f"portability score {report.portability_score:.2f}",
+            message=f"portability readiness {report.readiness.score:.2f}",
         ),
     )
     failures = tuple(check.message for check in checks if check.status == "fail")
@@ -1205,14 +1217,14 @@ def _write_failure_evidence(
         runtime=RuntimeInfo(name=report.target.runtime, model=report.target.model),
         errors=eval_result.failures,
         feedback=(
-            f"portability score {report.portability_score:.2f}",
+            f"portability readiness {report.readiness.score:.2f}",
             f"target eval {eval_result.id} failed",
         ),
         harness=HarnessResult(
             status="fail",
             checks=tuple(check.name for check in eval_result.checks),
             failures=eval_result.failures,
-            required_checks=("tool_compatibility", "portability_score"),
+            required_checks=("tool_compatibility", "portability_readiness"),
             human_review_required=True,
         ),
         success_or_failure_label="failure",
@@ -1251,22 +1263,66 @@ def _tool_compatibility(
     return "pass"
 
 
-def _portability_score(
+def _portability_readiness(
     *,
     portability: PortabilityManifest,
     unavailable_tools: tuple[str, ...],
-) -> float:
+) -> PortabilityReadiness:
+    source = portability.source
+    target = portability.target
+    factors: list[ReadinessFactor] = []
     score = 1.0
-    if portability.source.runtime != portability.target.runtime:
+    if source.runtime != target.runtime:
         score -= 0.1
-    if portability.source.model != portability.target.model:
+        factors.append(
+            ReadinessFactor(
+                name="cross_runtime",
+                delta=-0.1,
+                reason=f"{source.runtime} → {target.runtime}",
+            ),
+        )
+    if source.model != target.model:
         score -= 0.15
-    if portability.source.project != portability.target.project:
+        factors.append(
+            ReadinessFactor(
+                name="model_transfer",
+                delta=-0.15,
+                reason=f"{source.model or 'unknown'} → {target.model or 'unknown'}",
+            ),
+        )
+    if source.project != target.project:
         score -= 0.1
+        factors.append(
+            ReadinessFactor(
+                name="project_transfer",
+                delta=-0.1,
+                reason=f"{source.project} → {target.project or 'unknown'}",
+            ),
+        )
     if portability.compatibility.compression_required:
         score -= 0.1
-    score -= min(0.4, 0.2 * len(unavailable_tools))
-    return max(0.0, round(score, 2))
+        factors.append(
+            ReadinessFactor(
+                name="context_compression",
+                delta=-0.1,
+                reason="target context budget smaller than source",
+            ),
+        )
+    if unavailable_tools:
+        tool_delta = min(0.4, 0.2 * len(unavailable_tools))
+        score -= tool_delta
+        factors.append(
+            ReadinessFactor(
+                name="unavailable_tool",
+                delta=-round(tool_delta, 2),
+                reason=f"{', '.join(unavailable_tools)} not available",
+            ),
+        )
+    return PortabilityReadiness(
+        score=max(0.0, round(score, 2)),
+        required_pass_rate=PORTABILITY_REQUIRED_PASS_RATE,
+        factors=tuple(factors),
+    )
 
 
 def _model_delta(portability: PortabilityManifest) -> PortabilityModelDelta:

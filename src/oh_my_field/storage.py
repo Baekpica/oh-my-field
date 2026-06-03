@@ -802,8 +802,8 @@ def _target_status_lines(portability: PortabilityHealth) -> list[str]:
     lines: list[str] = []
     for target in portability.target_statuses:
         suffix = (
-            f" (score {target.portability_score:.2f})"
-            if target.portability_score is not None
+            f" (readiness {target.portability_readiness_score:.2f})"
+            if target.portability_readiness_score is not None
             else ""
         )
         lines.append(f"- {target.target}: {target.validation_status}{suffix}")
@@ -834,7 +834,7 @@ def _read_target_statuses(package_dir: Path) -> tuple[TargetStatusEntry, ...]:
             TargetStatusEntry(
                 target=_overlay_target_label(overlay),
                 validation_status=_overlay_validation_status(overlay),
-                portability_score=_overlay_score(overlay),
+                portability_readiness_score=_overlay_score(overlay),
                 eval_recorded=overlay.get("eval_id") is not None,
             ),
         )
@@ -873,7 +873,7 @@ def _overlay_validation_status(
 
 
 def _overlay_score(overlay: dict[str, YamlValue]) -> float | None:
-    score = overlay.get("portability_score")
+    score = overlay.get("portability_readiness_score")
     if isinstance(score, bool):
         return None
     if isinstance(score, (int, float)):
