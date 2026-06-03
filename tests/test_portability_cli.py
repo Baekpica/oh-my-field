@@ -66,6 +66,9 @@ class CapabilityValidateOutput(BaseModel):
     eval_path: str | None
     failure_evidence_id: str | None
     failure_evidence_path: str | None
+    target_run_executed: bool
+    target_run_exit_code: int | None
+    manual_run_required: bool
 
 
 def test_capability_export_writes_portability_bundle(tmp_path: Path) -> None:
@@ -418,7 +421,87 @@ def test_capability_export_redacts_and_omits_evidence(tmp_path: Path) -> None:
     assert not (none_provenance / "evidence_proofs.yaml").exists()
 
 
-def test_capability_validate_marks_validated_when_checks_pass(tmp_path: Path) -> None:
+def test_capability_validate_marks_validated_after_passing_target_run(
+    tmp_path: Path,
+) -> None:
+    source_caps = tmp_path / "source-capabilities"
+    target_caps = tmp_path / "target-capabilities"
+    export_dir = tmp_path / "exports" / "codex"
+    eval_dir = tmp_path / "evals"
+    evidence_dir = tmp_path / "evidence"
+    write_manifest(make_manifest(), source_caps)
+    _run_ok(
+        [
+            "capability",
+            "export",
+            "repo_issue_triage",
+            "--target",
+            "codex",
+            "--target-model",
+            "gpt-5.5",
+            "--out",
+            str(export_dir),
+            "--capabilities-dir",
+            str(source_caps),
+        ],
+    )
+    _run_ok(
+        [
+            "capability",
+            "import",
+            str(export_dir),
+            "--runtime",
+            "codex",
+            "--model",
+            "gpt-5.5",
+            "--available-tool",
+            "shell",
+            "--capabilities-dir",
+            str(target_caps),
+            "--eval-dir",
+            str(eval_dir),
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "capability",
+            "validate",
+            "repo_issue_triage",
+            "--target",
+            "codex",
+            "--model",
+            "gpt-5.5",
+            "--available-tool",
+            "shell",
+            "--run-command",
+            "true",
+            "--capabilities-dir",
+            str(target_caps),
+            "--eval-dir",
+            str(eval_dir),
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = CapabilityValidateOutput.model_validate_json(result.stdout)
+    assert output.status == "validated"
+    assert output.tool_compatibility == "pass"
+    assert output.portability_readiness_score == 1.0
+    assert output.target_run_executed
+    assert output.target_run_exit_code == 0
+    assert not output.manual_run_required
+    assert output.failure_evidence_id is None
+    overlay = yaml.safe_load(Path(output.overlay_path).read_text(encoding="utf-8"))
+    assert overlay["status"] == "validated"
+
+
+def test_capability_validate_static_only_needs_real_run(tmp_path: Path) -> None:
     source_caps = tmp_path / "source-capabilities"
     target_caps = tmp_path / "target-capabilities"
     export_dir = tmp_path / "exports" / "codex"
@@ -483,12 +566,84 @@ def test_capability_validate_marks_validated_when_checks_pass(tmp_path: Path) ->
 
     assert result.exit_code == 0
     output = CapabilityValidateOutput.model_validate_json(result.stdout)
-    assert output.status == "validated"
-    assert output.tool_compatibility == "pass"
-    assert output.portability_readiness_score == 1.0
-    assert output.failure_evidence_id is None
-    overlay = yaml.safe_load(Path(output.overlay_path).read_text(encoding="utf-8"))
-    assert overlay["status"] == "validated"
+    assert output.status == "needs_validation"
+    assert not output.target_run_executed
+    assert output.manual_run_required
+
+
+def test_capability_validate_target_run_failure_needs_adaptation(
+    tmp_path: Path,
+) -> None:
+    source_caps = tmp_path / "source-capabilities"
+    target_caps = tmp_path / "target-capabilities"
+    export_dir = tmp_path / "exports" / "codex"
+    eval_dir = tmp_path / "evals"
+    evidence_dir = tmp_path / "evidence"
+    write_manifest(make_manifest(), source_caps)
+    _run_ok(
+        [
+            "capability",
+            "export",
+            "repo_issue_triage",
+            "--target",
+            "codex",
+            "--target-model",
+            "gpt-5.5",
+            "--out",
+            str(export_dir),
+            "--capabilities-dir",
+            str(source_caps),
+        ],
+    )
+    _run_ok(
+        [
+            "capability",
+            "import",
+            str(export_dir),
+            "--runtime",
+            "codex",
+            "--model",
+            "gpt-5.5",
+            "--available-tool",
+            "shell",
+            "--capabilities-dir",
+            str(target_caps),
+            "--eval-dir",
+            str(eval_dir),
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "capability",
+            "validate",
+            "repo_issue_triage",
+            "--target",
+            "codex",
+            "--model",
+            "gpt-5.5",
+            "--available-tool",
+            "shell",
+            "--run-command",
+            "false",
+            "--capabilities-dir",
+            str(target_caps),
+            "--eval-dir",
+            str(eval_dir),
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = CapabilityValidateOutput.model_validate_json(result.stdout)
+    assert output.status == "needs_adaptation"
+    assert output.target_run_executed
+    assert output.target_run_exit_code == 1
+    assert output.failure_evidence_id is not None
 
 
 def test_capability_validate_records_failure_when_tools_missing(tmp_path: Path) -> None:

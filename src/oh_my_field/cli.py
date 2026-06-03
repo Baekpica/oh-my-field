@@ -472,6 +472,20 @@ def _capability_validate(
         list[str] | None,
         typer.Option("--available-tool"),
     ] = None,
+    run_command: Annotated[str | None, typer.Option("--run-command")] = None,
+    expected_artifact: Annotated[
+        list[str] | None,
+        typer.Option("--expected-artifact"),
+    ] = None,
+    command_cwd: Annotated[Path, typer.Option("--command-cwd")] = Path(),
+    command_timeout_seconds: Annotated[
+        int,
+        typer.Option("--command-timeout-seconds"),
+    ] = 600,
+    approve_command_risk: Annotated[
+        bool,
+        typer.Option("--approve-command-risk"),
+    ] = False,
     capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
         "capabilities",
     ),
@@ -491,6 +505,11 @@ def _capability_validate(
                 model=model,
                 project=project,
                 available_tools=tuple(available_tool or ()),
+                run_command=run_command,
+                expected_artifacts=tuple(expected_artifact or ()),
+                command_cwd=command_cwd,
+                command_timeout_seconds=command_timeout_seconds,
+                approve_command_risk=approve_command_risk,
             ),
         )
     except (PortabilityError, StorageError, ValidationError) as exc:

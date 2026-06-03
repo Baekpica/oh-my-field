@@ -141,8 +141,11 @@ separate — "can be exported" is not the same as "works on the target":
   bundle (`omf capability export`).
 - **Imported**: the bundle has been materialized in a target project
   (`omf capability import`).
-- **Validated**: target-side checks have passed with the target
-  runtime/model/project recorded (`omf capability import --validate`).
+- **Validated**: an actual target run has passed under the recorded target
+  runtime/model/project (`omf capability validate --run-command ...`). Static
+  `import --validate` checks alone leave the import at `needs_validation`;
+  without a `--run-command`, validate records `manual_run_required` and the
+  expected artifacts to bring back via `import-run`.
 - **Portable**: the capability has at least one validated target import.
 
 `omf health` reports `export_status`, `import_status`, and
@@ -180,6 +183,16 @@ uv run omf capability import .omf/exports/repo_issue_triage-hermes-qwen36 \
   --project target-repo \
   --available-tool file_system \
   --validate
+
+# Re-validate with an actual target run (or omit --run-command to record a
+# manual run); OMF gates the command behind --approve-command-risk and folds
+# the exit code into the target eval.
+uv run omf capability validate repo_issue_triage \
+  --target hermes \
+  --model qwen3.6-27b \
+  --available-tool file_system \
+  --run-command "hermes-code --profile target --skill repo_issue_triage" \
+  --approve-command-risk
 ```
 
 The export records the bundle under the source package's `exports/`, and the

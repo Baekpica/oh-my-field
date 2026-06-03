@@ -8,10 +8,16 @@ from typing import Literal, cast
 import yaml
 from pydantic import Field, ValidationError
 
+from oh_my_field.execution import (
+    CommandExecutionRequest,
+    assess_command_risk,
+    execute_shell_command,
+)
 from oh_my_field.integrity import append_integrity_link, model_sha256
 from oh_my_field.models import (
     CAPABILITY_NAME_PATTERN,
     CapabilityManifest,
+    CommandRiskCategory,
     EvalCheck,
     EvalResult,
     EvidenceRecord,
@@ -194,6 +200,16 @@ class PortabilityReadiness(StrictModel):
     factors: tuple[ReadinessFactor, ...] = ()
 
 
+class TargetRunPlan(StrictModel):
+    target_run_command: str | None = None
+    manual_run_required: bool = True
+    expected_artifacts: tuple[str, ...] = ()
+    executed: bool = False
+    approved: bool = False
+    exit_code: int | None = None
+    risk_categories: tuple[CommandRiskCategory, ...] = ()
+
+
 class TargetValidationReport(StrictModel):
     capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
     source: PortabilitySource
@@ -205,6 +221,7 @@ class TargetValidationReport(StrictModel):
     initial_pass_rate: float | None = Field(default=None, ge=0.0, le=1.0)
     readiness: PortabilityReadiness
     model_delta: PortabilityModelDelta
+    target_run: TargetRunPlan | None = None
     eval_id: str | None = None
     eval_path: str | None = None
     failure_evidence_id: str | None = None
@@ -307,6 +324,11 @@ class CapabilityValidationRequest(StrictModel):
     model: str | None = None
     project: str | None = None
     available_tools: tuple[str, ...] = ()
+    run_command: str | None = None
+    expected_artifacts: tuple[str, ...] = ()
+    command_cwd: Path = Path()
+    command_timeout_seconds: int = Field(default=600, ge=1)
+    approve_command_risk: bool = False
 
 
 class CapabilityValidationSummary(StrictModel):
@@ -320,6 +342,9 @@ class CapabilityValidationSummary(StrictModel):
     eval_path: str | None = None
     failure_evidence_id: str | None = None
     failure_evidence_path: str | None = None
+    target_run_executed: bool = False
+    target_run_exit_code: int | None = None
+    manual_run_required: bool = True
 
 
 def export_capability_package(
@@ -467,18 +492,25 @@ def validate_capability_package(
         portability=portability,
         available_tools=request.available_tools,
     )
+    run_plan, run_check = _run_target_hook(request)
     eval_result, eval_path = _write_target_eval(
         report=report,
         manifest=manifest,
         eval_dir=request.eval_dir,
+        extra_checks=(run_check,) if run_check is not None else (),
     )
-    final_status = _validated_status(report=report, eval_result=eval_result)
+    final_status = _validated_status(
+        report=report,
+        eval_result=eval_result,
+        run_executed=run_plan.executed,
+    )
     report = report.model_copy(
         update={
             "status": final_status,
             "next_action": _next_action(final_status),
             "eval_id": eval_result.id,
             "eval_path": str(eval_path),
+            "target_run": run_plan,
         },
     )
     if eval_result.status == "fail":
@@ -514,7 +546,59 @@ def validate_capability_package(
         eval_path=report.eval_path,
         failure_evidence_id=report.failure_evidence_id,
         failure_evidence_path=report.failure_evidence_path,
+        target_run_executed=run_plan.executed,
+        target_run_exit_code=run_plan.exit_code,
+        manual_run_required=run_plan.manual_run_required,
     )
+
+
+def _run_target_hook(
+    request: CapabilityValidationRequest,
+) -> tuple[TargetRunPlan, EvalCheck | None]:
+    if request.run_command is None:
+        return (
+            TargetRunPlan(
+                manual_run_required=True,
+                expected_artifacts=request.expected_artifacts,
+            ),
+            None,
+        )
+    risk = assess_command_risk(request.run_command)
+    if risk.approval_required and not request.approve_command_risk:
+        return (
+            TargetRunPlan(
+                target_run_command=request.run_command,
+                manual_run_required=True,
+                expected_artifacts=request.expected_artifacts,
+                executed=False,
+                approved=False,
+                risk_categories=risk.categories,
+            ),
+            None,
+        )
+    execution = execute_shell_command(
+        CommandExecutionRequest(
+            command=request.run_command,
+            cwd=request.command_cwd,
+            timeout_seconds=request.command_timeout_seconds,
+            approve_risk=request.approve_command_risk,
+        ),
+    )
+    plan = TargetRunPlan(
+        target_run_command=request.run_command,
+        manual_run_required=False,
+        expected_artifacts=request.expected_artifacts,
+        executed=True,
+        approved=execution.approved,
+        exit_code=execution.exit_code,
+        risk_categories=execution.risk_categories,
+    )
+    check = EvalCheck(
+        name="target_run",
+        status="pass" if execution.exit_code == 0 else "fail",
+        message=f"target run exit code {execution.exit_code}",
+    )
+    return plan, check
 
 
 def _find_overlay(
@@ -590,15 +674,18 @@ def _validated_status(
     *,
     report: TargetValidationReport,
     eval_result: EvalResult,
+    run_executed: bool,
 ) -> ValidationStatus:
     if (
         report.unavailable_tools
         or report.readiness.score < PORTABILITY_REQUIRED_PASS_RATE
     ):
         return "needs_adaptation"
-    if eval_result.status == "pass":
-        return "validated"
-    return "needs_validation"
+    if eval_result.status == "fail":
+        return "needs_adaptation"
+    # Static target-side checks pass. Only an executed, passing target run
+    # earns "validated"; otherwise the import still needs a real target run.
+    return "validated" if run_executed else "needs_validation"
 
 
 def _write_target_overlay(
@@ -1157,6 +1244,7 @@ def _write_target_eval(
     report: TargetValidationReport,
     manifest: CapabilityManifest,
     eval_dir: Path,
+    extra_checks: tuple[EvalCheck, ...] = (),
 ) -> tuple[EvalResult, Path]:
     created_at = datetime.now(UTC)
     checks = (
@@ -1183,6 +1271,7 @@ def _write_target_eval(
             ),
             message=f"portability readiness {report.readiness.score:.2f}",
         ),
+        *extra_checks,
     )
     failures = tuple(check.message for check in checks if check.status == "fail")
     result = EvalResult(
