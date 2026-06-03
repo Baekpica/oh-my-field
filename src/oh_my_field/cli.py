@@ -1158,6 +1158,15 @@ def _import_run(
         int | None,
         typer.Option("--max-artifact-bytes"),
     ] = None,
+    max_artifact_count: Annotated[
+        int | None,
+        typer.Option("--max-artifact-count"),
+    ] = None,
+    max_total_artifact_bytes: Annotated[
+        int | None,
+        typer.Option("--max-total-artifact-bytes"),
+    ] = None,
+    exclude: Annotated[list[str] | None, typer.Option("--exclude")] = None,
     outcome: Annotated[
         Literal["success", "failure", "unknown"],
         typer.Option("--outcome"),
@@ -1184,6 +1193,9 @@ def _import_run(
                 ),
                 artifact_roots=tuple(artifact_root or ()),
                 max_artifact_bytes=max_artifact_bytes,
+                max_artifact_count=max_artifact_count,
+                max_total_artifact_bytes=max_total_artifact_bytes,
+                exclude_patterns=tuple(exclude or ()),
                 redact_secrets=redact_secrets,
                 task_outcome=outcome,
             ),

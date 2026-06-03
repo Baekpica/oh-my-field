@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytest
 from pydantic import BaseModel, ConfigDict
 from typer.testing import CliRunner
 
@@ -205,6 +206,200 @@ def test_import_run_discovers_agent_artifact_root_roles(
         "artifact",
         "test_result",
         "command_output",
+    ]
+
+
+def test_import_run_applies_default_artifact_root_excludes(
+    tmp_path: Path,
+) -> None:
+    log_path = tmp_path / "codex.log"
+    artifact_root = tmp_path / "agent-artifacts"
+    evidence_dir = tmp_path / "evidence"
+    artifact_root.mkdir()
+    log_path.write_text("Codex finished.", encoding="utf-8")
+    artifact_root.joinpath("keep.txt").write_text("keep", encoding="utf-8")
+    artifact_root.joinpath(".env").write_text("TOKEN=secret", encoding="utf-8")
+    artifact_root.joinpath(".git").mkdir()
+    artifact_root.joinpath(".git", "config").write_text("secret", encoding="utf-8")
+    artifact_root.joinpath(".venv").mkdir()
+    artifact_root.joinpath(".venv", "token.txt").write_text("secret", encoding="utf-8")
+    artifact_root.joinpath("node_modules").mkdir()
+    artifact_root.joinpath("node_modules", "pkg.json").write_text(
+        "{}",
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "import-run",
+            "codex",
+            "--log",
+            str(log_path),
+            "--goal",
+            "capture safe artifacts",
+            "--artifact-root",
+            str(artifact_root),
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = AgentImportOutput.model_validate_json(result.stdout)
+    evidence = load_evidence(output.evidence_id, evidence_dir)
+    assert output.artifact_count == 2
+    assert [Path(file.path).name for file in evidence.files] == [
+        "codex.log",
+        "keep.txt",
+    ]
+
+
+def test_import_run_applies_explicit_excludes_and_omfignore(
+    tmp_path: Path,
+) -> None:
+    log_path = tmp_path / "codex.log"
+    artifact_root = tmp_path / "agent-artifacts"
+    evidence_dir = tmp_path / "evidence"
+    ignored_dir = artifact_root / "ignored"
+    ignored_dir.mkdir(parents=True)
+    log_path.write_text("Codex finished.", encoding="utf-8")
+    artifact_root.joinpath(".omfignore").write_text(
+        "ignored/**\n*.pem\n", encoding="utf-8"
+    )
+    artifact_root.joinpath("keep.txt").write_text("keep", encoding="utf-8")
+    artifact_root.joinpath("drop.log").write_text("drop", encoding="utf-8")
+    artifact_root.joinpath("private.pem").write_text("secret", encoding="utf-8")
+    ignored_dir.joinpath("data.txt").write_text("ignored", encoding="utf-8")
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "import-run",
+            "codex",
+            "--log",
+            str(log_path),
+            "--goal",
+            "capture filtered artifacts",
+            "--artifact-root",
+            str(artifact_root),
+            "--exclude",
+            "*.log",
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = AgentImportOutput.model_validate_json(result.stdout)
+    evidence = load_evidence(output.evidence_id, evidence_dir)
+    assert [Path(file.path).name for file in evidence.files] == [
+        "codex.log",
+        "keep.txt",
+    ]
+
+
+def test_import_run_fails_when_artifact_count_limit_is_exceeded(
+    tmp_path: Path,
+) -> None:
+    log_path = tmp_path / "codex.log"
+    artifact_root = tmp_path / "agent-artifacts"
+    artifact_root.mkdir()
+    log_path.write_text("Codex finished.", encoding="utf-8")
+    artifact_root.joinpath("one.txt").write_text("one", encoding="utf-8")
+    artifact_root.joinpath("two.txt").write_text("two", encoding="utf-8")
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "import-run",
+            "codex",
+            "--log",
+            str(log_path),
+            "--goal",
+            "capture limited artifacts",
+            "--artifact-root",
+            str(artifact_root),
+            "--max-artifact-count",
+            "1",
+            "--evidence-dir",
+            str(tmp_path / "evidence"),
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "max artifact count exceeded" in result.stderr
+
+
+def test_import_run_fails_when_total_artifact_bytes_limit_is_exceeded(
+    tmp_path: Path,
+) -> None:
+    log_path = tmp_path / "codex.log"
+    artifact_root = tmp_path / "agent-artifacts"
+    artifact_root.mkdir()
+    log_path.write_text("Codex finished.", encoding="utf-8")
+    artifact_root.joinpath("one.txt").write_text("1234", encoding="utf-8")
+    artifact_root.joinpath("two.txt").write_text("5678", encoding="utf-8")
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "import-run",
+            "codex",
+            "--log",
+            str(log_path),
+            "--goal",
+            "capture size-limited artifacts",
+            "--artifact-root",
+            str(artifact_root),
+            "--max-total-artifact-bytes",
+            "4",
+            "--evidence-dir",
+            str(tmp_path / "evidence"),
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "max total artifact bytes exceeded" in result.stderr
+
+
+def test_import_run_skips_symlinks_under_artifact_root(tmp_path: Path) -> None:
+    log_path = tmp_path / "codex.log"
+    artifact_root = tmp_path / "agent-artifacts"
+    evidence_dir = tmp_path / "evidence"
+    target_path = tmp_path / "outside.txt"
+    symlink_path = artifact_root / "linked.txt"
+    artifact_root.mkdir()
+    log_path.write_text("Codex finished.", encoding="utf-8")
+    artifact_root.joinpath("keep.txt").write_text("keep", encoding="utf-8")
+    target_path.write_text("outside", encoding="utf-8")
+    try:
+        symlink_path.symlink_to(target_path)
+    except OSError as exc:
+        pytest.skip(f"symlink unavailable: {exc}")
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "import-run",
+            "codex",
+            "--log",
+            str(log_path),
+            "--goal",
+            "capture no symlink artifacts",
+            "--artifact-root",
+            str(artifact_root),
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = AgentImportOutput.model_validate_json(result.stdout)
+    evidence = load_evidence(output.evidence_id, evidence_dir)
+    assert [Path(file.path).name for file in evidence.files] == [
+        "codex.log",
+        "keep.txt",
     ]
 
 

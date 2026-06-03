@@ -222,6 +222,13 @@ blocked variable names in the execution record. Pass a variable explicitly with
 `--allow-env NAME` only when the command needs it. Export bundles are also gated
 by explicit approval.
 
+Artifact root import also applies safety limits. `import-run --artifact-root`
+skips `.git/`, `.venv/`, `node_modules/`, `.env*`, private key patterns, and
+symlinked files by default. Use `.omfignore` or `--exclude PATTERN` for
+project-specific exclusions, and cap traversal with `--max-artifact-count` and
+`--max-total-artifact-bytes`. Binary or oversized artifacts remain
+metadata-only.
+
 ## Learn More
 
 - Full product and feature reference: [oh-my-field.md](oh-my-field.md)
