@@ -8,6 +8,7 @@ CAPABILITY_NAME_PATTERN: Final = r"^[a-z][a-z0-9_]*$"
 SHA256_PATTERN: Final = r"^[a-f0-9]{64}$"
 EVIDENCE_SCHEMA_VERSION: Final = "omf.evidence.v0.1"
 CAPABILITY_SCHEMA_VERSION: Final = "omf.capability.v0.1"
+HARNESS_SCHEMA_VERSION: Final = "omf.harness.v0.1"
 EVAL_RESULT_SCHEMA_VERSION: Final = "omf.eval_result.v0.1"
 LEARNING_EXPORT_SCHEMA_VERSION: Final = "omf.learning_export.v0.1"
 LEARNING_PATCH_DECISION_SCHEMA_VERSION: Final = "omf.learning_patch_decision.v0.1"
@@ -300,6 +301,7 @@ class CapturedTextFile(StrictModel):
 
 
 class HarnessResult(StrictModel):
+    schema_version: str = HARNESS_SCHEMA_VERSION
     status: HarnessStatus
     checks: tuple[str, ...]
     failures: tuple[str, ...] = ()
