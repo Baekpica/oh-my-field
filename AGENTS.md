@@ -60,6 +60,19 @@ For multi-step tasks, state a brief plan:
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
+## 5. Working In This Repository (OMF)
+
+**OMF packages agent work as verifiable capabilities. Practice that here.**
+
+- Record meaningful agent work as OMF sessions when the runtime allows it.
+- Preserve evidence for non-trivial changes; failed runs are useful evidence too.
+- Prefer capability and harness updates over one-off prompt fixes.
+- Treat tests, type checks, and review feedback as evidence, not as obstacles.
+
+This mirrors OMF's own loop: define success criteria, verify against a harness,
+and keep what worked as something reusable. See `docs/development.md` for the
+gates and conventions.
+
 ---
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
