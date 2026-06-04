@@ -221,15 +221,19 @@ target project can verify capability lineage offline.
 
 ## Safety Model
 
-OMF records command intent and risk. Commands classified as write, destructive,
-external, credential, production, or paid risk are recorded but not executed
-unless the command receives explicit approval.
+OMF is not an arbitrary shell runner. It records command intent and risk.
+Commands classified as write, destructive, external, credential, production, or
+paid risk are recorded but not executed unless the command receives explicit
+approval.
 
 Use `--approve-command-risk` only when you intentionally want a risky command to
-execute. Command strings are legacy shell strings, so treat `--command`,
-`--harness-command`, and `--run-command` as shell execution surfaces. OMF records
-the cwd, risk categories, approval state, shell mode, and environment policy for
-each command execution.
+execute. Prefer the shell-free `--run-argv` form (one token per flag), which
+runs without a shell so metacharacters stay literal; the legacy shell strings
+`--command`, `--harness-command`, and `--run-command` are shell execution
+surfaces and are mutually exclusive with `--run-argv`. OMF records the cwd, risk
+categories, approval state, shell mode, and environment policy for each command
+execution, and `--require-cwd-inside-project` blocks commands whose working
+directory escapes the project root.
 
 Commands run with a minimal environment by default. OMF keeps `PATH`, `HOME`,
 and `TMPDIR`, blocks common secret-bearing variables such as `OPENAI_API_KEY`,

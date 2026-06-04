@@ -106,6 +106,57 @@ def test_execute_shell_command_records_timeout(tmp_path: Path) -> None:
     assert "command timed out after 1 seconds" in execution.stderr
 
 
+def test_execute_command_argv_treats_metacharacters_literally(
+    tmp_path: Path,
+) -> None:
+    redirect_target = tmp_path / "redirected.txt"
+    argv = (
+        sys.executable,
+        "-c",
+        "import sys; print(sys.argv[1:])",
+        ">",
+        str(redirect_target),
+    )
+
+    execution = execute_shell_command(
+        CommandExecutionRequest(
+            command=shlex.join(argv),
+            argv=argv,
+            cwd=tmp_path,
+            timeout_seconds=10,
+            approve_risk=True,
+        ),
+    )
+
+    assert execution.exit_code == 0
+    assert execution.shell is False
+    assert not redirect_target.exists()
+    assert ">" in execution.stdout
+
+
+def test_execute_command_blocks_cwd_outside_project_root(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+
+    execution = execute_shell_command(
+        CommandExecutionRequest(
+            command="printf ok",
+            cwd=outside,
+            timeout_seconds=5,
+            project_root=project_root,
+            require_cwd_inside_project=True,
+        ),
+    )
+
+    assert execution.exit_code == 126
+    assert execution.shell is True
+    assert execution.cwd_inside_project is False
+    assert execution.stdout == ""
+    assert "escapes the project root" in execution.stderr
+
+
 def _env_probe_command(name: str) -> str:
     return (
         f"{shlex.quote(sys.executable)} -c "
