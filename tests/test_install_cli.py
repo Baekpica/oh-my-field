@@ -43,6 +43,7 @@ def test_install_skill_generic_writes_out_resource(tmp_path: Path) -> None:
     assert output.runtime == "generic"
     assert output.installed
     assert output.skill_path == str(skill_path)
+    assert output.patch_plan_path is None
     assert skill_path.exists()
     assert "OMF Meta-Skill" in skill_path.read_text(encoding="utf-8")
 

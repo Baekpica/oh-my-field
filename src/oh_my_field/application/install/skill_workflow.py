@@ -29,7 +29,7 @@ def install_omf_skill(request: SkillInstallRequest) -> SkillInstallSummary:
         request=request,
         actions=actions,
     )
-    _copy_runtime_resources(
+    written_runtime_targets = _copy_runtime_resources(
         resource_root=resource_root,
         out_root=out_root,
         request=request,
@@ -44,13 +44,18 @@ def install_omf_skill(request: SkillInstallRequest) -> SkillInstallSummary:
         out=out_root,
         profile=request.profile,
     )
-    wrote_target = write_text_if_allowed(
-        target_path=target_path,
-        content=runtime_resource.content,
-        overwrite=request.overwrite,
-        dry_run=request.dry_run,
-    )
-    if wrote_target:
+    target_written_by_resource_copy = target_path in written_runtime_targets
+    wrote_target = target_written_by_resource_copy
+    if not wrote_target:
+        wrote_target = write_text_if_allowed(
+            target_path=target_path,
+            content=runtime_resource.content,
+            overwrite=request.overwrite,
+            dry_run=request.dry_run,
+        )
+    if target_written_by_resource_copy:
+        pass
+    elif wrote_target:
         actions.append(
             SkillInstallAction(
                 target_path=str(target_path),
@@ -152,8 +157,9 @@ def _copy_runtime_resources(
     out_root: Path,
     request: SkillInstallRequest,
     actions: list[SkillInstallAction],
-) -> None:
+) -> tuple[Path, ...]:
     adapter = get_skill_install_adapter(request.runtime)
+    written_paths: list[Path] = []
     for relative_path in adapter.resource_paths():
         resource = read_resource_text(resource_at(resource_root, relative_path))
         target = out_root / relative_path
@@ -171,6 +177,8 @@ def _copy_runtime_resources(
                     reason="runtime resource copied to install directory",
                 ),
             )
+            written_paths.append(target)
+    return tuple(written_paths)
 
 
 def _copy_profile_patch(
