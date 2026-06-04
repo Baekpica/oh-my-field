@@ -1,0 +1,1 @@
+"""OMF meta-skill resources."""

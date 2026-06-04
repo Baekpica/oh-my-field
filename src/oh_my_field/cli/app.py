@@ -15,6 +15,7 @@ from oh_my_field.cli.commands import (
     import_run,
     init_field,
     inspect_artifact,
+    install,
     learn,
     orchestrate,
     promote,
@@ -34,6 +35,8 @@ capability_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(capability_app, name="capability")
+install_app = typer.Typer(help="Install OMF agent activation resources.")
+app.add_typer(install_app, name="install")
 
 
 def _main() -> None:
@@ -51,6 +54,7 @@ explain.register(app)
 promote.register(app)
 health.register(app)
 capability.register(capability_app)
+install.register(install_app)
 replay.register(app)
 evaluate.register(app)
 review.register(app)
