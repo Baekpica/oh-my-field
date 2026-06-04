@@ -20,6 +20,7 @@ from oh_my_field.domain.models import (
 from oh_my_field.domain.portability.lifecycle import (
     aggregate_target_validation_status,
     build_portability_health,
+    next_validation_action,
     normalize_target_validation_status,
 )
 
@@ -36,5 +37,6 @@ __all__ = [
     "TargetValidationStatus",
     "aggregate_target_validation_status",
     "build_portability_health",
+    "next_validation_action",
     "normalize_target_validation_status",
 ]
