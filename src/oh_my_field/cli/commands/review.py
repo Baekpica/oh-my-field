@@ -3,10 +3,14 @@ from typing import Annotated, Literal
 
 import typer
 
+from oh_my_field.application.review import (
+    ReviewError,
+    ReviewRequest,
+    run_review_workflow,
+)
 from oh_my_field.cli.errors import cli_errors
 from oh_my_field.cli.output import emit_json
 from oh_my_field.models import HumanReviewAction, ReviewTargetType
-from oh_my_field.review import ReviewError, ReviewRequest, run_review_workflow
 
 TargetType = Literal["evidence", "capability", "replay", "eval"]
 
