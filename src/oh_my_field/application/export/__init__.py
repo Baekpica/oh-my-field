@@ -1,10 +1,4 @@
-"""Compatibility shim: export moved to oh_my_field.application.export.
-
-Importing from ``oh_my_field.export`` keeps working while internal callers
-migrate to the application layer path.
-"""
-
-from oh_my_field.application.export import (
+from oh_my_field.application.export.workflow import (
     ExportApprovalRequiredError,
     ExportDependencies,
     ExportError,
