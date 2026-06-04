@@ -1,24 +1,15 @@
 import json
 import secrets
 import shlex
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal, cast
+from typing import cast
 
 import yaml
-from pydantic import Field, ValidationError, model_validator
+from pydantic import ValidationError
 
-from oh_my_field.execution import (
-    CommandExecutionRequest,
-    assess_command_risk,
-    execute_shell_command,
-)
-from oh_my_field.integrity import append_integrity_link, model_sha256
-from oh_my_field.models import (
-    CAPABILITY_NAME_PATTERN,
+from oh_my_field.domain.models import (
     CapabilityManifest,
-    CommandRiskCategory,
     EvalCheck,
     EvalResult,
     EvidenceRecord,
@@ -26,7 +17,73 @@ from oh_my_field.models import (
     RuntimeInfo,
     StrictModel,
 )
-from oh_my_field.storage import (
+from oh_my_field.domain.portability.errors import (
+    PortabilityAmbiguousTargetError,
+    PortabilityBundleExistsError,
+    PortabilityBundleParseError,
+    PortabilityError,
+    PortabilityImportExistsError,
+    PortabilityImportNotFoundError,
+)
+from oh_my_field.domain.portability.models import (
+    PORTABILITY_REQUIRED_PASS_RATE,
+    REDACTED_MARKER,
+    CapabilityAdaptRequest,
+    CapabilityAdaptSummary,
+    CapabilityExportRecord,
+    CapabilityPortabilityExportRequest,
+    CapabilityPortabilityExportSummary,
+    CapabilityPortabilityImportRequest,
+    CapabilityPortabilityImportSummary,
+    CapabilityRemapRequest,
+    CapabilityRemapSummary,
+    CapabilityValidationRequest,
+    CapabilityValidationSummary,
+    ContextRemapPlan,
+    EvalPassRateComparison,
+    EvidenceInclusionMode,
+    EvidenceIntegrityProof,
+    EvidenceProof,
+    EvidenceProvenancePack,
+    ExportTarget,
+    ImportCollisionPolicy,
+    PortabilityAdaptation,
+    PortabilityCompatibility,
+    PortabilityContextBudget,
+    PortabilityManifest,
+    PortabilityReadiness,
+    PortabilitySource,
+    PortabilityTarget,
+    PortabilityValidation,
+    ProvenanceIntegrity,
+    RemapBinding,
+    TargetOverlay,
+    TargetOverrides,
+    TargetRunPlan,
+    TargetValidationReport,
+    ToolCompatibilityStatus,
+    ValidationStatus,
+    YamlValue,
+)
+from oh_my_field.domain.portability.readiness import (
+    compression_required as _compression_required,
+)
+from oh_my_field.domain.portability.readiness import (
+    context_remap_required as _context_remap_required,
+)
+from oh_my_field.domain.portability.readiness import (
+    model_delta as _model_delta,
+)
+from oh_my_field.domain.portability.readiness import (
+    model_downgrade as _model_downgrade,
+)
+from oh_my_field.domain.portability.readiness import (
+    portability_readiness as _portability_readiness,
+)
+from oh_my_field.domain.portability.readiness import (
+    transfer_type as _transfer_type,
+)
+from oh_my_field.infrastructure.fs.storage import (
     DuplicateWriteError,
     StorageError,
     capability_package_paths,
@@ -38,436 +95,61 @@ from oh_my_field.storage import (
     write_eval_result,
     write_evidence,
 )
-
-type ExportTarget = Literal["codex", "claude_code", "hermes", "generic"]
-type ValidationStatus = Literal["needs_validation", "needs_adaptation", "validated"]
-type ToolCompatibilityStatus = Literal["pass", "partial", "unknown"]
-type EvidenceInclusionMode = Literal["none", "summary", "redacted", "full"]
-type ImportCollisionPolicy = Literal["fail", "merge", "version", "overwrite"]
-
-PORTABILITY_SCHEMA_VERSION = "omf.portability.v0.1"
-TARGET_VALIDATION_SCHEMA_VERSION = "omf.target_validation.v0.1"
-TARGET_OVERLAY_SCHEMA_VERSION = "omf.target_overlay.v0.1"
-type ModelClass = Literal["frontier", "standard", "local"]
-type CapabilityTier = Literal["high", "medium", "low"]
-type YamlValue = (
-    str | int | float | bool | None | list["YamlValue"] | dict[str, "YamlValue"]
+from oh_my_field.infrastructure.process.execution import (
+    CommandExecutionRequest,
+    assess_command_risk,
+    execute_shell_command,
 )
-
-PORTABILITY_REQUIRED_PASS_RATE = 0.8
-REDACTED_MARKER = "[REDACTED]"
-
-
-class PortabilityError(Exception):
-    pass
-
-
-@dataclass
-class PortabilityBundleExistsError(PortabilityError):
-    path: Path
-
-    def __str__(self) -> str:
-        return f"refusing to overwrite existing portability bundle: {self.path}"
-
-
-@dataclass
-class PortabilityBundleParseError(PortabilityError):
-    path: Path
-    reason: str
-
-    def __str__(self) -> str:
-        return f"could not parse portability bundle {self.path}: {self.reason}"
-
-
-@dataclass
-class PortabilityImportNotFoundError(PortabilityError):
-    capability: str
-    runtime: str
-    model: str | None
-
-    def __str__(self) -> str:
-        target = self.runtime if self.model is None else f"{self.runtime}/{self.model}"
-        return (
-            f"no imported target {target!r} for capability {self.capability!r}; "
-            "run `omf capability import` first"
-        )
-
-
-@dataclass
-class PortabilityAmbiguousTargetError(PortabilityError):
-    capability: str
-    runtime: str
-
-    def __str__(self) -> str:
-        return (
-            f"multiple imported targets for runtime {self.runtime!r} on capability "
-            f"{self.capability!r}; pass --model to disambiguate"
-        )
-
-
-@dataclass
-class PortabilityImportExistsError(PortabilityError):
-    capability: str
-    capabilities_dir: Path
-
-    def __str__(self) -> str:
-        return (
-            f"capability {self.capability!r} already exists in "
-            f"{self.capabilities_dir}; pass --if-exists overwrite|version|merge"
-        )
-
-
-class PortabilitySource(StrictModel):
-    runtime: str = Field(min_length=1)
-    model: str | None = None
-    reasoning_effort: str | None = None
-    project: str = Field(min_length=1)
-    evidence_ids: tuple[str, ...] = ()
-
-
-class PortabilityTarget(StrictModel):
-    runtime: ExportTarget
-    model: str | None = None
-    project: str | None = None
-
-
-class PortabilityContextBudget(StrictModel):
-    source_tokens: int | None = Field(default=None, ge=1)
-    target_tokens: int | None = Field(default=None, ge=1)
-
-
-class PortabilityCompatibility(StrictModel):
-    required_tools: tuple[str, ...] = ()
-    optional_tools: tuple[str, ...] = ()
-    unavailable_tools: tuple[str, ...] = ()
-    context_budget: PortabilityContextBudget | None = None
-    compression_required: bool = False
-
-
-class ModelProfile(StrictModel):
-    model_class: ModelClass = "standard"
-    context_tokens: int | None = Field(default=None, ge=1)
-    tool_use: CapabilityTier = "medium"
-    reasoning: CapabilityTier = "medium"
-
-
-DEFAULT_MODEL_PROFILES: dict[str, ModelProfile] = {
-    "gpt-5.5": ModelProfile(
-        model_class="frontier",
-        context_tokens=256000,
-        tool_use="high",
-        reasoning="high",
-    ),
-    "qwen3.6-27b": ModelProfile(
-        model_class="local",
-        context_tokens=32768,
-        tool_use="medium",
-        reasoning="medium",
-    ),
-}
-_LOCAL_MODEL_MARKERS = ("mini", "small", "local", "qwen", "7b", "13b", "27b")
-_FRONTIER_MODEL_MARKERS = ("gpt-5", "opus", "sonnet", "gemini-2", "frontier")
-_CLASS_RANK: dict[ModelClass, int] = {"local": 1, "standard": 2, "frontier": 3}
-_TIER_RANK: dict[CapabilityTier, int] = {"low": 1, "medium": 2, "high": 3}
-
-
-class PortabilityModelDelta(StrictModel):
-    source_model: str | None = None
-    target_model: str | None = None
-    model_changed: bool = False
-    transfer_type: tuple[str, ...] = ()
-    source_profile: ModelProfile | None = None
-    target_profile: ModelProfile | None = None
-    downgrade: bool = False
-
-
-class PortabilityAdaptation(StrictModel):
-    transfer_type: tuple[str, ...] = ()
-    prompt_variant: str = "base"
-    context_variant: str = "full"
-    harness_required: bool = True
-    human_review_required: bool = True
-
-
-class PortabilityValidation(StrictModel):
-    eval_set: str | None = None
-    required_pass_rate: float = Field(
-        default=PORTABILITY_REQUIRED_PASS_RATE,
-        ge=0.0,
-        le=1.0,
-    )
-    current_pass_rate: float | None = Field(default=None, ge=0.0, le=1.0)
-    status: ValidationStatus = "needs_validation"
-
-
-class PortabilityManifest(StrictModel):
-    schema_version: str = PORTABILITY_SCHEMA_VERSION
-    capability: str = Field(pattern=CAPABILITY_NAME_PATTERN)
-    version: str = Field(min_length=1)
-    source: PortabilitySource
-    target: PortabilityTarget
-    compatibility: PortabilityCompatibility = Field(
-        default_factory=PortabilityCompatibility,
-    )
-    adaptation: PortabilityAdaptation = Field(default_factory=PortabilityAdaptation)
-    validation: PortabilityValidation = Field(default_factory=PortabilityValidation)
-
-
-class EvidenceProof(StrictModel):
-    evidence_id: str = Field(min_length=1)
-    available: bool
-    sha256: str | None = None
-    integrity_verified: bool = False
-    summary_path: str | None = None
-    snapshot_path: str | None = None
-
-
-class EvidenceProvenancePack(StrictModel):
-    mode: EvidenceInclusionMode
-    proofs: tuple[EvidenceProof, ...] = ()
-
-
-class EvidenceIntegrityProof(StrictModel):
-    evidence_id: str = Field(min_length=1)
-    available: bool
-    sha256: str | None = None
-    integrity_verified: bool = False
-
-
-class ProvenanceIntegrity(StrictModel):
-    capability: str = Field(pattern=CAPABILITY_NAME_PATTERN)
-    capability_sha256: str | None = None
-    capability_integrity_verified: bool = False
-    evidence: tuple[EvidenceIntegrityProof, ...] = ()
-
-
-class ReadinessFactor(StrictModel):
-    name: str = Field(min_length=1)
-    delta: float
-    reason: str = Field(min_length=1)
-
-
-class PortabilityReadiness(StrictModel):
-    score: float = Field(ge=0.0, le=1.0)
-    required_pass_rate: float = Field(ge=0.0, le=1.0)
-    factors: tuple[ReadinessFactor, ...] = ()
-
-
-class EvalPassRateComparison(StrictModel):
-    source_pass_rate: float | None = Field(default=None, ge=0.0, le=1.0)
-    target_pass_rate: float | None = Field(default=None, ge=0.0, le=1.0)
-    delta: float | None = None
-
-
-class TargetRunPlan(StrictModel):
-    target_run_command: str | None = None
-    manual_run_required: bool = True
-    expected_artifacts: tuple[str, ...] = ()
-    executed: bool = False
-    approved: bool = False
-    exit_code: int | None = None
-    risk_categories: tuple[CommandRiskCategory, ...] = ()
-
-
-class TargetValidationReport(StrictModel):
-    schema_version: str = TARGET_VALIDATION_SCHEMA_VERSION
-    capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
-    source: PortabilitySource
-    target: PortabilityTarget
-    tool_compatibility: ToolCompatibilityStatus
-    unavailable_tools: tuple[str, ...] = ()
-    context_remap_required: bool = False
-    eval_set: str | None = None
-    initial_pass_rate: float | None = Field(default=None, ge=0.0, le=1.0)
-    readiness: PortabilityReadiness
-    model_delta: PortabilityModelDelta
-    target_run: TargetRunPlan | None = None
-    pass_rate_comparison: EvalPassRateComparison | None = None
-    eval_id: str | None = None
-    eval_path: str | None = None
-    failure_evidence_id: str | None = None
-    failure_evidence_path: str | None = None
-    compact_instruction_path: str | None = None
-    compressed_context_path: str | None = None
-    status: ValidationStatus
-    next_action: str = Field(min_length=1)
-
-
-class TargetOverrides(StrictModel):
-    instruction_variant: str = "base"
-    context_variant: str = "full"
-    required_human_review: bool = True
-
-
-class TargetOverlay(StrictModel):
-    schema_version: str = TARGET_OVERLAY_SCHEMA_VERSION
-    capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
-    source: PortabilitySource
-    target: PortabilityTarget
-    status: ValidationStatus
-    tool_compatibility: ToolCompatibilityStatus
-    portability_readiness_score: float = Field(ge=0.0, le=1.0)
-    transfer_type: tuple[str, ...] = ()
-    overrides: TargetOverrides = Field(default_factory=TargetOverrides)
-    validation_report_path: str = "validation_report.yaml"
-    instructions_path: str = "instructions.md"
-    context_pack_path: str = "context.pack.md"
-    eval_id: str | None = None
-    failure_evidence_id: str | None = None
-
-
-class CapabilityPortabilityExportRequest(StrictModel):
-    capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
-    target: ExportTarget
-    out: Path
-    capabilities_dir: Path
-    target_model: str | None = None
-    target_project: str | None = None
-    source_project: str | None = None
-    source_reasoning_effort: str | None = None
-    source_context_tokens: int | None = Field(default=None, ge=1)
-    target_context_tokens: int | None = Field(default=None, ge=1)
-    evidence_dir: Path = Path(".omf/evidence")
-    include_evidence: EvidenceInclusionMode = "summary"
-
-
-class CapabilityPortabilityExportSummary(StrictModel):
-    capability_name: str
-    export_path: str
-    portability_path: str
-    runtime_export_path: str
-    target_runtime: ExportTarget
-    target_model: str | None = None
-    evidence_mode: EvidenceInclusionMode = "summary"
-    evidence_proof_count: int = Field(default=0, ge=0)
-
-
-class CapabilityExportRecord(StrictModel):
-    capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
-    target: PortabilityTarget
-    transfer_type: tuple[str, ...] = ()
-    bundle_path: str = Field(min_length=1)
-    evidence_mode: EvidenceInclusionMode = "summary"
-    evidence_proof_count: int = Field(default=0, ge=0)
-
-
-class CapabilityPortabilityImportRequest(StrictModel):
-    bundle_path: Path
-    capabilities_dir: Path
-    eval_dir: Path
-    evidence_dir: Path
-    runtime: ExportTarget | None = None
-    model: str | None = None
-    project: str | None = None
-    validate_import: bool = False
-    available_tools: tuple[str, ...] = ()
-    as_name: str | None = Field(default=None, pattern=CAPABILITY_NAME_PATTERN)
-    namespace: str | None = Field(default=None, pattern=CAPABILITY_NAME_PATTERN)
-    if_exists: ImportCollisionPolicy = "fail"
-
-
-class CapabilityPortabilityImportSummary(StrictModel):
-    capability_name: str
-    imported_package_path: str
-    validation_report_path: str
-    overlay_path: str
-    status: ValidationStatus
-    tool_compatibility: ToolCompatibilityStatus
-    portability_readiness_score: float = Field(ge=0.0, le=1.0)
-    eval_id: str | None = None
-    eval_path: str | None = None
-    failure_evidence_id: str | None = None
-    failure_evidence_path: str | None = None
-
-
-class CapabilityValidationRequest(StrictModel):
-    capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
-    capabilities_dir: Path
-    eval_dir: Path
-    evidence_dir: Path
-    target: ExportTarget
-    model: str | None = None
-    project: str | None = None
-    available_tools: tuple[str, ...] = ()
-    run_command: str | None = None
-    run_argv: tuple[str, ...] = ()
-    expected_artifacts: tuple[str, ...] = ()
-    command_cwd: Path = Path()
-    command_timeout_seconds: int = Field(default=600, ge=1)
-    approve_command_risk: bool = False
-    require_cwd_inside_project: bool = False
-    allow_env: tuple[str, ...] = ()
-
-    @model_validator(mode="after")
-    def _reject_dual_command_forms(self) -> "CapabilityValidationRequest":
-        if self.run_argv and self.run_command is not None:
-            message = "run_command and run_argv are mutually exclusive"
-            raise ValueError(message)
-        return self
-
-
-class CapabilityValidationSummary(StrictModel):
-    capability_name: str
-    overlay_path: str
-    validation_report_path: str
-    status: ValidationStatus
-    tool_compatibility: ToolCompatibilityStatus
-    portability_readiness_score: float = Field(ge=0.0, le=1.0)
-    eval_id: str | None = None
-    eval_path: str | None = None
-    failure_evidence_id: str | None = None
-    failure_evidence_path: str | None = None
-    target_run_executed: bool = False
-    target_run_exit_code: int | None = None
-    manual_run_required: bool = True
-
-
-class RemapBinding(StrictModel):
-    key: str = Field(min_length=1)
-    value: str = Field(min_length=1)
-
-
-class ContextRemapPlan(StrictModel):
-    capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
-    target: PortabilityTarget
-    bindings: tuple[RemapBinding, ...] = ()
-    unresolved: tuple[str, ...] = ()
-
-
-class CapabilityRemapRequest(StrictModel):
-    capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
-    capabilities_dir: Path
-    target: ExportTarget
-    model: str | None = None
-    target_project: str | None = None
-    mappings: tuple[tuple[str, str], ...] = ()
-    unresolved: tuple[str, ...] = ()
-
-
-class CapabilityRemapSummary(StrictModel):
-    capability_name: str
-    remap_path: str
-    binding_count: int = Field(ge=0)
-    unresolved: tuple[str, ...] = ()
-    complete: bool
-
-
-class CapabilityAdaptRequest(StrictModel):
-    capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
-    capabilities_dir: Path
-    target: ExportTarget
-    model: str | None = None
-    instruction_variant: Literal["base", "compact"] | None = None
-    context_variant: Literal["full", "compressed"] | None = None
-    require_human_review: bool | None = None
-
-
-class CapabilityAdaptSummary(StrictModel):
-    capability_name: str
-    overlay_path: str
-    instruction_variant: str
-    context_variant: str
-    required_human_review: bool
+from oh_my_field.integrity import append_integrity_link, model_sha256
+
+__all__ = [
+    "CapabilityAdaptRequest",
+    "CapabilityAdaptSummary",
+    "CapabilityExportRecord",
+    "CapabilityPortabilityExportRequest",
+    "CapabilityPortabilityExportSummary",
+    "CapabilityPortabilityImportRequest",
+    "CapabilityPortabilityImportSummary",
+    "CapabilityRemapRequest",
+    "CapabilityRemapSummary",
+    "CapabilityValidationRequest",
+    "CapabilityValidationSummary",
+    "ContextRemapPlan",
+    "EvalPassRateComparison",
+    "EvidenceInclusionMode",
+    "EvidenceIntegrityProof",
+    "EvidenceProof",
+    "EvidenceProvenancePack",
+    "ExportTarget",
+    "ImportCollisionPolicy",
+    "PortabilityAdaptation",
+    "PortabilityAmbiguousTargetError",
+    "PortabilityBundleExistsError",
+    "PortabilityBundleParseError",
+    "PortabilityCompatibility",
+    "PortabilityContextBudget",
+    "PortabilityError",
+    "PortabilityImportExistsError",
+    "PortabilityImportNotFoundError",
+    "PortabilityManifest",
+    "PortabilityReadiness",
+    "PortabilitySource",
+    "PortabilityTarget",
+    "PortabilityValidation",
+    "ProvenanceIntegrity",
+    "RemapBinding",
+    "TargetOverlay",
+    "TargetOverrides",
+    "TargetRunPlan",
+    "TargetValidationReport",
+    "ToolCompatibilityStatus",
+    "ValidationStatus",
+    "adapt_capability_package",
+    "export_capability_package",
+    "import_capability_package",
+    "remap_capability_package",
+    "validate_capability_package",
+]
 
 
 def export_capability_package(
@@ -1123,29 +805,6 @@ def _portability_manifest(
     )
 
 
-def _transfer_type(
-    *,
-    source: PortabilitySource,
-    target: PortabilityTarget,
-) -> tuple[str, ...]:
-    values: list[str] = []
-    if source.runtime != target.runtime:
-        values.append("cross_runtime")
-    if source.model != target.model:
-        values.append("model_transfer")
-    if source.project != target.project:
-        values.append("project_transfer")
-    return tuple(values or ("same_environment",))
-
-
-def _compression_required(context_budget: PortabilityContextBudget) -> bool:
-    return (
-        context_budget.source_tokens is not None
-        and context_budget.target_tokens is not None
-        and context_budget.target_tokens < context_budget.source_tokens
-    )
-
-
 def _write_export_bundle(
     bundle_path: Path,
     manifest: CapabilityManifest,
@@ -1656,121 +1315,6 @@ def _tool_compatibility(
     if unavailable_tools:
         return "partial"
     return "pass"
-
-
-def _portability_readiness(
-    *,
-    portability: PortabilityManifest,
-    unavailable_tools: tuple[str, ...],
-) -> PortabilityReadiness:
-    source = portability.source
-    target = portability.target
-    factors: list[ReadinessFactor] = []
-    score = 1.0
-    if source.runtime != target.runtime:
-        score -= 0.1
-        factors.append(
-            ReadinessFactor(
-                name="cross_runtime",
-                delta=-0.1,
-                reason=f"{source.runtime} → {target.runtime}",
-            ),
-        )
-    if source.model != target.model:
-        score -= 0.15
-        factors.append(
-            ReadinessFactor(
-                name="model_transfer",
-                delta=-0.15,
-                reason=f"{source.model or 'unknown'} → {target.model or 'unknown'}",
-            ),
-        )
-    if source.project != target.project:
-        score -= 0.1
-        factors.append(
-            ReadinessFactor(
-                name="project_transfer",
-                delta=-0.1,
-                reason=f"{source.project} → {target.project or 'unknown'}",
-            ),
-        )
-    if portability.compatibility.compression_required:
-        score -= 0.1
-        factors.append(
-            ReadinessFactor(
-                name="context_compression",
-                delta=-0.1,
-                reason="target context budget smaller than source",
-            ),
-        )
-    if unavailable_tools:
-        tool_delta = min(0.4, 0.2 * len(unavailable_tools))
-        score -= tool_delta
-        factors.append(
-            ReadinessFactor(
-                name="unavailable_tool",
-                delta=-round(tool_delta, 2),
-                reason=f"{', '.join(unavailable_tools)} not available",
-            ),
-        )
-    return PortabilityReadiness(
-        score=max(0.0, round(score, 2)),
-        required_pass_rate=PORTABILITY_REQUIRED_PASS_RATE,
-        factors=tuple(factors),
-    )
-
-
-def _model_delta(portability: PortabilityManifest) -> PortabilityModelDelta:
-    source_model = portability.source.model
-    target_model = portability.target.model
-    return PortabilityModelDelta(
-        source_model=source_model,
-        target_model=target_model,
-        model_changed=source_model != target_model,
-        transfer_type=portability.adaptation.transfer_type,
-        source_profile=None if source_model is None else _model_profile(source_model),
-        target_profile=None if target_model is None else _model_profile(target_model),
-        downgrade=_model_downgrade(portability),
-    )
-
-
-def _model_downgrade(portability: PortabilityManifest) -> bool:
-    source = portability.source.model
-    target = portability.target.model
-    if source is None or target is None or source == target:
-        return False
-    return _profile_rank(_model_profile(target)) < _profile_rank(_model_profile(source))
-
-
-def _model_profile(model: str) -> ModelProfile:
-    profile = DEFAULT_MODEL_PROFILES.get(model.casefold())
-    if profile is not None:
-        return profile
-    return _infer_model_profile(model)
-
-
-def _infer_model_profile(model: str) -> ModelProfile:
-    name = model.casefold()
-    if any(marker in name for marker in _LOCAL_MODEL_MARKERS):
-        return ModelProfile(model_class="local", tool_use="medium", reasoning="medium")
-    if any(marker in name for marker in _FRONTIER_MODEL_MARKERS):
-        return ModelProfile(model_class="frontier", tool_use="high", reasoning="high")
-    return ModelProfile()
-
-
-def _profile_rank(profile: ModelProfile) -> tuple[int, int, int]:
-    return (
-        _CLASS_RANK[profile.model_class],
-        _TIER_RANK[profile.reasoning],
-        _TIER_RANK[profile.tool_use],
-    )
-
-
-def _context_remap_required(portability: PortabilityManifest) -> bool:
-    return (
-        portability.target.project is not None
-        and portability.target.project != portability.source.project
-    )
 
 
 def _next_action(status: ValidationStatus) -> str:
