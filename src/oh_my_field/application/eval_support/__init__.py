@@ -1,10 +1,4 @@
-"""Compatibility shim: eval_support moved to the application layer.
-
-Importing from ``oh_my_field.eval_support`` keeps working while internal callers
-migrate to ``oh_my_field.application.eval_support``.
-"""
-
-from oh_my_field.application.eval_support import (
+from oh_my_field.application.eval_support.workflow import (
     CapabilityNameMismatchError,
     EvalDependencies,
     EvalError,
