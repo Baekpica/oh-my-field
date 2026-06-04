@@ -1,5 +1,8 @@
 # Claude Code Runtime Adapter
 
+Implementation: `src/oh_my_field/adapters/runtime_export/claude_code.py`,
+registered through `oh_my_field.adapters.runtime_export`.
+
 ## Generated Files
 
 - `CLAUDE.md`

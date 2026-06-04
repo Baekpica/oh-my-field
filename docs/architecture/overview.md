@@ -22,6 +22,16 @@ Root-level modules such as `oh_my_field.models`, `oh_my_field.storage`, and
 feature modules remain as compatibility surfaces while call sites migrate to the
 layered paths.
 
+Portability now follows the layered boundary directly:
+
+| Concern | Path |
+| --- | --- |
+| Public compatibility surface | `src/oh_my_field/portability.py` |
+| Domain models and readiness rules | `src/oh_my_field/domain/portability/` |
+| Export/import/validate/remap/adapt use cases | `src/oh_my_field/application/portability/` |
+| Runtime-specific export rendering | `src/oh_my_field/adapters/runtime_export/` |
+| Bundle, overlay, and target path I/O | `src/oh_my_field/infrastructure/portability/` |
+
 ## Dependency Direction
 
 CLI commands should call application workflows. Application workflows compose
@@ -65,6 +75,12 @@ capabilities/<name>/
 
 Runtime-specific assets are projections of that package, not the source of
 truth.
+
+`omf capability export` builds the canonical portability bundle through the
+application workflow, then asks the runtime export registry for the matching
+Codex, Claude Code, Hermes, or generic adapter. Import and validation workflows
+read bundle and overlay state through infrastructure stores rather than writing
+target files from the CLI layer.
 
 ## Portability Rules
 

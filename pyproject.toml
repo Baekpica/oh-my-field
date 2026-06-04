@@ -55,6 +55,10 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/oh_my_field"]
+artifacts = [
+    "src/oh_my_field/resources/skills/**/*",
+    "src/oh_my_field/resources/mcp/**/*",
+]
 
 [tool.pyright]
 typeCheckingMode = "strict"

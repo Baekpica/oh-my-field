@@ -15,13 +15,16 @@ from oh_my_field.cli.commands import (
     import_run,
     init_field,
     inspect_artifact,
+    install,
     learn,
+    mcp,
     orchestrate,
     promote,
     reflect,
     registry,
     replay,
     review,
+    session,
     verify,
 )
 
@@ -34,6 +37,12 @@ capability_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(capability_app, name="capability")
+install_app = typer.Typer(help="Install OMF agent activation resources.")
+app.add_typer(install_app, name="install")
+session_app = typer.Typer(help="Track active agent work as OMF sessions.")
+app.add_typer(session_app, name="session")
+mcp_app = typer.Typer(help="Run OMF MCP server surfaces.")
+app.add_typer(mcp_app, name="mcp")
 
 
 def _main() -> None:
@@ -51,6 +60,7 @@ explain.register(app)
 promote.register(app)
 health.register(app)
 capability.register(capability_app)
+install.register(install_app)
 replay.register(app)
 evaluate.register(app)
 review.register(app)
@@ -64,3 +74,5 @@ registry.register(app)
 reflect.register(app)
 inspect_artifact.register(app)
 export.register(app)
+session.register(session_app)
+mcp.register(mcp_app)

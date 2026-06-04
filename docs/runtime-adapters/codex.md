@@ -1,5 +1,8 @@
 # Codex Runtime Adapter
 
+Implementation: `src/oh_my_field/adapters/runtime_export/codex.py`, registered
+through `oh_my_field.adapters.runtime_export`.
+
 ## Generated Files
 
 - `AGENTS.md`

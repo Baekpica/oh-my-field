@@ -1,5 +1,8 @@
 # Hermes Runtime Adapter
 
+Implementation: `src/oh_my_field/adapters/runtime_export/hermes.py`, registered
+through `oh_my_field.adapters.runtime_export`.
+
 ## Generated Files
 
 - `SOUL.md`

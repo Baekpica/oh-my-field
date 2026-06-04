@@ -3,6 +3,7 @@ from oh_my_field.domain.models import (
     TargetStatusEntry,
     TargetValidationStatus,
 )
+from oh_my_field.domain.portability.models import ValidationStatus
 
 _KNOWN_TARGET_VALIDATION_STATUSES: tuple[TargetValidationStatus, ...] = (
     "not_run",
@@ -47,3 +48,11 @@ def aggregate_target_validation_status(
     if statuses == {"validated"}:
         return "validated"
     return "needs_validation"
+
+
+def next_validation_action(status: ValidationStatus) -> str:
+    if status == "needs_adaptation":
+        return "review unavailable tools and adapt the target package"
+    if status == "validated":
+        return "target import validated; monitor or promote the capability"
+    return "run the target eval set before marking the import validated"

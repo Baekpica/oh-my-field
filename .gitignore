@@ -1,3 +1,9 @@
+# gemini-cli settings
+.gemini/
+
+# GitHub App credentials
+gha-creds-*.json
+
 # Mac OS
 .DS_Store
 
@@ -223,3 +229,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+.gemini/
+gha-creds-*.json

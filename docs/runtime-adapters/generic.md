@@ -1,5 +1,8 @@
 # Generic Runtime Adapter
 
+Implementation: `src/oh_my_field/adapters/runtime_export/generic.py`,
+registered through `oh_my_field.adapters.runtime_export`.
+
 ## Generated Files
 
 - `skill.md`
