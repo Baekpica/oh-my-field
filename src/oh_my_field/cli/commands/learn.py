@@ -3,9 +3,13 @@ from typing import Annotated, Literal
 
 import typer
 
+from oh_my_field.application.learn import (
+    LearnError,
+    LearnRequest,
+    run_learn_workflow,
+)
 from oh_my_field.cli.errors import cli_errors
 from oh_my_field.cli.output import emit_json
-from oh_my_field.learn import LearnError, LearnRequest, run_learn_workflow
 from oh_my_field.learning_patch import (
     LearningPatchError,
     LearningPatchRequest,
