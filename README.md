@@ -213,6 +213,10 @@ capabilities/<name>/
   README.md           # human-readable capability card
 ```
 
+That per-capability `README.md` is the capability *card* — purpose, source
+evidence, harness summary, portability and review status — and is distinct from
+this repository's README.
+
 `omf init` sets up the repo-local field — `.omf/config.yaml`, `.omfignore`, and
 the artifact directories:
 
@@ -226,6 +230,22 @@ the artifact directories:
 Runtime-specific files (Codex instructions, Claude Code memory, Hermes profile
 assets, generic skill bundles) are **projections** of the package, not the
 source of truth.
+
+## Learning And Datasets
+
+Accumulated evidence becomes reviewable learning material, not silent training
+data. `learn` and `reflect` turn evidence and eval results into learning exports
+and reflection reports; `learn-patch` records accept/reject decisions on proposed
+prompt patches.
+
+`dataset-export` then emits JSONL from those downstream artifacts — learning
+exports (fine-tuning), patch decisions (preference), and eval results (eval) —
+not from raw evidence. Review and harness status sit upstream, so unreviewed or
+failing runs do not silently become a dataset.
+
+```bash
+omf dataset-export <capability_name> --dataset-type all
+```
 
 ## Command Map
 
