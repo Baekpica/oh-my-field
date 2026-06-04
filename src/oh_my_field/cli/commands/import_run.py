@@ -15,10 +15,7 @@ from oh_my_field.models import CapturedFileRole
 
 
 def import_run(
-    adapter: Annotated[
-        Literal["codex", "claude_code", "hermes"],
-        typer.Argument(),
-    ],
+    adapter: Annotated[str, typer.Argument()],
     log_path: Annotated[Path, typer.Option("--log")],
     goal: Annotated[str, typer.Option("--goal")],
     diff: Annotated[list[Path] | None, typer.Option("--diff")] = None,

@@ -29,8 +29,8 @@ type WorkflowGraph = Literal["langgraph"]
 type CaptureStatus = Literal["captured", "partial", "failed"]
 type SuccessLabel = Literal["success", "failure", "unknown"]
 type TaskOutcome = Literal["success", "failure", "unknown"]
-type AgentImporterName = Literal["codex", "claude_code", "hermes"]
-type RuntimeAdapterName = AgentImporterName
+type AgentImporterName = str
+type RuntimeAdapterName = str
 type ContextSourceType = Literal[
     "repo",
     "docs",

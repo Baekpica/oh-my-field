@@ -10,6 +10,7 @@ from oh_my_field.adapters.agent_import import (
     DEFAULT_EXCLUDE_PATTERNS,
     IMPORTER_SPECS,
     OMFIGNORE_FILE_NAME,
+    RUNTIME_ADAPTER_ENTRY_POINT_GROUP,
     AdapterError,
     AgentArtifactInput,
     AgentArtifactLimitError,
@@ -20,9 +21,15 @@ from oh_my_field.adapters.agent_import import (
     Clock,
     ImporterAdapter,
     ImporterError,
+    RuntimeAdapterPluginError,
     TokenFactory,
+    build_adapter_registry,
+    builtin_adapter_registry,
     import_agent_run,
+    load_runtime_adapter_plugins,
+    register_runtime_adapter,
 )
+from oh_my_field.domain.runtime.adapter import RuntimeAdapter
 
 __all__ = [
     "ADAPTER_SPECS",
@@ -30,6 +37,7 @@ __all__ = [
     "DEFAULT_EXCLUDE_PATTERNS",
     "IMPORTER_SPECS",
     "OMFIGNORE_FILE_NAME",
+    "RUNTIME_ADAPTER_ENTRY_POINT_GROUP",
     "AdapterError",
     "AgentArtifactInput",
     "AgentArtifactLimitError",
@@ -40,6 +48,12 @@ __all__ = [
     "Clock",
     "ImporterAdapter",
     "ImporterError",
+    "RuntimeAdapter",
+    "RuntimeAdapterPluginError",
     "TokenFactory",
+    "build_adapter_registry",
+    "builtin_adapter_registry",
     "import_agent_run",
+    "load_runtime_adapter_plugins",
+    "register_runtime_adapter",
 ]

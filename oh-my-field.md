@@ -687,6 +687,8 @@ promotion_criteria:
 - Codex, Claude Code, Hermes 등 외부 agent runtime의 run artifact import 담당
 - Codex / Claude Code / Hermes 같은 외부 agent runtime은 직접 재구현하지 않고, run log, diff, test result, command output, artifact를 evidence로 import하는 importer를 제공
 - runtime matrix replay/eval은 capability portability를 검증하기 위한 artifact를 생성하며, agent 자체의 장시간 실행 loop를 대체하지 않음
+- 외부 runtime adapter는 `oh_my_field.adapters.RuntimeAdapter` protocol과 동일한 `spec`, `import_run()` surface를 구현
+- Python package entry point group `oh_my_field.runtime_adapters`에 adapter factory/object를 등록하면 `import-run` dispatch registry에 자동 포함
 
 ## Runtime Exporter
 

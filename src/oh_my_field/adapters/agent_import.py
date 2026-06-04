@@ -3,11 +3,12 @@ import hashlib
 import mimetypes
 import re
 import secrets
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from importlib import metadata
 from pathlib import Path
-from typing import Final
+from typing import Final, Protocol, cast
 
 from pydantic import Field
 
@@ -25,6 +26,7 @@ from oh_my_field.domain.models import (
     TaskOutcome,
     ToolCallRecord,
 )
+from oh_my_field.domain.runtime.adapter import RuntimeAdapter
 from oh_my_field.domain.runtime.registry import AdapterRegistry
 from oh_my_field.infrastructure.fs.hashing import append_integrity_link
 from oh_my_field.infrastructure.fs.storage import write_evidence
@@ -71,6 +73,14 @@ DEFAULT_EXCLUDE_PATTERNS: Final = (
     "*.zip",
     "*.tar.gz",
 )
+RUNTIME_ADAPTER_ENTRY_POINT_GROUP: Final = "oh_my_field.runtime_adapters"
+
+
+class RuntimeAdapterEntryPoint(Protocol):
+    @property
+    def name(self) -> str: ...
+
+    def load(self) -> object: ...
 
 
 class ImporterError(Exception):
@@ -79,6 +89,15 @@ class ImporterError(Exception):
 
 class AdapterError(ImporterError):
     pass
+
+
+@dataclass
+class RuntimeAdapterPluginError(AdapterError):
+    source: str
+    reason: str
+
+    def __str__(self) -> str:
+        return f"could not load runtime adapter plugin {self.source!r}: {self.reason}"
 
 
 @dataclass
@@ -157,12 +176,77 @@ for _spec in IMPORTER_SPECS:
     BUILTIN_ADAPTERS.register(_spec.name, ImporterAdapter(_spec))
 
 
+def builtin_adapter_registry() -> AdapterRegistry:
+    registry = AdapterRegistry()
+    for spec in IMPORTER_SPECS:
+        register_runtime_adapter(registry, ImporterAdapter(spec))
+    return registry
+
+
+def register_runtime_adapter(
+    registry: AdapterRegistry,
+    adapter: RuntimeAdapter,
+) -> None:
+    registry.register(adapter.spec.name, adapter)
+
+
+def build_adapter_registry(
+    *,
+    include_plugins: bool = True,
+    entry_points: Iterable[RuntimeAdapterEntryPoint] | None = None,
+) -> AdapterRegistry:
+    registry = builtin_adapter_registry()
+    if include_plugins:
+        load_runtime_adapter_plugins(registry, entry_points=entry_points)
+    return registry
+
+
+def load_runtime_adapter_plugins(
+    registry: AdapterRegistry,
+    *,
+    entry_points: Iterable[RuntimeAdapterEntryPoint] | None = None,
+) -> None:
+    selected = _runtime_adapter_entry_points() if entry_points is None else entry_points
+    for entry_point in selected:
+        try:
+            adapter = _runtime_adapter_candidate(entry_point.load())
+            register_runtime_adapter(registry, adapter)
+        except Exception as exc:
+            raise RuntimeAdapterPluginError(
+                source=entry_point.name,
+                reason=str(exc),
+            ) from exc
+
+
+def _runtime_adapter_candidate(candidate: object) -> RuntimeAdapter:
+    if _looks_like_runtime_adapter(candidate):
+        return cast("RuntimeAdapter", candidate)
+    if callable(candidate):
+        adapter = cast("Callable[[], object]", candidate)()
+        if _looks_like_runtime_adapter(adapter):
+            return cast("RuntimeAdapter", adapter)
+    message = "entry point must load a RuntimeAdapter or zero-argument factory"
+    raise TypeError(message)
+
+
+def _looks_like_runtime_adapter(candidate: object) -> bool:
+    return hasattr(candidate, "spec") and hasattr(candidate, "import_run")
+
+
+def _runtime_adapter_entry_points() -> tuple[RuntimeAdapterEntryPoint, ...]:
+    selected = metadata.entry_points(group=RUNTIME_ADAPTER_ENTRY_POINT_GROUP)
+    return tuple(cast("Iterable[RuntimeAdapterEntryPoint]", selected))
+
+
 def import_agent_run(
     request: AgentImportRequest,
     dependencies: AgentImportDependencies | None = None,
 ) -> AgentImportSummary:
     """Import an external agent run through its registered runtime adapter."""
-    return BUILTIN_ADAPTERS.get(request.adapter).import_run(request, dependencies)
+    return build_adapter_registry().get(request.adapter).import_run(
+        request,
+        dependencies,
+    )
 
 
 def _run_agent_import(
