@@ -1,10 +1,4 @@
-"""Compatibility shim: learn moved to oh_my_field.application.learn.
-
-Importing from ``oh_my_field.learn`` keeps working while internal callers
-migrate to the application layer path.
-"""
-
-from oh_my_field.application.learn import (
+from oh_my_field.application.learn.workflow import (
     LearnDependencies,
     LearnError,
     LearnRequest,

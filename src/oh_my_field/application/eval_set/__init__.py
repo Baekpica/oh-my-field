@@ -1,10 +1,4 @@
-"""Compatibility shim: eval_set moved to oh_my_field.application.eval_set.
-
-Importing from ``oh_my_field.eval_set`` keeps working while internal callers
-migrate to the application layer path.
-"""
-
-from oh_my_field.application.eval_set import (
+from oh_my_field.application.eval_set.workflow import (
     EvalCaseInputParseError,
     EvalSetError,
     RegressionCaseRequest,

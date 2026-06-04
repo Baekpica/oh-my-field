@@ -1,10 +1,4 @@
-"""Compatibility shim: registry moved to oh_my_field.application.registry.
-
-Importing from ``oh_my_field.registry`` keeps working while internal callers
-migrate to the application layer path.
-"""
-
-from oh_my_field.application.registry import (
+from oh_my_field.application.registry.workflow import (
     CapabilityRegistryNotFoundError,
     RegistryError,
     RegistryRequest,

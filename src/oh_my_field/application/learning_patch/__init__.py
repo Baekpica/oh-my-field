@@ -1,10 +1,4 @@
-"""Compatibility shim: learning_patch moved to the application layer.
-
-Importing from ``oh_my_field.learning_patch`` keeps working while internal
-callers migrate to ``oh_my_field.application.learning_patch``.
-"""
-
-from oh_my_field.application.learning_patch import (
+from oh_my_field.application.learning_patch.workflow import (
     LearningPatchDependencies,
     LearningPatchError,
     LearningPatchIndexError,

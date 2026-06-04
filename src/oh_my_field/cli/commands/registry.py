@@ -3,9 +3,13 @@ from typing import Annotated
 
 import typer
 
+from oh_my_field.application.registry import (
+    RegistryError,
+    RegistryRequest,
+    run_registry_workflow,
+)
 from oh_my_field.cli.errors import cli_errors
 from oh_my_field.cli.output import emit_json
-from oh_my_field.registry import RegistryError, RegistryRequest, run_registry_workflow
 
 
 def registry(

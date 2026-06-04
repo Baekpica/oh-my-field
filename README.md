@@ -9,81 +9,83 @@
 Field-fit agents to real work. oh-my-field turns one-off agent sessions into
 portable, evidence-backed capability packages.
 
-OMF is not an agent runtime. Codex, Claude Code, Hermes, or another agent does
-the work. OMF imports that run, preserves the evidence, and promotes repeatable
-work into a package that can be reviewed, hardened, and exported.
+OMF can be driven by hand from the CLI, but the intended loop is **agent-assisted**:
+an agent records its own work as an OMF session, materializes that work into
+immutable evidence, promotes the repeatable parts into a reviewable capability
+package, and carries that capability across runtimes, models, and projects.
 
 The OMF CLI is Apache-2.0 licensed. Capability artifacts generated from your
 work remain owned by you or the project that generated them unless you choose to
 publish them under separate terms.
 
-## Why OMF
+## What OMF Is
 
-Most agent tools help you run the next prompt. OMF focuses on what happens after
-an agent does useful work.
+- A capability **packaging and verification layer** around external agents.
+- A way to keep good agent work as reviewable, repeatable, portable packages.
 
-- Agent work should compound instead of disappearing into chat history.
-- A good run should leave behind evidence, context, checks, and review signals.
-- Repeated work should become a repo-local package, not another hand-written
-  prompt.
-- The package should move across models, coding agents, projects, and operating
-  environments.
-- Users should review and accept changes; they should not need to write every
-  rule by hand.
+## What OMF Is Not
 
-The product goal is simple: turn "the agent did this once" into "this team can
-reuse and verify this capability again."
+- Not an agent runtime — Codex, Claude Code, Hermes, or another agent does the work.
+- Not a prompt vault — a capability is instructions plus context policy, harness,
+  evidence, eval cases, and integrity metadata.
+- Not an autonomous shell runner — risky commands are recorded as intent and
+  require explicit approval before they execute.
 
-## Core Concepts
+## Why It Exists
 
-### Field
+- Agent work disappears into chat history instead of compounding.
+- A good run is hard to reproduce without its evidence, context, and checks.
+- Local/domain tacit knowledge (constraints, preferences, failure history) is
+  rarely captured.
+- Migrating runtime or model silently loses behavior.
+- Teams need evidence, harnesses, and reviewable packages — not another
+  hand-written prompt.
 
-The working environment where the task actually happens: a codebase,
-infrastructure environment, internal process, data pipeline, support workflow,
-or reporting system. A field includes local constraints, preferences, failure
-history, and the quality bar for real work.
+The product goal: turn "the agent did this once" into "this team can reuse and
+verify this capability again."
 
-### Capability
+## How OMF Fits Into An Agent Workflow
 
-A capability is a repo-local package that contains:
+The agent still does the work. OMF records what happened, preserves evidence,
+promotes repeatable work into a capability package, and tracks whether that
+capability actually works on another runtime or project.
 
-1. An agent instruction surface.
-2. Context selection policy.
-3. Verification harness.
-4. Source evidence links.
-5. Regression and eval cases.
-6. Accepted learning patches.
-7. Integrity metadata.
+```text
+external agent runtime
+  Codex / Claude Code / Hermes / local agent
+        │
+        ▼
+OMF session  ──or──  imported run
+        │
+        ▼
+evidence record
+        │
+        ▼
+capability package
+        │
+        ├── health / verify / eval / review
+        ├── learn / reflect / harden
+        ▼
+runtime export bundle
+        │
+        ▼
+target project import
+        │
+        ▼
+target validation
+```
 
-It is not an agent runtime. It can be exported into runtime-specific forms such
-as Codex instructions, Claude Code project memory, Hermes profile assets, or a
-generic skill bundle.
-
-### Evidence
-
-Structured records from agent work: run logs, prompts, context files, command
-outputs, diffs, test results, artifacts, user feedback, retries, and improvement
-notes. Failed runs are useful evidence too.
-
-### Harness
-
-The checks used to decide whether a result is acceptable. For code work this is
-usually tests, lint, type checks, or smoke commands. For operational or document
-work it can be checklists, rubrics, schema validation, or human approval.
+See [docs/concepts.md](docs/concepts.md) for the `Field`, `Evidence`,
+`Capability`, `Harness`, and `Portability` definitions, and
+[docs/agent-ux.md](docs/agent-ux.md) for the activation model.
 
 ## Install
 
-Recommended persistent CLI install:
-
 ```bash
-pipx install oh-my-field
+pipx install oh-my-field      # persistent CLI install
 omf --help
-```
 
-Try without a persistent install:
-
-```bash
-uvx oh-my-field --help
+uvx oh-my-field --help        # try without installing
 ```
 
 Development install from source:
@@ -95,21 +97,82 @@ uv sync --all-extras --dev
 uv run omf --help
 ```
 
-Development checks:
+Local checks mirror CI — see [CONTRIBUTING.md](CONTRIBUTING.md) and
+[docs/development.md](docs/development.md). The full install guide, including how
+to verify the install, is in [docs/install.md](docs/install.md).
+
+## Agent Activation
+
+OMF can be used manually, but the intended loop is agent-assisted. Install an OMF
+meta-skill for the target agent runtime:
 
 ```bash
-uv run ruff format --check .
-uv run ruff check .
-uv run pyright
-uv run pytest
-uv run omf version --json
-uv run omf doctor --json
+omf install skill --runtime codex
+omf install skill --runtime claude_code
+omf install skill --runtime hermes
+omf install skill --runtime generic
 ```
 
-## Quick Start
+For MCP-capable clients, generate a generic client config and run the stdio
+server:
 
-The first product loop is three commands: import an external agent run, promote
-the evidence into a package, then inspect capability health.
+```bash
+omf install mcp --client generic --out .omf/mcp.json
+omf mcp serve
+```
+
+Once activated, a human can say `/omf` or "track this task with OMF" and the
+agent records its work as an OMF session, materializes that session into
+immutable evidence, and proposes a reusable capability package. The MCP surface
+mirrors the same loop (`omf_start_session`, `omf_record_event`,
+`omf_materialize_session`, `omf_promote_capability`, …). See
+[docs/mcp.md](docs/mcp.md) and [docs/agent-ux.md](docs/agent-ux.md).
+
+## Quickstart A: Track An Agent Session
+
+Use this when an agent can call OMF *during* the work.
+
+```bash
+omf init
+
+omf session start \
+  --runtime codex \
+  --model gpt-5.5 \
+  --goal "triage repository issue" \
+  --activation-source skill
+```
+
+Copy the `session_id` from the JSON output, then record meaningful events:
+
+```bash
+omf session event <session_id> \
+  --type assumption \
+  --summary "The target project uses pytest and pyright as acceptance checks."
+
+omf session event <session_id> \
+  --type command \
+  --summary "Ran the test suite" \
+  --command "uv run pytest" \
+  --exit-code 0
+
+omf session finish <session_id> --outcome success
+omf session materialize <session_id>
+omf session suggest-capability <session_id>
+```
+
+Promote the resulting evidence into a capability and check its health:
+
+```bash
+omf promote <evidence_id> \
+  --name repo_issue_triage \
+  --description "Repository issue triage capability"
+
+omf health repo_issue_triage
+```
+
+## Quickstart B: Import An Existing Run
+
+Use this when the agent already produced logs, diffs, test outputs, or artifacts.
 
 ```bash
 mkdir -p /tmp/omf-smoke
@@ -133,148 +196,161 @@ omf health repo_issue_triage \
   --capabilities-dir /tmp/omf-smoke/capabilities
 ```
 
-For a repo-local field, run `omf init` first to create `.omf/config.yaml`, the
-default artifact directories, and `.omfignore`. From a source checkout, prefix
-those commands with `uv run`. Use a real agent log when you have one.
+From a source checkout, prefix each command with `uv run`. The full walkthrough,
+including the export/import/validate path, lives in
+[docs/quickstart.md](docs/quickstart.md).
 
 ## What You Get
 
-`promote` creates a package under `capabilities/<name>/`:
+`promote` creates a runtime-neutral package under `capabilities/<name>/` — **the
+source of truth**:
 
-- `capability.yaml`: canonical metadata and provenance.
-- `instructions.md`: runtime-neutral agent instructions.
-- `harness.yaml`: verification and approval boundaries.
-- `README.md`: a human-readable capability card.
+```text
+capabilities/<name>/
+  capability.yaml     # canonical metadata and provenance
+  instructions.md     # runtime-neutral agent instructions
+  harness.yaml        # verification and approval boundaries
+  README.md           # human-readable capability card
+```
 
-The package is the source of truth. Runtime-specific files such as Codex
-instructions, Claude Code memory, Hermes profile assets, or generic skill
-bundles are export targets.
+That per-capability `README.md` is the capability *card* — purpose, source
+evidence, harness summary, portability and review status — and is distinct from
+this repository's README.
+
+`omf init` sets up the repo-local field — `.omf/config.yaml`, `.omfignore`, and
+the artifact directories:
+
+```text
+.omf/
+  evidence/      sessions/     exports/      imports/
+  evals/         replays/      context/      learning/
+  datasets/      reflections/  workflows/    runs/
+```
+
+Runtime-specific files (Codex instructions, Claude Code memory, Hermes profile
+assets, generic skill bundles) are **projections** of the package, not the
+source of truth.
+
+## Learning And Datasets
+
+Accumulated evidence becomes reviewable learning material, not silent training
+data. `learn` and `reflect` turn evidence and eval results into learning exports
+and reflection reports; `learn-patch` records accept/reject decisions on proposed
+prompt patches.
+
+`dataset-export` then emits JSONL from those downstream artifacts — learning
+exports (fine-tuning), patch decisions (preference), and eval results (eval) —
+not from raw evidence. Review and harness status sit upstream, so unreviewed or
+failing runs do not silently become a dataset.
+
+```bash
+omf dataset-export <capability_name> --dataset-type all
+```
+
+## Command Map
+
+| Area | Commands | Purpose |
+| --- | --- | --- |
+| Setup | `init`, `doctor`, `version` | Create and inspect a repo-local OMF field |
+| Agent activation | `install skill`, `install mcp`, `mcp serve` | Give agents a lower-friction OMF surface |
+| Session tracking | `session start`, `session event`, `session finish`, `session materialize`, `session suggest-capability` | Record active agent work as structured evidence |
+| Evidence ingestion | `import-run`, `capture` | Import existing logs, artifacts, diffs, and test results |
+| Capability build | `promote`, `health`, `harden`, `card`, `registry` | Create and inspect reusable capability packages |
+| Verification | `replay`, `eval`, `verify`, `regression-case` | Check whether a capability still satisfies its harness |
+| Review and learning | `review`, `approve`, `reject`, `revise`, `learn`, `learn-patch`, `reflect` | Turn feedback and failures into accepted patches |
+| Pipeline | `run`, `resume`, `rollback`, `status` | Drive and resume the full checkpointed pipeline |
+| Portability | `capability export`, `capability import`, `capability validate`, `capability remap`, `capability adapt`, `export` | Move capabilities across runtimes and projects |
+| Operations | `dashboard`, `inspect`, `diff`, `explain` (`why`), `context`, `dataset-export` | Inspect, explain, compare, and export accumulated evidence |
 
 ## Portability Lifecycle
 
-A capability moves across runtimes through four distinct states. Keep them
-separate — "can be exported" is not the same as "works on the target":
+A capability moves across runtimes through four **distinct** states — keep them
+separate, because "can be exported" is not "works on the target":
 
-- **Exported**: the capability has been converted into a target runtime
-  bundle (`omf capability export`).
-- **Imported**: the bundle has been materialized in a target project
-  (`omf capability import`).
-- **Validated**: an actual target run has passed under the recorded target
+- **Exported**: converted into a target runtime bundle (`omf capability export`).
+- **Imported**: bundle materialized in a target project (`omf capability import`).
+- **Validated**: an actual target run passed under the recorded target
   runtime/model/project (`omf capability validate --run-command ...`). Static
-  `import --validate` checks alone leave the import at `needs_validation`;
-  without a `--run-command`, validate records `manual_run_required` and the
-  expected artifacts to bring back via `import-run`.
+  `import --validate` alone leaves the import at `needs_validation`.
 - **Portable**: the capability has at least one validated target import.
 
-`omf health` reports `export_status`, `import_status`, and
-`validation_status` separately so these never get conflated, and lists each
-imported target with its own status.
-
-### Cross-runtime example: Codex/gpt-5.5 → Hermes/qwen3.6-27B
+`omf health` reports `export_status`, `import_status`, and `validation_status`
+separately, and lists each imported target with its own status.
 
 ```bash
-# Source project: Codex / gpt-5.5 / xhigh
-uv run omf import-run codex \
-  --log .agent/codex.log \
-  --goal "triage repo issue" \
-  --test-result .agent/pytest.txt \
-  --artifact-root .agent/artifacts \
-  --model gpt-5.5
-
-uv run omf promote <evidence_id> \
-  --name repo_issue_triage \
-  --description "Repository issue triage capability"
-
-uv run omf capability export repo_issue_triage \
-  --target hermes \
-  --target-model qwen3.6-27b \
-  --source-reasoning-effort xhigh \
-  --source-context-tokens 64000 \
-  --target-context-tokens 16000 \
-  --include-evidence redacted \
-  --out .omf/exports/repo_issue_triage-hermes-qwen36
-
-# Target project: Hermes / qwen3.6-27B
-uv run omf capability import .omf/exports/repo_issue_triage-hermes-qwen36 \
-  --runtime hermes \
-  --model qwen3.6-27b \
-  --project target-repo \
-  --available-tool file_system \
-  --validate
-
-# Re-validate with an actual target run (or omit --run-command to record a
-# manual run); OMF gates the command behind --approve-command-risk and folds
-# the exit code into the target eval.
-uv run omf capability validate repo_issue_triage \
-  --target hermes \
-  --model qwen3.6-27b \
-  --available-tool file_system \
+omf capability export repo_issue_triage --target hermes \
+  --out .omf/exports/repo_issue_triage-hermes
+omf capability import .omf/exports/repo_issue_triage-hermes \
+  --runtime hermes --validate
+omf capability validate repo_issue_triage --target hermes \
   --run-command "hermes-code --profile target --skill repo_issue_triage" \
   --approve-command-risk
 ```
 
-The export records the bundle under the source package's `exports/`, and the
-import writes a target overlay under
-`capabilities/repo_issue_triage/imports/hermes-qwen3.6-27b/`. Using
-`--include-evidence redacted` carries content-stripped source evidence so the
-target project can verify capability lineage offline.
+The full cross-runtime walkthrough (Codex/gpt-5.5 → Hermes/qwen3.6-27B, redacted
+evidence transfer, overlays) is in [docs/portability.md](docs/portability.md)
+and the [runtime adapter docs](docs/runtime-adapters/).
 
 ## Safety Model
 
 OMF is not an arbitrary shell runner. It records command intent and risk.
 Commands classified as write, destructive, external, credential, production, or
-paid risk are recorded but not executed unless the command receives explicit
-approval.
+paid risk are recorded but **not executed** unless they receive explicit
+approval (`--approve-command-risk`). Capability exports are gated by
+`--approve-export`.
 
-Use `--approve-command-risk` only when you intentionally want a risky command to
-execute. Prefer the shell-free `--run-argv` form (one token per flag), which
-runs without a shell so metacharacters stay literal; the legacy shell strings
-`--command`, `--harness-command`, and `--run-command` are shell execution
-surfaces and are mutually exclusive with `--run-argv`. OMF records the cwd, risk
-categories, approval state, shell mode, and environment policy for each command
-execution, and `--require-cwd-inside-project` blocks commands whose working
-directory escapes the project root.
+- Prefer the shell-free `--run-argv` form (one token per flag) over the legacy
+  shell strings `--command` / `--harness-command` / `--run-command`;
+  `--require-cwd-inside-project` blocks commands that escape the project root.
+- Commands run with a minimal environment (`PATH`, `HOME`, `TMPDIR`);
+  secret-bearing vars (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `AWS_*`,
+  `GITHUB_TOKEN`, …) are stripped and recorded. Opt one back in with
+  `--allow-env NAME`.
+- `import-run --artifact-root` skips `.git/`, `.venv/`, `node_modules/`, `.env*`,
+  private-key patterns, and symlinks; honors `.omfignore`/`--exclude`; and caps
+  traversal via `--max-artifact-count`/`--max-total-artifact-bytes`.
 
-Commands run with a minimal environment by default. OMF keeps `PATH`, `HOME`,
-and `TMPDIR`, blocks common secret-bearing variables such as `OPENAI_API_KEY`,
-`ANTHROPIC_API_KEY`, `AWS_SECRET_ACCESS_KEY`, and `GITHUB_TOKEN`, and records
-blocked variable names in the execution record. Pass a variable explicitly with
-`--allow-env NAME` only when the command needs it. Export bundles are also gated
-by explicit approval.
+Full details: [docs/security.md](docs/security.md).
 
-Artifact root import also applies safety limits. `import-run --artifact-root`
-skips `.git/`, `.venv/`, `node_modules/`, `.env*`, private key patterns, and
-symlinked files by default. Use `.omfignore` or `--exclude PATTERN` for
-project-specific exclusions, and cap traversal with `--max-artifact-count` and
-`--max-total-artifact-bytes`. Binary or oversized artifacts remain
-metadata-only.
+## Architecture At A Glance
+
+OMF is organized into layers (flat root modules such as `oh_my_field.models` and
+`oh_my_field.storage` remain as compatibility shims while call sites migrate):
+
+| Layer | Path | Responsibility |
+| --- | --- | --- |
+| CLI | `src/oh_my_field/cli/` | Typer command surface |
+| Application | `src/oh_my_field/application/` | use-case workflows |
+| Domain | `src/oh_my_field/domain/` | models, rules, lifecycle |
+| Infrastructure | `src/oh_my_field/infrastructure/` | storage, hashing, execution |
+| Adapters | `src/oh_my_field/adapters/` | runtime-specific behavior |
+| Schemas | `schemas/` | artifact JSON Schema contracts |
+
+See [docs/architecture/overview.md](docs/architecture/overview.md) for the
+dependency direction and per-concept layout.
 
 ## Learn More
 
 - Full product and feature reference: [oh-my-field.md](oh-my-field.md)
 - Install guide: [docs/install.md](docs/install.md)
-- 5-minute quickstart: [docs/quickstart.md](docs/quickstart.md)
+- Quickstart (session / import / portability paths): [docs/quickstart.md](docs/quickstart.md)
+- Agent UX and activation: [docs/agent-ux.md](docs/agent-ux.md)
+- MCP surface: [docs/mcp.md](docs/mcp.md)
+- Concepts: [docs/concepts.md](docs/concepts.md)
+- Portability: [docs/portability.md](docs/portability.md)
 - Security model: [docs/security.md](docs/security.md)
 - Architecture overview: [docs/architecture/overview.md](docs/architecture/overview.md)
-- CLI command reference: [Command Interface](oh-my-field.md#command-interface)
-- Capability package shape: [Capability Package](oh-my-field.md#capability-package)
-- Artifact pipeline design:
-  [LangGraph-based Artifact Pipeline Design](oh-my-field.md#langgraph-based-artifact-pipeline-design)
-- Runtime portability and export/import:
-  [Runtime Exporter](oh-my-field.md#runtime-exporter)
-- Runtime adapter docs:
+- Development guide: [docs/development.md](docs/development.md)
+- Runtime adapters:
   [Codex](docs/runtime-adapters/codex.md),
   [Claude Code](docs/runtime-adapters/claude-code.md),
   [Hermes](docs/runtime-adapters/hermes.md),
   [Generic](docs/runtime-adapters/generic.md)
-- Portability state definitions:
-  [Portability Lifecycle](oh-my-field.md#portability-lifecycle)
-- Security and permission model:
-  [Security / Permission Boundary](oh-my-field.md#security--permission-boundary)
 
 ## Practical Notes
 
-- Start with `import-run`, `promote`, and `health`.
+- The agent-assisted session loop is the primary path; manual `import-run` is the
+  fallback when you only have logs after the fact.
 - Keep generated examples in `/private/tmp/...` while trying the CLI.
 - Record failed runs too; they are the raw material for stronger capabilities.
 - Treat human review as part of the system, not as a failure mode.
