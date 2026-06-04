@@ -38,6 +38,7 @@ def test_init_creates_field_layout(
         ".omf/imports",
         ".omf/runs",
         ".omf/cache",
+        ".omf/datasets",
     ):
         assert tmp_path.joinpath(relative_path).is_dir()
     assert tmp_path.joinpath(".omf", "registry.yaml").exists()

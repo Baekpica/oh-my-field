@@ -5,6 +5,7 @@ from oh_my_field.cli.commands import (
     capture,
     context,
     dashboard,
+    dataset_export,
     diagnostics,
     diff_artifacts,
     evaluate,
@@ -58,6 +59,7 @@ verify.register(app)
 context.register(app)
 orchestrate.register(app)
 dashboard.register(app)
+dataset_export.register(app)
 registry.register(app)
 reflect.register(app)
 inspect_artifact.register(app)

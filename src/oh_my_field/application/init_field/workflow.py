@@ -55,6 +55,7 @@ def initialize_field(request: InitFieldRequest) -> InitFieldSummary:
         omf_dir / "replays",
         omf_dir / "context",
         omf_dir / "learning",
+        omf_dir / "datasets",
         omf_dir / "reflections",
         omf_dir / "workflows",
     )
