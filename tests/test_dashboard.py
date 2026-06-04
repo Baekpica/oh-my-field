@@ -21,6 +21,7 @@ from oh_my_field.models import (
     EvalSet,
     EvidenceRecord,
     HarnessResult,
+    LearningPatchDecision,
     PromotionCriteria,
     PromotionMetrics,
     RuntimeInfo,
@@ -33,6 +34,7 @@ from oh_my_field.storage import (
     write_eval_result,
     write_eval_set,
     write_evidence,
+    write_learning_patch_decision,
     write_manifest,
     write_workflow_run,
 )
@@ -52,10 +54,13 @@ def test_dashboard_snapshot_surfaces_runtime_state_and_approvals(
     )
     manifest = make_manifest(evidence.id, eval_result.id)
     workflow = make_workflow_record(evidence.id, eval_result.id, tmp_path)
+    learning_patch = make_learning_patch()
     write_evidence(evidence, paths.evidence_dir)
     write_eval_result(eval_result, paths.eval_dir)
     write_eval_set(eval_set, paths.eval_set_dir)
     write_manifest(manifest, paths.capabilities_dir)
+    write_portability_status(paths.capabilities_dir / manifest.name)
+    write_learning_patch_decision(learning_patch, paths.learning_patch_dir)
     write_workflow_run(workflow, paths.workflow_dir)
 
     snapshot = build_dashboard_snapshot(paths)
@@ -64,6 +69,7 @@ def test_dashboard_snapshot_surfaces_runtime_state_and_approvals(
     assert snapshot.metrics.pending_review_count == 1
     assert snapshot.metrics.pending_approval_count == 1
     assert snapshot.metrics.regression_case_count == 1
+    assert snapshot.metrics.learning_patch_count == 1
     assert snapshot.metrics.user_intervention_count == 1
     assert snapshot.workflows[0].current_node == "run_verification"
     assert snapshot.workflows[0].nodes[3].status == "running"
@@ -78,9 +84,23 @@ def test_dashboard_snapshot_surfaces_runtime_state_and_approvals(
     assert snapshot.capabilities[0].promotion_eval_pass_rate == 0.0
     assert not snapshot.capabilities[0].promotion_criteria_met
     assert snapshot.capabilities[0].integrity_status == "fail"
+    assert snapshot.capabilities[0].portability_export_status == "exported"
+    assert snapshot.capabilities[0].portability_import_status == "imported"
+    assert snapshot.capabilities[0].portability_validation_status == (
+        "needs_adaptation"
+    )
+    assert snapshot.capabilities[0].portability_targets[0].target == (
+        "codex:gpt-5.5"
+    )
+    assert snapshot.capabilities[0].portability_targets[
+        0
+    ].portability_readiness_score == 0.42
     assert snapshot.capabilities[0].next_action == (
         "run `omf verify capability repo_issue_triage`"
     )
+    assert snapshot.learning_patches[0].capability_name == "repo_issue_triage"
+    assert snapshot.learning_patches[0].decision == "accepted"
+    assert snapshot.learning_patches[0].patch_kind == "harness"
     assert snapshot.comparisons[0].capability_name == "repo_issue_triage"
     assert snapshot.comparisons[0].eval_count == 1
     assert {action.kind for action in snapshot.console_actions} == {
@@ -89,6 +109,7 @@ def test_dashboard_snapshot_surfaces_runtime_state_and_approvals(
     }
     assert {event.kind for event in snapshot.events} >= {
         "approval_required",
+        "learning_patch",
         "pending_review",
     }
 
@@ -124,6 +145,9 @@ def test_dashboard_once_outputs_snapshot_json(tmp_path: Path) -> None:
     snapshot = DashboardSnapshot.model_validate_json(result.stdout)
     assert snapshot.metrics.workflow_count == 0
     assert "/api/snapshot" in dashboard_html()
+    assert "/api/learning-patches" in dashboard_html()
+    assert "capability-rows" in dashboard_html()
+    assert "learning-patch-rows" in dashboard_html()
     assert "workflow-rows" in dashboard_html()
 
 
@@ -216,6 +240,37 @@ def make_eval_result(evidence_id: str, tmp_path: Path) -> EvalResult:
                 duration_ms=34,
             ),
         ),
+    )
+
+
+def make_learning_patch() -> LearningPatchDecision:
+    return LearningPatchDecision(
+        id="20260602T010206Z-cafebabe",
+        created_at=datetime(2026, 6, 2, 1, 2, 6, tzinfo=UTC),
+        capability_name="repo_issue_triage",
+        learning_id="20260602T010204Z-feedface",
+        patch_kind="harness",
+        patch="Always run pytest for this capability.",
+        decision="accepted",
+        reviewer="operator",
+        pass_rate_delta=0.12,
+    )
+
+
+def write_portability_status(package_dir: Path) -> None:
+    export_dir = package_dir / "exports" / "20260602T010207Z-export"
+    export_dir.mkdir(parents=True)
+    (export_dir / "export.yaml").write_text("id: export\n", encoding="utf-8")
+    import_dir = package_dir / "imports" / "codex-gpt-5-5"
+    import_dir.mkdir(parents=True)
+    (import_dir / "target.overlay.yaml").write_text(
+        "target:\n"
+        "  runtime: codex\n"
+        "  model: gpt-5.5\n"
+        "status: needs_adaptation\n"
+        "portability_readiness_score: 0.42\n"
+        "eval_id: 20260602T010204Z-feedface\n",
+        encoding="utf-8",
     )
 
 

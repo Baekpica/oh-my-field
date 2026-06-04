@@ -19,6 +19,7 @@ from oh_my_field.models import (
     EvidenceRecord,
     HumanReviewAction,
     HumanReviewRecord,
+    LearningPatchDecision,
     ReplayRecord,
     ReviewTargetType,
     StrictModel,
@@ -34,6 +35,7 @@ from oh_my_field.storage import (
     list_eval_sets,
     list_learning_patch_decisions,
     list_manifests,
+    read_portability_health,
 )
 
 DEFAULT_DASHBOARD_PORT: Final = 8765
@@ -106,6 +108,13 @@ class DashboardWorkflowSummary(StrictModel):
     replay_command: str | None
 
 
+class DashboardPortabilityTarget(StrictModel):
+    target: str
+    validation_status: str
+    portability_readiness_score: float | None
+    eval_recorded: bool
+
+
 class DashboardCapabilitySummary(StrictModel):
     name: str
     version: str
@@ -127,6 +136,13 @@ class DashboardCapabilitySummary(StrictModel):
     promotion_criteria_met: bool
     integrity_status: str
     next_action: str
+    portability_export_status: str
+    portability_import_status: str
+    portability_validation_status: str
+    portability_export_count: int
+    portability_import_count: int
+    portability_target_validation_count: int
+    portability_targets: tuple["DashboardPortabilityTarget", ...]
     manifest_path: str
 
 
@@ -164,6 +180,19 @@ class DashboardReviewSummary(StrictModel):
     created_at: datetime
     notes: tuple[str, ...]
     revision_request: str | None
+
+
+class DashboardLearningPatchSummary(StrictModel):
+    id: str
+    capability_name: str
+    learning_id: str
+    patch_kind: str
+    decision: str
+    reviewer: str | None
+    created_at: datetime
+    notes: tuple[str, ...]
+    pass_rate_delta: float | None
+    manifest_path: str | None
 
 
 class DashboardApprovalRequest(StrictModel):
@@ -233,6 +262,7 @@ class DashboardSnapshot(StrictModel):
     replays: tuple[DashboardReplaySummary, ...]
     evals: tuple[DashboardEvalSummary, ...]
     reviews: tuple[DashboardReviewSummary, ...]
+    learning_patches: tuple[DashboardLearningPatchSummary, ...]
     approvals: tuple[DashboardApprovalRequest, ...]
     events: tuple[DashboardEvent, ...]
     comparisons: tuple[DashboardCapabilityComparison, ...]
@@ -283,8 +313,16 @@ def build_dashboard_snapshot(paths: DashboardPaths) -> DashboardSnapshot:
     replay_summaries = tuple(_replay_summary(replay) for replay in replays)
     eval_summaries = tuple(_eval_summary(result) for result in evals)
     review_summaries = tuple(_review_summary(review) for review in reviews)
+    learning_patch_summaries = tuple(
+        _learning_patch_summary(decision) for decision in learning_patch_decisions
+    )
     comparisons = _capability_comparisons(workflow_summaries, eval_summaries)
-    events = _events(workflow_summaries, approvals, review_summaries)
+    events = _events(
+        workflow_summaries,
+        approvals,
+        review_summaries,
+        learning_patch_summaries,
+    )
     return DashboardSnapshot(
         generated_at=generated_at,
         metrics=_metrics(
@@ -308,6 +346,7 @@ def build_dashboard_snapshot(paths: DashboardPaths) -> DashboardSnapshot:
         replays=replay_summaries,
         evals=eval_summaries,
         reviews=review_summaries,
+        learning_patches=learning_patch_summaries,
         approvals=approvals,
         events=events,
         comparisons=comparisons,
@@ -554,6 +593,8 @@ def dashboard_html() -> str:
                 <a href="#workflows">Workflows</a>
                 <a href="#graph">Graph</a>
                 <a href="#approvals">Approvals</a>
+                <a href="#capabilities">Capabilities</a>
+                <a href="#learning">Learning</a>
                 <a href="#actions">Actions</a>
                 <a href="#history">History</a>
                 <a href="#debug">Debug</a>
@@ -605,6 +646,38 @@ def dashboard_html() -> str:
                 <h2>Console Actions</h2>
                 <div class="content" id="action-list"></div>
               </section>
+              <section id="capabilities" class="full">
+                <h2>Capability Health</h2>
+                <div class="content">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Capability</th>
+                        <th>Health</th>
+                        <th>Portability</th>
+                        <th>Next action</th>
+                      </tr>
+                    </thead>
+                    <tbody id="capability-rows"></tbody>
+                  </table>
+                </div>
+              </section>
+              <section id="learning" class="full">
+                <h2>Learning Patches</h2>
+                <div class="content">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Patch</th>
+                        <th>Decision</th>
+                        <th>Reviewer</th>
+                        <th>Eval delta</th>
+                      </tr>
+                    </thead>
+                    <tbody id="learning-patch-rows"></tbody>
+                  </table>
+                </div>
+              </section>
               <section>
                 <h2>Events</h2>
                 <div class="content">
@@ -642,7 +715,7 @@ def dashboard_html() -> str:
               </section>
             </main>
           </div>
-          <footer>Local API: /api/snapshot</footer>
+          <footer>Local API: /api/snapshot /api/learning-patches</footer>
           <script>
             let snapshot = null;
             let selectedRunId = null;
@@ -667,6 +740,8 @@ def dashboard_html() -> str:
               renderGraph();
               renderApprovals();
               renderActions();
+              renderCapabilities();
+              renderLearningPatches();
               renderEvents();
               renderComparisons();
               const run = selectedRun();
@@ -681,7 +756,8 @@ def dashboard_html() -> str:
                 ["Pending approvals", metrics.pending_approval_count],
                 ["Harness pass", pct(metrics.harness_pass_rate)],
                 ["Regression cases", metrics.regression_case_count],
-                ["Learning patches", metrics.learning_patch_count]
+                ["Learning patches", metrics.learning_patch_count],
+                ["Capabilities", metrics.capability_count]
               ];
               byId("metrics").innerHTML = items.map((item) =>
                 `<div class="metric"><span>${item[0]}</span><b>${item[1]}</b></div>`
@@ -777,6 +853,48 @@ def dashboard_html() -> str:
                   <div>${item.kind}</div>
                   <code>${item.command}</code>
                 </div>`
+              ).join("");
+            }
+
+            function renderCapabilities() {
+              const rows = snapshot.capabilities || [];
+              if (rows.length === 0) {
+                byId("capability-rows").innerHTML =
+                  "<tr><td colspan='4'>No capabilities.</td></tr>";
+                return;
+              }
+              byId("capability-rows").innerHTML = rows.map((item) => {
+                const targets = (item.portability_targets || []).map((target) =>
+                  `${target.target}: ${target.validation_status}`
+                ).join("<br>");
+                const portability =
+                  `${item.portability_export_status} / ` +
+                  `${item.portability_import_status} / ` +
+                  `${item.portability_validation_status}`;
+                return `<tr>
+                  <td>${item.name}<br><span class="tag">${item.status}</span></td>
+                  <td>${item.integrity_status}<br>${pct(item.pass_rate)}</td>
+                  <td>${portability}<br><small>${targets}</small></td>
+                  <td>${item.next_action}</td>
+                </tr>`;
+              }).join("");
+            }
+
+            function renderLearningPatches() {
+              const rows = snapshot.learning_patches || [];
+              if (rows.length === 0) {
+                byId("learning-patch-rows").innerHTML =
+                  "<tr><td colspan='4'>No learning patches.</td></tr>";
+                return;
+              }
+              byId("learning-patch-rows").innerHTML = rows.map((item) =>
+                `<tr>
+                  <td>${shortId(item.id)}<br>${item.capability_name}
+                    <br><span class="tag">${item.patch_kind}</span></td>
+                  <td>${item.decision}</td>
+                  <td>${item.reviewer || ""}</td>
+                  <td>${item.pass_rate_delta ?? ""}</td>
+                </tr>`
               ).join("");
             }
 
@@ -942,17 +1060,15 @@ def _snapshot_route(
     path: str,
     snapshot: DashboardSnapshot,
 ) -> tuple[BaseModel, ...] | None:
-    if path == "/api/workflows":
-        return snapshot.workflows
-    if path == "/api/events":
-        return snapshot.events
-    if path == "/api/approvals":
-        return snapshot.approvals
-    if path == "/api/capabilities":
-        return snapshot.capabilities
-    if path == "/api/actions":
-        return snapshot.console_actions
-    return None
+    routes: dict[str, tuple[BaseModel, ...]] = {
+        "/api/workflows": snapshot.workflows,
+        "/api/events": snapshot.events,
+        "/api/approvals": snapshot.approvals,
+        "/api/capabilities": snapshot.capabilities,
+        "/api/learning-patches": snapshot.learning_patches,
+        "/api/actions": snapshot.console_actions,
+    }
+    return routes.get(path)
 
 
 def _list_json_models[ModelT: BaseModel](
@@ -1135,6 +1251,7 @@ def _capability_summary(
         package_dir=path.parent,
         eval_results=eval_results,
     )
+    portability_health = read_portability_health(path.parent)
     return DashboardCapabilitySummary(
         name=manifest.name,
         version=manifest.version,
@@ -1174,6 +1291,23 @@ def _capability_summary(
         ),
         integrity_status=health_entry.integrity_status,
         next_action=health_entry.next_action,
+        portability_export_status=portability_health.export_status,
+        portability_import_status=portability_health.import_status,
+        portability_validation_status=portability_health.validation_status,
+        portability_export_count=portability_health.export_count,
+        portability_import_count=portability_health.import_count,
+        portability_target_validation_count=(
+            portability_health.target_validation_count
+        ),
+        portability_targets=tuple(
+            DashboardPortabilityTarget(
+                target=target.target,
+                validation_status=target.validation_status,
+                portability_readiness_score=target.portability_readiness_score,
+                eval_recorded=target.eval_recorded,
+            )
+            for target in portability_health.target_statuses
+        ),
         manifest_path=str(path),
     )
 
@@ -1217,6 +1351,23 @@ def _review_summary(record: HumanReviewRecord) -> DashboardReviewSummary:
         created_at=record.created_at,
         notes=record.review.notes,
         revision_request=record.review.revision_request,
+    )
+
+
+def _learning_patch_summary(
+    decision: LearningPatchDecision,
+) -> DashboardLearningPatchSummary:
+    return DashboardLearningPatchSummary(
+        id=decision.id,
+        capability_name=decision.capability_name,
+        learning_id=decision.learning_id,
+        patch_kind=decision.patch_kind,
+        decision=decision.decision,
+        reviewer=decision.reviewer,
+        created_at=decision.created_at,
+        notes=decision.notes,
+        pass_rate_delta=decision.pass_rate_delta,
+        manifest_path=decision.manifest_path,
     )
 
 
@@ -1348,11 +1499,13 @@ def _events(
     workflows: tuple[DashboardWorkflowSummary, ...],
     approvals: tuple[DashboardApprovalRequest, ...],
     reviews: tuple[DashboardReviewSummary, ...],
+    learning_patches: tuple[DashboardLearningPatchSummary, ...],
 ) -> tuple[DashboardEvent, ...]:
     events = (
         *_workflow_events(workflows),
         *_approval_events(approvals),
         *_review_events(reviews),
+        *_learning_patch_events(learning_patches),
     )
     return tuple(
         sorted(events, key=lambda event: event.created_at, reverse=True)[:MAX_EVENTS],
@@ -1440,6 +1593,32 @@ def _review_severity(review: DashboardReviewSummary) -> DashboardEventSeverity:
     if review.action in ("reject", "mark_unsafe"):
         return "critical"
     if review.action in ("revise", "add_context"):
+        return "warning"
+    return "info"
+
+
+def _learning_patch_events(
+    learning_patches: tuple[DashboardLearningPatchSummary, ...],
+) -> tuple[DashboardEvent, ...]:
+    return tuple(
+        DashboardEvent(
+            id=f"learning-patch:{patch.id}",
+            created_at=patch.created_at,
+            severity=_learning_patch_severity(patch),
+            kind="learning_patch",
+            title=f"Learning patch {patch.decision}",
+            message=f"{patch.capability_name}: {patch.patch_kind}",
+            target_type="learning-patch",
+            target_id=patch.id,
+        )
+        for patch in learning_patches
+    )
+
+
+def _learning_patch_severity(
+    patch: DashboardLearningPatchSummary,
+) -> DashboardEventSeverity:
+    if patch.decision == "rejected":
         return "warning"
     return "info"
 
