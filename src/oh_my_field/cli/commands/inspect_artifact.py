@@ -3,10 +3,10 @@ from typing import Annotated, Literal
 
 import typer
 
+from oh_my_field.application.inspection import InspectRequest
+from oh_my_field.application.inspection import inspect_artifact as run_inspect
 from oh_my_field.cli.errors import cli_errors
 from oh_my_field.cli.output import emit_json
-from oh_my_field.inspection import InspectRequest
-from oh_my_field.inspection import inspect_artifact as run_inspect
 
 
 def inspect_command(
