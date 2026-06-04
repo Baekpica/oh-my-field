@@ -1,10 +1,4 @@
-"""Compatibility shim: context moved to oh_my_field.application.context.
-
-Importing from ``oh_my_field.context`` keeps working while internal callers
-migrate to the application layer path.
-"""
-
-from oh_my_field.application.context import (
+from oh_my_field.application.context.workflow import (
     ContextDependencies,
     ContextError,
     ContextRequest,
