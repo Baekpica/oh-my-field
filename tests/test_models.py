@@ -7,6 +7,7 @@ from oh_my_field.models import (
     CAPABILITY_SCHEMA_VERSION,
     EVAL_RESULT_SCHEMA_VERSION,
     EVIDENCE_SCHEMA_VERSION,
+    HARNESS_SCHEMA_VERSION,
     LEARNING_EXPORT_SCHEMA_VERSION,
     LEARNING_PATCH_DECISION_SCHEMA_VERSION,
     CapabilityManifest,
@@ -178,6 +179,7 @@ def test_top_level_artifacts_default_schema_versions() -> None:
     )
 
     assert manifest.schema_version == CAPABILITY_SCHEMA_VERSION
+    assert manifest.harness.schema_version == HARNESS_SCHEMA_VERSION
     assert learning.schema_version == LEARNING_EXPORT_SCHEMA_VERSION
     assert decision.schema_version == LEARNING_PATCH_DECISION_SCHEMA_VERSION
 

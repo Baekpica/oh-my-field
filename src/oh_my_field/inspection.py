@@ -1,8 +1,9 @@
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
+import yaml
 from pydantic import Field
 
 from oh_my_field.models import CAPABILITY_NAME_PATTERN, EVIDENCE_ID_PATTERN, StrictModel
@@ -10,6 +11,7 @@ from oh_my_field.storage import (
     load_context_bundle,
     load_eval_result,
     load_evidence,
+    load_export_bundle,
     load_learning_export,
     load_manifest,
     load_reflection_report,
@@ -23,6 +25,9 @@ type InspectTargetType = Literal[
     "capability",
     "replay",
     "eval",
+    "export",
+    "import",
+    "run",
     "workflow",
     "context",
     "learning",
@@ -44,6 +49,9 @@ class InspectRequest(StrictModel):
     context_dir: Path
     learning_dir: Path
     reflection_dir: Path
+    export_dir: Path = Path(".omf/exports")
+    target: str | None = None
+    model: str | None = None
 
 
 class InspectSummary(StrictModel):
@@ -69,6 +77,9 @@ def inspect_artifact(request: InspectRequest) -> InspectSummary:
         "evidence": _inspect_evidence,
         "replay": _inspect_replay,
         "eval": _inspect_eval,
+        "export": _inspect_export,
+        "import": _inspect_import,
+        "run": _inspect_workflow,
         "workflow": _inspect_workflow,
         "context": _inspect_context,
         "learning": _inspect_learning,
@@ -158,7 +169,7 @@ def _inspect_eval(request: InspectRequest) -> InspectSummary:
 def _inspect_workflow(request: InspectRequest) -> InspectSummary:
     run = load_workflow_run(_artifact_id(request.target_id), request.workflow_dir)
     return InspectSummary(
-        target_type="workflow",
+        target_type=request.target_type,
         target_id=run.id,
         path=str(request.workflow_dir / f"{run.id}.json"),
         status=run.status,
@@ -170,6 +181,127 @@ def _inspect_workflow(request: InspectRequest) -> InspectSummary:
             "failure_reason": run.failure_reason,
         },
     )
+
+
+def _inspect_export(request: InspectRequest) -> InspectSummary:
+    target_path = Path(request.target_id)
+    if target_path.exists():
+        if target_path.is_dir():
+            return _inspect_portability_export_dir(request, target_path)
+        return _inspect_export_file(target_path)
+    bundle = load_export_bundle(_artifact_id(request.target_id), request.export_dir)
+    return InspectSummary(
+        target_type="export",
+        target_id=bundle.id,
+        path=str(request.export_dir / bundle.capability_name / f"{bundle.id}.json"),
+        status="exported",
+        payload={
+            "capability_name": bundle.capability_name,
+            "source_evidence_id": bundle.source_evidence.id,
+            "eval_count": len(bundle.eval_results),
+            "context_count": len(bundle.context_bundles),
+            "learning_count": len(bundle.learning_exports),
+            "reflection_count": len(bundle.reflection_reports),
+            "schema_version": bundle.manifest.schema_version,
+        },
+    )
+
+
+def _inspect_portability_export_dir(
+    request: InspectRequest,
+    bundle_dir: Path,
+) -> InspectSummary:
+    portability_path = bundle_dir / "portability.yaml"
+    portability = _read_yaml_mapping(portability_path)
+    target = _yaml_mapping(portability.get("target"))
+    return InspectSummary(
+        target_type="export",
+        target_id=request.target_id,
+        path=str(bundle_dir),
+        status="exported",
+        payload={
+            "capability_name": _yaml_string(portability.get("capability")),
+            "version": _yaml_string(portability.get("version")),
+            "schema_version": _yaml_string(portability.get("schema_version")),
+            "target_runtime": _yaml_string(target.get("runtime")),
+            "target_model": _yaml_string(target.get("model")),
+            "portability_path": str(portability_path),
+            "capability_path": str(bundle_dir / "capability.yaml"),
+        },
+    )
+
+
+def _inspect_export_file(export_path: Path) -> InspectSummary:
+    bundle = load_export_bundle(export_path.stem, export_path.parent.parent)
+    return InspectSummary(
+        target_type="export",
+        target_id=bundle.id,
+        path=str(export_path),
+        status="exported",
+        payload={
+            "capability_name": bundle.capability_name,
+            "source_evidence_id": bundle.source_evidence.id,
+            "eval_count": len(bundle.eval_results),
+            "context_count": len(bundle.context_bundles),
+            "learning_count": len(bundle.learning_exports),
+            "reflection_count": len(bundle.reflection_reports),
+            "schema_version": bundle.manifest.schema_version,
+        },
+    )
+
+
+def _inspect_import(request: InspectRequest) -> InspectSummary:
+    capability_name = _capability_name(request.target_id)
+    package_dir = request.capabilities_dir / capability_name
+    overlay_path = _matching_import_overlay(package_dir, request)
+    overlay = _read_yaml_mapping(overlay_path)
+    target = _yaml_mapping(overlay.get("target"))
+    return InspectSummary(
+        target_type="import",
+        target_id=capability_name,
+        path=str(overlay_path),
+        status=_yaml_string(overlay.get("status")),
+        payload={
+            "target_runtime": _yaml_string(target.get("runtime")),
+            "target_model": _yaml_string(target.get("model")),
+            "schema_version": _yaml_string(overlay.get("schema_version")),
+            "portability_readiness_score": _yaml_number(
+                overlay.get("portability_readiness_score"),
+            ),
+            "validation_report_path": str(
+                overlay_path.parent / "validation_report.yaml",
+            ),
+            "instructions_path": str(overlay_path.parent / "instructions.md"),
+            "eval_id": _yaml_string(overlay.get("eval_id")),
+            "failure_evidence_id": _yaml_string(overlay.get("failure_evidence_id")),
+        },
+    )
+
+
+def _matching_import_overlay(package_dir: Path, request: InspectRequest) -> Path:
+    matches: list[Path] = []
+    for overlay_path in sorted(package_dir.glob("imports/*/target.overlay.yaml")):
+        overlay = _read_yaml_mapping(overlay_path)
+        target = _yaml_mapping(overlay.get("target"))
+        runtime = _yaml_string(target.get("runtime"))
+        model = _yaml_string(target.get("model"))
+        if request.target is not None and runtime != request.target:
+            continue
+        if request.model is not None and model != request.model:
+            continue
+        matches.append(overlay_path)
+    if not matches:
+        target_label = request.target or "any"
+        raise InvalidInspectTargetError(
+            target_kind="import target",
+            value=f"{request.target_id}:{target_label}",
+        )
+    if len(matches) > 1 and request.target is None:
+        raise InvalidInspectTargetError(
+            target_kind="ambiguous import target",
+            value=request.target_id,
+        )
+    return matches[0]
 
 
 def _inspect_context(request: InspectRequest) -> InspectSummary:
@@ -233,3 +365,36 @@ def _capability_name(value: str) -> str:
     if not re.fullmatch(CAPABILITY_NAME_PATTERN, value):
         raise InvalidInspectTargetError(target_kind="capability name", value=value)
     return value
+
+
+def _read_yaml_mapping(path: Path) -> dict[str, JsonValue]:
+    try:
+        parsed = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as exc:
+        raise InvalidInspectTargetError(
+            target_kind="yaml file",
+            value=str(path),
+        ) from exc
+    if not isinstance(parsed, dict):
+        raise InvalidInspectTargetError(target_kind="yaml mapping", value=str(path))
+    return cast("dict[str, JsonValue]", parsed)
+
+
+def _yaml_mapping(value: JsonValue | None) -> dict[str, JsonValue]:
+    if isinstance(value, dict):
+        return value
+    return {}
+
+
+def _yaml_string(value: JsonValue | None) -> str | None:
+    if isinstance(value, str):
+        return value
+    return None
+
+
+def _yaml_number(value: JsonValue | None) -> int | float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return value
+    return None

@@ -133,8 +133,9 @@ omf health repo_issue_triage \
   --capabilities-dir /tmp/omf-smoke/capabilities
 ```
 
-From a source checkout, prefix those commands with `uv run`. Use a real agent
-log when you have one.
+For a repo-local field, run `omf init` first to create `.omf/config.yaml`, the
+default artifact directories, and `.omfignore`. From a source checkout, prefix
+those commands with `uv run`. Use a real agent log when you have one.
 
 ## What You Get
 
@@ -254,6 +255,7 @@ metadata-only.
 - Install guide: [docs/install.md](docs/install.md)
 - 5-minute quickstart: [docs/quickstart.md](docs/quickstart.md)
 - Security model: [docs/security.md](docs/security.md)
+- Architecture overview: [docs/architecture/overview.md](docs/architecture/overview.md)
 - CLI command reference: [Command Interface](oh-my-field.md#command-interface)
 - Capability package shape: [Capability Package](oh-my-field.md#capability-package)
 - Artifact pipeline design:

@@ -40,6 +40,7 @@ def test_version_outputs_json_schema_versions() -> None:
     assert output.version == "0.1.0"
     assert output.schema_versions["capability"] == "0.1"
     assert output.schema_versions["evidence"] == "0.1"
+    assert output.schema_versions["harness"] == "0.1"
     assert output.schema_versions["portability"] == "0.1"
 
 

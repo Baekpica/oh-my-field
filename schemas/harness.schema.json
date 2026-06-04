@@ -1,0 +1,57 @@
+{
+  "$defs": {
+    "HarnessStatus": {
+      "enum": [
+        "pass",
+        "fail"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "checks": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Checks",
+      "type": "array"
+    },
+    "failures": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Failures",
+      "type": "array"
+    },
+    "human_review_required": {
+      "default": false,
+      "title": "Human Review Required",
+      "type": "boolean"
+    },
+    "required_checks": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Required Checks",
+      "type": "array"
+    },
+    "schema_version": {
+      "default": "omf.harness.v0.1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/HarnessStatus"
+    }
+  },
+  "required": [
+    "status",
+    "checks"
+  ],
+  "title": "HarnessResult",
+  "type": "object"
+}

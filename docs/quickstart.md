@@ -3,6 +3,12 @@
 This smoke flow imports a small agent log, promotes it into a capability, and
 checks the capability health.
 
+For a repo-local field, run this once first:
+
+```bash
+omf init
+```
+
 ```bash
 mkdir -p /tmp/omf-smoke
 printf "agent run log\n" > /tmp/omf-smoke/codex.log

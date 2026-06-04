@@ -1,0 +1,768 @@
+{
+  "$defs": {
+    "ArtifactIntegrityLink": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_id": {
+          "minLength": 1,
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "artifact_type": {
+          "minLength": 1,
+          "title": "Artifact Type",
+          "type": "string"
+        },
+        "previous_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Previous Sha256"
+        },
+        "sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact_type",
+        "artifact_id",
+        "sha256"
+      ],
+      "title": "ArtifactIntegrityLink",
+      "type": "object"
+    },
+    "ArtifactStorageMode": {
+      "enum": [
+        "inline",
+        "external"
+      ],
+      "type": "string"
+    },
+    "CaptureStatus": {
+      "enum": [
+        "captured",
+        "partial",
+        "failed"
+      ],
+      "type": "string"
+    },
+    "CapturedFileRole": {
+      "enum": [
+        "prompt",
+        "context",
+        "tool_call",
+        "command_output",
+        "diff",
+        "test_result",
+        "artifact"
+      ],
+      "type": "string"
+    },
+    "CapturedTextFile": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "title": "Content",
+          "type": "string"
+        },
+        "mime_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mime Type"
+        },
+        "path": {
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "redacted": {
+          "default": false,
+          "title": "Redacted",
+          "type": "boolean"
+        },
+        "role": {
+          "$ref": "#/$defs/CapturedFileRole"
+        },
+        "sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        },
+        "storage_mode": {
+          "$ref": "#/$defs/ArtifactStorageMode",
+          "default": "inline"
+        }
+      },
+      "required": [
+        "role",
+        "path",
+        "content",
+        "size_bytes",
+        "sha256"
+      ],
+      "title": "CapturedTextFile",
+      "type": "object"
+    },
+    "CommandEnvPolicy": {
+      "const": "minimal",
+      "type": "string"
+    },
+    "CommandExecution": {
+      "additionalProperties": false,
+      "properties": {
+        "allowed_env": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Env",
+          "type": "array"
+        },
+        "approval_required": {
+          "default": false,
+          "title": "Approval Required",
+          "type": "boolean"
+        },
+        "approved": {
+          "default": false,
+          "title": "Approved",
+          "type": "boolean"
+        },
+        "blocked_env": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Blocked Env",
+          "type": "array"
+        },
+        "command": {
+          "minLength": 1,
+          "title": "Command",
+          "type": "string"
+        },
+        "cwd": {
+          "minLength": 1,
+          "title": "Cwd",
+          "type": "string"
+        },
+        "cwd_inside_project": {
+          "default": true,
+          "title": "Cwd Inside Project",
+          "type": "boolean"
+        },
+        "duration_ms": {
+          "minimum": 0,
+          "title": "Duration Ms",
+          "type": "integer"
+        },
+        "env_policy": {
+          "$ref": "#/$defs/CommandEnvPolicy",
+          "default": "minimal"
+        },
+        "exit_code": {
+          "title": "Exit Code",
+          "type": "integer"
+        },
+        "risk_categories": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CommandRiskCategory"
+          },
+          "title": "Risk Categories",
+          "type": "array"
+        },
+        "shell": {
+          "default": true,
+          "title": "Shell",
+          "type": "boolean"
+        },
+        "stderr": {
+          "default": "",
+          "title": "Stderr",
+          "type": "string"
+        },
+        "stdout": {
+          "default": "",
+          "title": "Stdout",
+          "type": "string"
+        }
+      },
+      "required": [
+        "command",
+        "cwd",
+        "exit_code",
+        "duration_ms"
+      ],
+      "title": "CommandExecution",
+      "type": "object"
+    },
+    "CommandRiskCategory": {
+      "enum": [
+        "write",
+        "destructive",
+        "external_call",
+        "credential_access",
+        "production_write",
+        "paid_operation"
+      ],
+      "type": "string"
+    },
+    "CostMetrics": {
+      "additionalProperties": false,
+      "properties": {
+        "input_tokens": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Input Tokens",
+          "type": "integer"
+        },
+        "output_tokens": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Output Tokens",
+          "type": "integer"
+        },
+        "total_cost_usd": {
+          "default": 0.0,
+          "minimum": 0.0,
+          "title": "Total Cost Usd",
+          "type": "number"
+        }
+      },
+      "title": "CostMetrics",
+      "type": "object"
+    },
+    "HarnessResult": {
+      "additionalProperties": false,
+      "properties": {
+        "checks": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Checks",
+          "type": "array"
+        },
+        "failures": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Failures",
+          "type": "array"
+        },
+        "human_review_required": {
+          "default": false,
+          "title": "Human Review Required",
+          "type": "boolean"
+        },
+        "required_checks": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Checks",
+          "type": "array"
+        },
+        "schema_version": {
+          "default": "omf.harness.v0.1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/HarnessStatus"
+        }
+      },
+      "required": [
+        "status",
+        "checks"
+      ],
+      "title": "HarnessResult",
+      "type": "object"
+    },
+    "HarnessStatus": {
+      "enum": [
+        "pass",
+        "fail"
+      ],
+      "type": "string"
+    },
+    "HumanReview": {
+      "additionalProperties": false,
+      "properties": {
+        "added_context": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Added Context",
+          "type": "array"
+        },
+        "changed_constraint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Changed Constraint"
+        },
+        "changed_goal": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Changed Goal"
+        },
+        "notes": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Notes",
+          "type": "array"
+        },
+        "regression_case": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Regression Case"
+        },
+        "reusable": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reusable"
+        },
+        "reviewed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reviewed At"
+        },
+        "reviewer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reviewer"
+        },
+        "revision_request": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Revision Request"
+        },
+        "status": {
+          "$ref": "#/$defs/HumanReviewStatus",
+          "default": "pending"
+        },
+        "unsafe": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unsafe"
+        }
+      },
+      "title": "HumanReview",
+      "type": "object"
+    },
+    "HumanReviewStatus": {
+      "enum": [
+        "pending",
+        "approved",
+        "rejected",
+        "revision_requested",
+        "context_added",
+        "goal_changed",
+        "constraint_changed",
+        "marked_reusable",
+        "marked_unsafe",
+        "regression_case_created"
+      ],
+      "type": "string"
+    },
+    "LatencyMetrics": {
+      "additionalProperties": false,
+      "properties": {
+        "tool_ms": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Tool Ms",
+          "type": "integer"
+        },
+        "total_ms": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Total Ms",
+          "type": "integer"
+        }
+      },
+      "title": "LatencyMetrics",
+      "type": "object"
+    },
+    "RuntimeInfo": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "preferred_models": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Preferred Models",
+          "type": "array"
+        },
+        "tools": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Tools",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "RuntimeInfo",
+      "type": "object"
+    },
+    "SuccessLabel": {
+      "enum": [
+        "success",
+        "failure",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "TaskOutcome": {
+      "enum": [
+        "success",
+        "failure",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "ToolCallRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "input": {
+          "default": "",
+          "title": "Input",
+          "type": "string"
+        },
+        "output": {
+          "default": "",
+          "title": "Output",
+          "type": "string"
+        },
+        "tool": {
+          "minLength": 1,
+          "title": "Tool",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool"
+      ],
+      "title": "ToolCallRecord",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "capability_id": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Capability Id"
+    },
+    "capture_status": {
+      "$ref": "#/$defs/CaptureStatus",
+      "default": "captured"
+    },
+    "command_executions": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/CommandExecution"
+      },
+      "title": "Command Executions",
+      "type": "array"
+    },
+    "cost_metrics": {
+      "$ref": "#/$defs/CostMetrics"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "errors": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Errors",
+      "type": "array"
+    },
+    "execution_outputs": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Execution Outputs",
+      "type": "array"
+    },
+    "feedback": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Feedback",
+      "type": "array"
+    },
+    "field": {
+      "minLength": 1,
+      "title": "Field",
+      "type": "string"
+    },
+    "files": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/CapturedTextFile"
+      },
+      "title": "Files",
+      "type": "array"
+    },
+    "final_artifacts": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Final Artifacts",
+      "type": "array"
+    },
+    "generated_commands": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Generated Commands",
+      "type": "array"
+    },
+    "generated_scripts": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Generated Scripts",
+      "type": "array"
+    },
+    "goal": {
+      "minLength": 1,
+      "title": "Goal",
+      "type": "string"
+    },
+    "harness": {
+      "$ref": "#/$defs/HarnessResult"
+    },
+    "human_review": {
+      "$ref": "#/$defs/HumanReview"
+    },
+    "id": {
+      "pattern": "^[0-9]{8}T[0-9]{6}Z-[a-f0-9]{8}$",
+      "title": "Id",
+      "type": "string"
+    },
+    "improvement_notes": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Improvement Notes",
+      "type": "array"
+    },
+    "input_context": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Input Context",
+      "type": "array"
+    },
+    "integrity_chain": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ArtifactIntegrityLink"
+      },
+      "title": "Integrity Chain",
+      "type": "array"
+    },
+    "latency_metrics": {
+      "$ref": "#/$defs/LatencyMetrics"
+    },
+    "normalized_goal": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Normalized Goal"
+    },
+    "retries": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Retries",
+      "type": "integer"
+    },
+    "runtime": {
+      "$ref": "#/$defs/RuntimeInfo"
+    },
+    "schema_version": {
+      "default": "omf.evidence.v0.1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "session_id": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9]{8}T[0-9]{6}Z-[a-f0-9]{8}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Session Id"
+    },
+    "success_or_failure_label": {
+      "$ref": "#/$defs/SuccessLabel",
+      "default": "unknown"
+    },
+    "task_outcome": {
+      "$ref": "#/$defs/TaskOutcome",
+      "default": "unknown"
+    },
+    "tool_calls": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ToolCallRecord"
+      },
+      "title": "Tool Calls",
+      "type": "array"
+    },
+    "user_interventions": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "User Interventions",
+      "type": "array"
+    }
+  },
+  "required": [
+    "id",
+    "created_at",
+    "goal",
+    "field",
+    "runtime",
+    "harness"
+  ],
+  "title": "EvidenceRecord",
+  "type": "object"
+}
