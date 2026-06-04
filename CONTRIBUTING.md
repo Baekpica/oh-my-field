@@ -3,23 +3,15 @@
 oh-my-field is in alpha. Keep changes small, evidence-backed, and easy to
 verify.
 
-## Development Setup
+## Development Setup And Checks
+
+See the [development guide](docs/development.md) for setup, the strict
+test/lint/type-check gates, the layered architecture and compatibility-shim
+rules, and the project conventions. The short version:
 
 ```bash
 uv sync --all-extras --dev
-uv run omf --help
-```
-
-## Local Checks
-
-Run the same gates used by CI:
-
-```bash
-uv run ruff format --check .
-uv run ruff check .
-uv run pyright
-uv run pytest
-uv build
+uv run ruff format --check . && uv run ruff check . && uv run pyright && uv run pytest && uv build
 ```
 
 ## Contribution Workflow

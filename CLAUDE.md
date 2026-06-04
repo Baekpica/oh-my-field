@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+The human-facing version of this guidance — setup, gates, architecture, and conventions — is [docs/development.md](docs/development.md); contribution workflow is [CONTRIBUTING.md](CONTRIBUTING.md); agent behavioral guidelines are [AGENTS.md](AGENTS.md). Keep this file and `docs/development.md` consistent when either changes.
+
 ## Commands
 
 This project uses `uv` (Python `>=3.12`). All commands run through `uv run`.
