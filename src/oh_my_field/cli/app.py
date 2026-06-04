@@ -23,6 +23,7 @@ from oh_my_field.cli.commands import (
     registry,
     replay,
     review,
+    session,
     verify,
 )
 
@@ -37,6 +38,8 @@ capability_app = typer.Typer(
 app.add_typer(capability_app, name="capability")
 install_app = typer.Typer(help="Install OMF agent activation resources.")
 app.add_typer(install_app, name="install")
+session_app = typer.Typer(help="Track active agent work as OMF sessions.")
+app.add_typer(session_app, name="session")
 
 
 def _main() -> None:
@@ -68,3 +71,4 @@ registry.register(app)
 reflect.register(app)
 inspect_artifact.register(app)
 export.register(app)
+session.register(session_app)
