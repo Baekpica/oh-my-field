@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/Baekpica/oh-my-field/actions/workflows/ci.yml/badge.svg)](https://github.com/Baekpica/oh-my-field/actions/workflows/ci.yml)
 
-[Website](https://oh-my-field-web.vercel.app/)
+[Website](https://oh-my-field.dev/)
 
 Field-fit agents to real work. oh-my-field turns one-off agent sessions into
 portable, evidence-backed capability packages.
