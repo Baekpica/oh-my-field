@@ -3,9 +3,13 @@ from typing import Annotated
 
 import typer
 
+from oh_my_field.application.reflect import (
+    ReflectError,
+    ReflectRequest,
+    run_reflect_workflow,
+)
 from oh_my_field.cli.errors import cli_errors
 from oh_my_field.cli.output import emit_json
-from oh_my_field.reflect import ReflectError, ReflectRequest, run_reflect_workflow
 
 
 def reflect(

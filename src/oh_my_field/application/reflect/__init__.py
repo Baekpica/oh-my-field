@@ -1,10 +1,4 @@
-"""Compatibility shim: reflect moved to oh_my_field.application.reflect.
-
-Importing from ``oh_my_field.reflect`` keeps working while internal callers
-migrate to the application layer path.
-"""
-
-from oh_my_field.application.reflect import (
+from oh_my_field.application.reflect.workflow import (
     CapabilityNameMismatchError,
     ReflectDependencies,
     ReflectError,
