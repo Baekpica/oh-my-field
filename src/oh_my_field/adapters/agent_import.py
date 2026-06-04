@@ -243,9 +243,13 @@ def import_agent_run(
     dependencies: AgentImportDependencies | None = None,
 ) -> AgentImportSummary:
     """Import an external agent run through its registered runtime adapter."""
-    return build_adapter_registry().get(request.adapter).import_run(
-        request,
-        dependencies,
+    return (
+        build_adapter_registry()
+        .get(request.adapter)
+        .import_run(
+            request,
+            dependencies,
+        )
     )
 
 

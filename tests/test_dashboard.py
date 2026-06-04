@@ -89,12 +89,11 @@ def test_dashboard_snapshot_surfaces_runtime_state_and_approvals(
     assert snapshot.capabilities[0].portability_validation_status == (
         "needs_adaptation"
     )
-    assert snapshot.capabilities[0].portability_targets[0].target == (
-        "codex:gpt-5.5"
+    assert snapshot.capabilities[0].portability_targets[0].target == ("codex:gpt-5.5")
+    assert (
+        snapshot.capabilities[0].portability_targets[0].portability_readiness_score
+        == 0.42
     )
-    assert snapshot.capabilities[0].portability_targets[
-        0
-    ].portability_readiness_score == 0.42
     assert snapshot.capabilities[0].next_action == (
         "run `omf verify capability repo_issue_triage`"
     )
