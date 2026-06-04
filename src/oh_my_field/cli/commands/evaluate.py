@@ -4,6 +4,11 @@ from typing import Annotated
 import typer
 
 from oh_my_field.application.eval import EvalError, EvalRequest, run_eval_workflow
+from oh_my_field.application.eval_set import (
+    EvalSetError,
+    RegressionCaseRequest,
+    upsert_regression_case,
+)
 from oh_my_field.cli.errors import cli_errors
 from oh_my_field.cli.options import (
     eval_checklist_items,
@@ -11,11 +16,6 @@ from oh_my_field.cli.options import (
     matrix_profiles,
 )
 from oh_my_field.cli.output import emit_json
-from oh_my_field.eval_set import (
-    EvalSetError,
-    RegressionCaseRequest,
-    upsert_regression_case,
-)
 from oh_my_field.models import StrictModel
 
 
