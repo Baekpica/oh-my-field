@@ -32,7 +32,17 @@ omf capability validate <capability_name> --target <runtime> --run-command "..."
 ```
 
 The CLI is the fallback interface. When MCP tools are available, the agent can
-use structured tool calls for the same workflow.
+use structured tool calls for the same workflow. Install the generic config
+with:
+
+```bash
+omf install mcp --client generic --out .omf/mcp.json
+```
+
+The initial MCP surface mirrors the activation loop:
+`omf_start_session`, `omf_record_event`, `omf_finish_session`,
+`omf_materialize_session`, `omf_promote_capability`,
+`omf_export_capability`, and `omf_health`.
 
 ## Activation Semantics
 
