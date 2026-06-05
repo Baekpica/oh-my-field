@@ -6,6 +6,12 @@ from pydantic import BaseModel, ConfigDict
 from typer.testing import CliRunner
 
 from oh_my_field.cli import app
+from oh_my_field.domain.layout import DEFAULT_CAPABILITIES_DIR
+from oh_my_field.mcp.schemas import (
+    ExportCapabilityToolRequest,
+    HealthToolRequest,
+    PromoteCapabilityToolRequest,
+)
 from oh_my_field.mcp.server import handle_message
 from oh_my_field.mcp.tools import dispatch_tool, mcp_tool_definitions
 
@@ -119,6 +125,21 @@ def test_mcp_tools_list_uses_json_schema() -> None:
     start = next(tool for tool in tools if tool["name"] == "omf_start_session")
     schema = cast("dict[str, object]", start["inputSchema"])
     assert schema["type"] == "object"
+
+
+def test_mcp_default_layout_matches_canonical_capabilities_dir() -> None:
+    assert (
+        PromoteCapabilityToolRequest.model_fields["capabilities_dir"].default
+        == DEFAULT_CAPABILITIES_DIR
+    )
+    assert (
+        ExportCapabilityToolRequest.model_fields["capabilities_dir"].default
+        == DEFAULT_CAPABILITIES_DIR
+    )
+    assert (
+        HealthToolRequest.model_fields["capabilities_dir"].default
+        == DEFAULT_CAPABILITIES_DIR
+    )
 
 
 def test_mcp_server_handles_tools_list_jsonrpc() -> None:

@@ -10,6 +10,10 @@ from oh_my_field.application.promote import (
 )
 from oh_my_field.cli.errors import cli_errors
 from oh_my_field.cli.output import emit_json
+from oh_my_field.domain.layout import (
+    DEFAULT_CAPABILITIES_DIR,
+    DEFAULT_EVAL_DIR,
+)
 
 
 def promote(
@@ -24,10 +28,10 @@ def promote(
     evidence_dir: Annotated[Path, typer.Option("--evidence-dir")] = Path(
         ".omf/evidence",
     ),
-    eval_dir: Annotated[Path, typer.Option("--eval-dir")] = Path(".omf/evals"),
-    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
-        "capabilities",
-    ),
+    eval_dir: Annotated[Path, typer.Option("--eval-dir")] = DEFAULT_EVAL_DIR,
+    capabilities_dir: Annotated[
+        Path, typer.Option("--capabilities-dir")
+    ] = DEFAULT_CAPABILITIES_DIR,
 ) -> None:
     with cli_errors(PromoteError):
         request = PromoteRequest(

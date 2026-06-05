@@ -1,0 +1,23 @@
+from pathlib import Path
+
+OMF_DIR = Path(".omf")
+
+DEFAULT_CAPABILITIES_DIR = Path("capabilities")
+DEFAULT_EVIDENCE_DIR = OMF_DIR / "evidence"
+DEFAULT_SESSIONS_DIR = OMF_DIR / "sessions"
+DEFAULT_EXPORTS_DIR = OMF_DIR / "exports"
+DEFAULT_IMPORTS_DIR = OMF_DIR / "imports"
+DEFAULT_EVAL_DIR = OMF_DIR / "evals"
+DEFAULT_REPLAYS_DIR = OMF_DIR / "replays"
+DEFAULT_CONTEXT_DIR = OMF_DIR / "context"
+DEFAULT_LEARNING_DIR = OMF_DIR / "learning"
+DEFAULT_DATASETS_DIR = OMF_DIR / "datasets"
+DEFAULT_REFLECTIONS_DIR = OMF_DIR / "reflections"
+DEFAULT_WORKFLOWS_DIR = OMF_DIR / "workflows"
+DEFAULT_RUNS_DIR = OMF_DIR / "runs"
+DEFAULT_CACHE_DIR = OMF_DIR / "cache"
+DEFAULT_REVIEW_DIR = OMF_DIR / "reviews"
+DEFAULT_EVAL_SET_DIR = OMF_DIR / "eval_sets"
+DEFAULT_LEARNING_PATCH_DIR = OMF_DIR / "learning_patches"
+DEFAULT_AGENT_SKILL_DIR = OMF_DIR / "agent" / "omf-skill"
+DEFAULT_MCP_CONFIG_PATH = OMF_DIR / "mcp.json"

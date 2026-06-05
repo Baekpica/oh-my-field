@@ -9,6 +9,10 @@ from oh_my_field.application.diff_artifacts import (
     compare_artifacts,
 )
 from oh_my_field.cli.errors import cli_errors
+from oh_my_field.domain.layout import (
+    DEFAULT_CAPABILITIES_DIR,
+    DEFAULT_LEARNING_PATCH_DIR,
+)
 
 
 def diff_artifacts(
@@ -18,9 +22,9 @@ def diff_artifacts(
     ],
     left: Annotated[str, typer.Argument()],
     right: Annotated[str | None, typer.Argument()] = None,
-    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
-        "capabilities",
-    ),
+    capabilities_dir: Annotated[
+        Path, typer.Option("--capabilities-dir")
+    ] = DEFAULT_CAPABILITIES_DIR,
     from_capabilities_dir: Annotated[
         Path | None,
         typer.Option("--from-capabilities-dir"),
@@ -35,7 +39,7 @@ def diff_artifacts(
     learning_patch_dir: Annotated[
         Path,
         typer.Option("--learning-patch-dir"),
-    ] = Path(".omf/learning_patches"),
+    ] = DEFAULT_LEARNING_PATCH_DIR,
 ) -> None:
     with cli_errors(DiffError):
         summary = compare_artifacts(

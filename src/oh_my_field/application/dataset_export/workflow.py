@@ -4,6 +4,12 @@ from typing import Literal
 
 from pydantic import Field
 
+from oh_my_field.domain.layout import (
+    DEFAULT_DATASETS_DIR,
+    DEFAULT_EVAL_DIR,
+    DEFAULT_LEARNING_DIR,
+    DEFAULT_LEARNING_PATCH_DIR,
+)
 from oh_my_field.models import (
     CAPABILITY_NAME_PATTERN,
     EvalResult,
@@ -34,10 +40,10 @@ class DatasetExportError(Exception):
 class DatasetExportRequest(StrictModel):
     capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
     dataset_type: DatasetExportType = "all"
-    learning_dir: Path = Path(".omf/learning")
-    learning_patch_dir: Path = Path(".omf/learning_patches")
-    eval_dir: Path = Path(".omf/evals")
-    output_dir: Path = Path(".omf/datasets")
+    learning_dir: Path = DEFAULT_LEARNING_DIR
+    learning_patch_dir: Path = DEFAULT_LEARNING_PATCH_DIR
+    eval_dir: Path = DEFAULT_EVAL_DIR
+    output_dir: Path = DEFAULT_DATASETS_DIR
 
 
 class DatasetExportFile(StrictModel):

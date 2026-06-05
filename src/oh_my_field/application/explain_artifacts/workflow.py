@@ -3,6 +3,10 @@ from typing import Literal
 
 from pydantic import Field
 
+from oh_my_field.domain.layout import (
+    DEFAULT_CAPABILITIES_DIR,
+    DEFAULT_LEARNING_PATCH_DIR,
+)
 from oh_my_field.models import StrictModel
 from oh_my_field.storage import load_learning_patch_decision, load_manifest
 
@@ -21,8 +25,8 @@ class ExplainRequest(StrictModel):
     target_id: str = Field(min_length=1)
     rule: str | None = None
     check: str | None = None
-    capabilities_dir: Path = Path("capabilities")
-    learning_patch_dir: Path = Path(".omf/learning_patches")
+    capabilities_dir: Path = DEFAULT_CAPABILITIES_DIR
+    learning_patch_dir: Path = DEFAULT_LEARNING_PATCH_DIR
 
 
 class ExplainSummary(StrictModel):

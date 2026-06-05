@@ -16,6 +16,7 @@ from oh_my_field.cli.options import (
     matrix_profiles,
 )
 from oh_my_field.cli.output import emit_json
+from oh_my_field.domain.layout import DEFAULT_CAPABILITIES_DIR
 from oh_my_field.models import StrictModel
 
 
@@ -34,9 +35,9 @@ class EvalMatrixSummary(StrictModel):
 def evaluate(
     capability_name: Annotated[str, typer.Argument()],
     replay_id: Annotated[str | None, typer.Option("--replay-id")] = None,
-    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
-        "capabilities",
-    ),
+    capabilities_dir: Annotated[
+        Path, typer.Option("--capabilities-dir")
+    ] = DEFAULT_CAPABILITIES_DIR,
     evidence_dir: Annotated[Path, typer.Option("--evidence-dir")] = Path(
         ".omf/evidence",
     ),

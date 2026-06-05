@@ -10,6 +10,10 @@ from oh_my_field.application.dataset_export import (
 )
 from oh_my_field.cli.errors import cli_errors
 from oh_my_field.cli.output import emit_json
+from oh_my_field.domain.layout import (
+    DEFAULT_EVAL_DIR,
+    DEFAULT_LEARNING_PATCH_DIR,
+)
 
 DatasetTypeOption = Literal["all", "fine-tuning", "preference", "eval"]
 
@@ -26,8 +30,8 @@ def dataset_export(
     learning_patch_dir: Annotated[
         Path,
         typer.Option("--learning-patch-dir"),
-    ] = Path(".omf/learning_patches"),
-    eval_dir: Annotated[Path, typer.Option("--eval-dir")] = Path(".omf/evals"),
+    ] = DEFAULT_LEARNING_PATCH_DIR,
+    eval_dir: Annotated[Path, typer.Option("--eval-dir")] = DEFAULT_EVAL_DIR,
     output_dir: Annotated[Path, typer.Option("--output-dir")] = Path(
         ".omf/datasets",
     ),

@@ -7,6 +7,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from pydantic import Field
 
+from oh_my_field.domain.layout import DEFAULT_EVAL_DIR
 from oh_my_field.integrity import append_integrity_link, integrity_link
 from oh_my_field.models import (
     COMMAND_RISK_CATEGORIES,
@@ -103,7 +104,7 @@ class PromoteRequest(StrictModel):
     description: str = Field(min_length=1)
     version: str = Field(min_length=1)
     evidence_dir: Path
-    eval_dir: Path = Path(".omf/evals")
+    eval_dir: Path = DEFAULT_EVAL_DIR
     capabilities_dir: Path
 
 

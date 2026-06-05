@@ -14,6 +14,15 @@ from oh_my_field.capture import (
     run_capture_workflow,
 )
 from oh_my_field.context import ContextError, ContextRequest, run_context_workflow
+from oh_my_field.domain.layout import (
+    DEFAULT_CAPABILITIES_DIR,
+    DEFAULT_CONTEXT_DIR,
+    DEFAULT_EVAL_DIR,
+    DEFAULT_EVIDENCE_DIR,
+    DEFAULT_LEARNING_DIR,
+    DEFAULT_REPLAYS_DIR,
+    DEFAULT_WORKFLOWS_DIR,
+)
 from oh_my_field.eval import EvalError, EvalRequest, run_eval_workflow
 from oh_my_field.learn import LearnError, LearnRequest, run_learn_workflow
 from oh_my_field.models import (
@@ -110,18 +119,18 @@ class OrchestrateRequest(StrictModel):
     execute_replay_commands: bool = True
     include_optional_context: bool = True
     allow_failed_capture: bool = False
-    evidence_dir: Path = Path(".omf/evidence")
-    capabilities_dir: Path = Path("capabilities")
-    replay_dir: Path = Path(".omf/replays")
-    eval_dir: Path = Path(".omf/evals")
-    context_dir: Path = Path(".omf/context")
-    learning_dir: Path = Path(".omf/learning")
-    workflow_dir: Path = Path(".omf/workflows")
+    evidence_dir: Path = DEFAULT_EVIDENCE_DIR
+    capabilities_dir: Path = DEFAULT_CAPABILITIES_DIR
+    replay_dir: Path = DEFAULT_REPLAYS_DIR
+    eval_dir: Path = DEFAULT_EVAL_DIR
+    context_dir: Path = DEFAULT_CONTEXT_DIR
+    learning_dir: Path = DEFAULT_LEARNING_DIR
+    workflow_dir: Path = DEFAULT_WORKFLOWS_DIR
 
 
 class ResumeRequest(StrictModel):
     run_id: str = Field(min_length=1)
-    workflow_dir: Path = Path(".omf/workflows")
+    workflow_dir: Path = DEFAULT_WORKFLOWS_DIR
 
 
 class WorkflowRunSummary(StrictModel):

@@ -10,13 +10,14 @@ from oh_my_field.application.context import (
 )
 from oh_my_field.cli.errors import cli_errors
 from oh_my_field.cli.output import emit_json
+from oh_my_field.domain.layout import DEFAULT_CAPABILITIES_DIR
 
 
 def context(
     capability_name: Annotated[str, typer.Argument()],
-    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
-        "capabilities",
-    ),
+    capabilities_dir: Annotated[
+        Path, typer.Option("--capabilities-dir")
+    ] = DEFAULT_CAPABILITIES_DIR,
     evidence_dir: Annotated[Path, typer.Option("--evidence-dir")] = Path(
         ".omf/evidence",
     ),

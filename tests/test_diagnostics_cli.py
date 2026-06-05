@@ -24,6 +24,10 @@ class DoctorOutput(BaseModel):
     python: str
     platform: str
     cwd: str
+    field_config_found: bool
+    configured_capabilities_dir: str | None
+    canonical_capabilities_dir: str
+    layout_warnings: tuple[str, ...]
     cwd_writable: bool
     omf_dir_creatable: bool
     git: bool
@@ -50,6 +54,7 @@ def test_doctor_outputs_json_environment_summary() -> None:
     assert result.exit_code == 0
     output = DoctorOutput.model_validate_json(result.stdout)
     assert output.version == "0.1.0"
+    assert output.canonical_capabilities_dir == "capabilities"
     assert set(output.optional_runtimes) == {"codex", "claude", "hermes-code"}
 
 
@@ -60,3 +65,22 @@ def test_doctor_checks_omf_directory_creatable_without_creating_it(
 
     assert summary.omf_dir_creatable
     assert not tmp_path.joinpath(".omf").exists()
+
+
+def test_doctor_reports_legacy_capabilities_layout_warning(tmp_path: Path) -> None:
+    config_path = tmp_path / ".omf" / "config.yaml"
+    config_path.parent.mkdir()
+    config_path.write_text(
+        "storage:\n  capabilities_dir: .omf/capabilities\n",
+        encoding="utf-8",
+    )
+
+    summary = build_doctor_summary(tmp_path)
+
+    assert summary.field_config_found
+    assert summary.configured_capabilities_dir == ".omf/capabilities"
+    assert summary.canonical_capabilities_dir == "capabilities"
+    assert summary.layout_warnings == (
+        "configured capabilities_dir points to .omf/capabilities; "
+        "canonical release layout is capabilities/",
+    )

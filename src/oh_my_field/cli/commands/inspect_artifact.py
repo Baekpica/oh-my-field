@@ -7,6 +7,11 @@ from oh_my_field.application.inspection import InspectRequest
 from oh_my_field.application.inspection import inspect_artifact as run_inspect
 from oh_my_field.cli.errors import cli_errors
 from oh_my_field.cli.output import emit_json
+from oh_my_field.domain.layout import (
+    DEFAULT_CAPABILITIES_DIR,
+    DEFAULT_EVAL_DIR,
+    DEFAULT_EXPORTS_DIR,
+)
 
 
 def inspect_command(
@@ -27,16 +32,16 @@ def inspect_command(
         typer.Argument(),
     ],
     target_id: Annotated[str, typer.Argument()],
-    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
-        "capabilities",
-    ),
+    capabilities_dir: Annotated[
+        Path, typer.Option("--capabilities-dir")
+    ] = DEFAULT_CAPABILITIES_DIR,
     evidence_dir: Annotated[Path, typer.Option("--evidence-dir")] = Path(
         ".omf/evidence",
     ),
     replay_dir: Annotated[Path, typer.Option("--replay-dir")] = Path(
         ".omf/replays",
     ),
-    eval_dir: Annotated[Path, typer.Option("--eval-dir")] = Path(".omf/evals"),
+    eval_dir: Annotated[Path, typer.Option("--eval-dir")] = DEFAULT_EVAL_DIR,
     workflow_dir: Annotated[Path, typer.Option("--workflow-dir")] = Path(
         ".omf/workflows",
     ),
@@ -49,7 +54,7 @@ def inspect_command(
     reflection_dir: Annotated[Path, typer.Option("--reflection-dir")] = Path(
         ".omf/reflections",
     ),
-    export_dir: Annotated[Path, typer.Option("--export-dir")] = Path(".omf/exports"),
+    export_dir: Annotated[Path, typer.Option("--export-dir")] = DEFAULT_EXPORTS_DIR,
     target: Annotated[str | None, typer.Option("--target")] = None,
     model: Annotated[str | None, typer.Option("--model")] = None,
 ) -> None:

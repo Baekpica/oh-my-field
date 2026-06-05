@@ -5,14 +5,15 @@ import typer
 
 from oh_my_field.application.init_field import InitFieldRequest, initialize_field
 from oh_my_field.cli.output import emit_json
+from oh_my_field.domain.layout import DEFAULT_CAPABILITIES_DIR
 
 
 def init_field(
     runtime: Annotated[str, typer.Option("--runtime")] = "codex",
     model: Annotated[str | None, typer.Option("--model")] = None,
-    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
-        ".omf/capabilities",
-    ),
+    capabilities_dir: Annotated[
+        Path, typer.Option("--capabilities-dir")
+    ] = DEFAULT_CAPABILITIES_DIR,
 ) -> None:
     summary = initialize_field(
         InitFieldRequest(

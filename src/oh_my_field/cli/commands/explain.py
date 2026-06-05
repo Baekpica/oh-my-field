@@ -10,6 +10,10 @@ from oh_my_field.application.explain_artifacts import (
 )
 from oh_my_field.cli.errors import cli_errors
 from oh_my_field.cli.output import emit_json
+from oh_my_field.domain.layout import (
+    DEFAULT_CAPABILITIES_DIR,
+    DEFAULT_LEARNING_PATCH_DIR,
+)
 
 ExplainTarget = Literal["capability", "harness", "learning-patch"]
 
@@ -19,13 +23,13 @@ def explain_command(
     target_id: Annotated[str, typer.Argument()],
     rule: Annotated[str | None, typer.Option("--rule")] = None,
     check: Annotated[str | None, typer.Option("--check")] = None,
-    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
-        "capabilities",
-    ),
+    capabilities_dir: Annotated[
+        Path, typer.Option("--capabilities-dir")
+    ] = DEFAULT_CAPABILITIES_DIR,
     learning_patch_dir: Annotated[
         Path,
         typer.Option("--learning-patch-dir"),
-    ] = Path(".omf/learning_patches"),
+    ] = DEFAULT_LEARNING_PATCH_DIR,
 ) -> None:
     with cli_errors(ExplainError, ValueError):
         summary = explain_artifact(

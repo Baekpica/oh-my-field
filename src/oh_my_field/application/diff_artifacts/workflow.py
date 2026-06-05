@@ -6,6 +6,11 @@ from typing import Literal
 
 from pydantic import BaseModel
 
+from oh_my_field.domain.layout import (
+    DEFAULT_CAPABILITIES_DIR,
+    DEFAULT_EVIDENCE_DIR,
+    DEFAULT_LEARNING_PATCH_DIR,
+)
 from oh_my_field.models import StrictModel
 from oh_my_field.storage import (
     capability_package_paths,
@@ -41,11 +46,11 @@ class DiffRequest(StrictModel):
     target_type: DiffTargetType
     left: str
     right: str | None = None
-    capabilities_dir: Path = Path("capabilities")
+    capabilities_dir: Path = DEFAULT_CAPABILITIES_DIR
     from_capabilities_dir: Path | None = None
     to_capabilities_dir: Path | None = None
-    evidence_dir: Path = Path(".omf/evidence")
-    learning_patch_dir: Path = Path(".omf/learning_patches")
+    evidence_dir: Path = DEFAULT_EVIDENCE_DIR
+    learning_patch_dir: Path = DEFAULT_LEARNING_PATCH_DIR
 
 
 class DiffSummary(StrictModel):

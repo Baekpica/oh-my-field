@@ -10,6 +10,7 @@ from oh_my_field.cli.options import (
     eval_rubric_scores,
 )
 from oh_my_field.cli.output import emit_json
+from oh_my_field.domain.layout import DEFAULT_CAPABILITIES_DIR
 from oh_my_field.orchestrate import (
     OrchestrateError,
     OrchestrateRequest,
@@ -88,9 +89,9 @@ def run_pipeline(
     evidence_dir: Annotated[Path, typer.Option("--evidence-dir")] = Path(
         ".omf/evidence",
     ),
-    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
-        "capabilities",
-    ),
+    capabilities_dir: Annotated[
+        Path, typer.Option("--capabilities-dir")
+    ] = DEFAULT_CAPABILITIES_DIR,
     replay_dir: Annotated[Path, typer.Option("--replay-dir")] = Path(
         ".omf/replays",
     ),

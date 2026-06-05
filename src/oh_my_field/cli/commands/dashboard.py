@@ -4,6 +4,11 @@ from typing import Annotated, cast
 import typer
 from pydantic import ValidationError
 
+from oh_my_field.domain.layout import (
+    DEFAULT_CAPABILITIES_DIR,
+    DEFAULT_EVAL_DIR,
+    DEFAULT_LEARNING_PATCH_DIR,
+)
 from oh_my_field.infrastructure.dashboard.server import (
     DEFAULT_DASHBOARD_PORT,
     DashboardError,
@@ -19,16 +24,16 @@ def dashboard(
     host: Annotated[str, typer.Option("--host")] = "127.0.0.1",
     port: Annotated[int, typer.Option("--port")] = DEFAULT_DASHBOARD_PORT,
     once: Annotated[bool, typer.Option("--once")] = False,
-    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
-        "capabilities",
-    ),
+    capabilities_dir: Annotated[
+        Path, typer.Option("--capabilities-dir")
+    ] = DEFAULT_CAPABILITIES_DIR,
     evidence_dir: Annotated[Path, typer.Option("--evidence-dir")] = Path(
         ".omf/evidence",
     ),
     replay_dir: Annotated[Path, typer.Option("--replay-dir")] = Path(
         ".omf/replays",
     ),
-    eval_dir: Annotated[Path, typer.Option("--eval-dir")] = Path(".omf/evals"),
+    eval_dir: Annotated[Path, typer.Option("--eval-dir")] = DEFAULT_EVAL_DIR,
     workflow_dir: Annotated[Path, typer.Option("--workflow-dir")] = Path(
         ".omf/workflows",
     ),
@@ -41,7 +46,7 @@ def dashboard(
     learning_patch_dir: Annotated[
         Path,
         typer.Option("--learning-patch-dir"),
-    ] = Path(".omf/learning_patches"),
+    ] = DEFAULT_LEARNING_PATCH_DIR,
 ) -> None:
     paths = DashboardPaths(
         capabilities_dir=capabilities_dir,
