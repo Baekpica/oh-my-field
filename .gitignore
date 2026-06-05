@@ -229,6 +229,3 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
-
-.gemini/
-gha-creds-*.json

@@ -20,6 +20,10 @@ The OMF CLI is Apache-2.0 licensed. Capability artifacts generated from your
 work remain owned by you or the project that generated them unless you choose to
 publish them under separate terms.
 
+oh-my-field is currently published as an alpha CLI. The core package and
+capability contracts are usable, but release consumers should expect the public
+surface to keep tightening while feedback lands.
+
 ## What OMF Is
 
 - A capability **packaging and verification layer** around external agents.
@@ -220,9 +224,13 @@ evidence, harness summary, portability and review status — and is distinct fro
 this repository's README.
 
 `omf init` sets up the repo-local field — `.omf/config.yaml`, `.omfignore`, and
-the artifact directories:
+the artifact directories. It also creates the top-level `capabilities/`
+directory for reviewable packages:
 
 ```text
+capabilities/
+  <name>/
+
 .omf/
   evidence/      sessions/     exports/      imports/
   evals/         replays/      context/      learning/
@@ -232,6 +240,10 @@ the artifact directories:
 Runtime-specific files (Codex instructions, Claude Code memory, Hermes profile
 assets, generic skill bundles) are **projections** of the package, not the
 source of truth.
+
+`.omf/config.yaml` records local field defaults and `.omf/registry.yaml` is local
+registry metadata. The package files under `capabilities/<name>/` remain the
+authoritative capability source.
 
 ## Learning And Datasets
 
