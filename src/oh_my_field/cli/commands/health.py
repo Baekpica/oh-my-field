@@ -12,14 +12,18 @@ from oh_my_field.application.health import (
 )
 from oh_my_field.cli.errors import cli_errors
 from oh_my_field.cli.output import emit_json
+from oh_my_field.domain.layout import (
+    DEFAULT_CAPABILITIES_DIR,
+    DEFAULT_EVAL_DIR,
+)
 
 
 def health(
     capability_name: Annotated[str | None, typer.Argument()] = None,
-    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
-        "capabilities",
-    ),
-    eval_dir: Annotated[Path, typer.Option("--eval-dir")] = Path(".omf/evals"),
+    capabilities_dir: Annotated[
+        Path, typer.Option("--capabilities-dir")
+    ] = DEFAULT_CAPABILITIES_DIR,
+    eval_dir: Annotated[Path, typer.Option("--eval-dir")] = DEFAULT_EVAL_DIR,
 ) -> None:
     with cli_errors(HealthError):
         request = CapabilityHealthRequest(
@@ -33,10 +37,10 @@ def health(
 
 def harden(
     capability_name: Annotated[str, typer.Argument()],
-    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
-        "capabilities",
-    ),
-    eval_dir: Annotated[Path, typer.Option("--eval-dir")] = Path(".omf/evals"),
+    capabilities_dir: Annotated[
+        Path, typer.Option("--capabilities-dir")
+    ] = DEFAULT_CAPABILITIES_DIR,
+    eval_dir: Annotated[Path, typer.Option("--eval-dir")] = DEFAULT_EVAL_DIR,
 ) -> None:
     with cli_errors(HealthError):
         request = CapabilityHealthRequest(
@@ -51,9 +55,9 @@ def harden(
 def card(
     capability_name: Annotated[str, typer.Argument()],
     write: Annotated[bool, typer.Option("--write")] = False,
-    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
-        "capabilities",
-    ),
+    capabilities_dir: Annotated[
+        Path, typer.Option("--capabilities-dir")
+    ] = DEFAULT_CAPABILITIES_DIR,
 ) -> None:
     with cli_errors(HealthError):
         summary = run_card_workflow(

@@ -5,6 +5,10 @@ import typer
 
 from oh_my_field.cli.errors import cli_errors
 from oh_my_field.cli.output import emit_json
+from oh_my_field.domain.layout import (
+    DEFAULT_CAPABILITIES_DIR,
+    DEFAULT_EVAL_DIR,
+)
 from oh_my_field.portability import (
     CapabilityAdaptRequest,
     CapabilityPortabilityExportRequest,
@@ -45,9 +49,9 @@ def capability_export(
         Literal["none", "summary", "redacted", "full"],
         typer.Option("--include-evidence"),
     ] = "summary",
-    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
-        "capabilities",
-    ),
+    capabilities_dir: Annotated[
+        Path, typer.Option("--capabilities-dir")
+    ] = DEFAULT_CAPABILITIES_DIR,
     evidence_dir: Annotated[Path, typer.Option("--evidence-dir")] = Path(
         ".omf/evidence",
     ),
@@ -87,10 +91,10 @@ def capability_import(
         Literal["fail", "merge", "version", "overwrite"],
         typer.Option("--if-exists"),
     ] = "fail",
-    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
-        "capabilities",
-    ),
-    eval_dir: Annotated[Path, typer.Option("--eval-dir")] = Path(".omf/evals"),
+    capabilities_dir: Annotated[
+        Path, typer.Option("--capabilities-dir")
+    ] = DEFAULT_CAPABILITIES_DIR,
+    eval_dir: Annotated[Path, typer.Option("--eval-dir")] = DEFAULT_EVAL_DIR,
     evidence_dir: Annotated[Path, typer.Option("--evidence-dir")] = Path(
         ".omf/evidence",
     ),
@@ -143,10 +147,10 @@ def capability_validate(
         typer.Option("--require-cwd-inside-project"),
     ] = False,
     allow_env: Annotated[list[str] | None, typer.Option("--allow-env")] = None,
-    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
-        "capabilities",
-    ),
-    eval_dir: Annotated[Path, typer.Option("--eval-dir")] = Path(".omf/evals"),
+    capabilities_dir: Annotated[
+        Path, typer.Option("--capabilities-dir")
+    ] = DEFAULT_CAPABILITIES_DIR,
+    eval_dir: Annotated[Path, typer.Option("--eval-dir")] = DEFAULT_EVAL_DIR,
     evidence_dir: Annotated[Path, typer.Option("--evidence-dir")] = Path(
         ".omf/evidence",
     ),
@@ -192,9 +196,9 @@ def capability_remap(
     target_project: Annotated[str | None, typer.Option("--target-project")] = None,
     map_: Annotated[list[str] | None, typer.Option("--map")] = None,
     unresolved: Annotated[list[str] | None, typer.Option("--unresolved")] = None,
-    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
-        "capabilities",
-    ),
+    capabilities_dir: Annotated[
+        Path, typer.Option("--capabilities-dir")
+    ] = DEFAULT_CAPABILITIES_DIR,
 ) -> None:
     with cli_errors(PortabilityError):
         request = CapabilityRemapRequest(
@@ -226,9 +230,9 @@ def capability_adapt(
         bool | None,
         typer.Option("--require-human-review/--no-require-human-review"),
     ] = None,
-    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
-        "capabilities",
-    ),
+    capabilities_dir: Annotated[
+        Path, typer.Option("--capabilities-dir")
+    ] = DEFAULT_CAPABILITIES_DIR,
 ) -> None:
     with cli_errors(PortabilityError):
         request = CapabilityAdaptRequest(

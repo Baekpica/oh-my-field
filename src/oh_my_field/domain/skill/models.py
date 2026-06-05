@@ -3,6 +3,7 @@ from typing import Literal
 
 from pydantic import Field
 
+from oh_my_field.domain.layout import DEFAULT_AGENT_SKILL_DIR
 from oh_my_field.domain.models import StrictModel
 
 type SkillInstallRuntime = Literal["codex", "claude_code", "hermes", "generic"]
@@ -11,7 +12,7 @@ type SkillInstallRuntime = Literal["codex", "claude_code", "hermes", "generic"]
 class SkillInstallRequest(StrictModel):
     runtime: SkillInstallRuntime
     project: Path = Path()
-    out: Path = Path(".omf/agent/omf-skill")
+    out: Path = DEFAULT_AGENT_SKILL_DIR
     profile: str | None = None
     dry_run: bool = False
     overwrite: bool = False

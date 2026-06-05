@@ -2,6 +2,22 @@ from pathlib import Path
 
 import yaml
 
+from oh_my_field.domain.layout import (
+    DEFAULT_CACHE_DIR,
+    DEFAULT_CAPABILITIES_DIR,
+    DEFAULT_CONTEXT_DIR,
+    DEFAULT_DATASETS_DIR,
+    DEFAULT_EVAL_DIR,
+    DEFAULT_EVIDENCE_DIR,
+    DEFAULT_EXPORTS_DIR,
+    DEFAULT_IMPORTS_DIR,
+    DEFAULT_LEARNING_DIR,
+    DEFAULT_REFLECTIONS_DIR,
+    DEFAULT_REPLAYS_DIR,
+    DEFAULT_RUNS_DIR,
+    DEFAULT_WORKFLOWS_DIR,
+    OMF_DIR,
+)
 from oh_my_field.models import StrictModel
 
 FIELD_CONFIG_SCHEMA_VERSION = "omf.field_config.v0.1"
@@ -26,7 +42,7 @@ class InitFieldRequest(StrictModel):
     root: Path = Path()
     runtime: str = "codex"
     model: str | None = None
-    capabilities_dir: Path = Path(".omf/capabilities")
+    capabilities_dir: Path = DEFAULT_CAPABILITIES_DIR
 
 
 class InitFieldSummary(StrictModel):
@@ -42,22 +58,22 @@ class InitFieldSummary(StrictModel):
 
 def initialize_field(request: InitFieldRequest) -> InitFieldSummary:
     root = request.root.resolve()
-    omf_dir = root / ".omf"
+    omf_dir = root / OMF_DIR
     directories = (
         omf_dir,
-        omf_dir / "evidence",
+        _resolve_layout_path(root, DEFAULT_EVIDENCE_DIR),
         _resolve_layout_path(root, request.capabilities_dir),
-        omf_dir / "exports",
-        omf_dir / "imports",
-        omf_dir / "runs",
-        omf_dir / "cache",
-        omf_dir / "evals",
-        omf_dir / "replays",
-        omf_dir / "context",
-        omf_dir / "learning",
-        omf_dir / "datasets",
-        omf_dir / "reflections",
-        omf_dir / "workflows",
+        _resolve_layout_path(root, DEFAULT_EXPORTS_DIR),
+        _resolve_layout_path(root, DEFAULT_IMPORTS_DIR),
+        _resolve_layout_path(root, DEFAULT_RUNS_DIR),
+        _resolve_layout_path(root, DEFAULT_CACHE_DIR),
+        _resolve_layout_path(root, DEFAULT_EVAL_DIR),
+        _resolve_layout_path(root, DEFAULT_REPLAYS_DIR),
+        _resolve_layout_path(root, DEFAULT_CONTEXT_DIR),
+        _resolve_layout_path(root, DEFAULT_LEARNING_DIR),
+        _resolve_layout_path(root, DEFAULT_DATASETS_DIR),
+        _resolve_layout_path(root, DEFAULT_REFLECTIONS_DIR),
+        _resolve_layout_path(root, DEFAULT_WORKFLOWS_DIR),
     )
     created_directories, existing_directories = _ensure_directories(directories)
 
@@ -106,12 +122,12 @@ def _config_payload(request: InitFieldRequest) -> dict[str, object]:
             "model": request.model,
         },
         "storage": {
-            "evidence_dir": ".omf/evidence",
+            "evidence_dir": DEFAULT_EVIDENCE_DIR.as_posix(),
             "capabilities_dir": request.capabilities_dir.as_posix(),
-            "exports_dir": ".omf/exports",
-            "imports_dir": ".omf/imports",
-            "runs_dir": ".omf/runs",
-            "cache_dir": ".omf/cache",
+            "exports_dir": DEFAULT_EXPORTS_DIR.as_posix(),
+            "imports_dir": DEFAULT_IMPORTS_DIR.as_posix(),
+            "runs_dir": DEFAULT_RUNS_DIR.as_posix(),
+            "cache_dir": DEFAULT_CACHE_DIR.as_posix(),
         },
         "artifact_policy": {
             "ignore_file": ".omfignore",

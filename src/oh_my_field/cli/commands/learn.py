@@ -15,14 +15,18 @@ from oh_my_field.application.learning_patch import (
 )
 from oh_my_field.cli.errors import cli_errors
 from oh_my_field.cli.output import emit_json
+from oh_my_field.domain.layout import (
+    DEFAULT_CAPABILITIES_DIR,
+    DEFAULT_LEARNING_PATCH_DIR,
+)
 from oh_my_field.models import PatchDecisionStatus
 
 
 def learn(
     capability_name: Annotated[str, typer.Argument()],
-    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
-        "capabilities",
-    ),
+    capabilities_dir: Annotated[
+        Path, typer.Option("--capabilities-dir")
+    ] = DEFAULT_CAPABILITIES_DIR,
     evidence_dir: Annotated[Path, typer.Option("--evidence-dir")] = Path(
         ".omf/evidence",
     ),
@@ -72,16 +76,16 @@ def learn_patch(
         float | None,
         typer.Option("--pass-rate-delta"),
     ] = None,
-    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
-        "capabilities",
-    ),
+    capabilities_dir: Annotated[
+        Path, typer.Option("--capabilities-dir")
+    ] = DEFAULT_CAPABILITIES_DIR,
     learning_dir: Annotated[Path, typer.Option("--learning-dir")] = Path(
         ".omf/learning",
     ),
     learning_patch_dir: Annotated[
         Path,
         typer.Option("--learning-patch-dir"),
-    ] = Path(".omf/learning_patches"),
+    ] = DEFAULT_LEARNING_PATCH_DIR,
 ) -> None:
     with cli_errors(LearningPatchError):
         request = LearningPatchRequest(

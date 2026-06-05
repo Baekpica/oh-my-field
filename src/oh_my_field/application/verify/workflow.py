@@ -3,6 +3,18 @@ from typing import Literal, cast
 
 from pydantic import BaseModel, Field
 
+from oh_my_field.domain.layout import (
+    DEFAULT_CAPABILITIES_DIR,
+    DEFAULT_CONTEXT_DIR,
+    DEFAULT_EVAL_DIR,
+    DEFAULT_EVIDENCE_DIR,
+    DEFAULT_EXPORTS_DIR,
+    DEFAULT_LEARNING_DIR,
+    DEFAULT_LEARNING_PATCH_DIR,
+    DEFAULT_REFLECTIONS_DIR,
+    DEFAULT_REPLAYS_DIR,
+    DEFAULT_REVIEW_DIR,
+)
 from oh_my_field.integrity import model_sha256
 from oh_my_field.models import (
     ArtifactIntegrityLink,
@@ -46,16 +58,16 @@ class VerifyError(Exception):
 class VerifyRequest(StrictModel):
     target_type: VerifyTargetType
     target_id: str = Field(min_length=1)
-    capabilities_dir: Path = Path("capabilities")
-    evidence_dir: Path = Path(".omf/evidence")
-    replay_dir: Path = Path(".omf/replays")
-    eval_dir: Path = Path(".omf/evals")
-    context_dir: Path = Path(".omf/context")
-    learning_dir: Path = Path(".omf/learning")
-    learning_patch_dir: Path = Path(".omf/learning_patches")
-    reflection_dir: Path = Path(".omf/reflections")
-    review_dir: Path = Path(".omf/reviews")
-    export_dir: Path = Path(".omf/exports")
+    capabilities_dir: Path = DEFAULT_CAPABILITIES_DIR
+    evidence_dir: Path = DEFAULT_EVIDENCE_DIR
+    replay_dir: Path = DEFAULT_REPLAYS_DIR
+    eval_dir: Path = DEFAULT_EVAL_DIR
+    context_dir: Path = DEFAULT_CONTEXT_DIR
+    learning_dir: Path = DEFAULT_LEARNING_DIR
+    learning_patch_dir: Path = DEFAULT_LEARNING_PATCH_DIR
+    reflection_dir: Path = DEFAULT_REFLECTIONS_DIR
+    review_dir: Path = DEFAULT_REVIEW_DIR
+    export_dir: Path = DEFAULT_EXPORTS_DIR
 
 
 def verify_artifact(request: VerifyRequest) -> IntegrityVerificationResult:

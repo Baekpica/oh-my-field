@@ -5,6 +5,10 @@ import typer
 
 from oh_my_field.application.install import install_mcp_config, install_omf_skill
 from oh_my_field.cli.output import emit_json
+from oh_my_field.domain.layout import (
+    DEFAULT_AGENT_SKILL_DIR,
+    DEFAULT_MCP_CONFIG_PATH,
+)
 from oh_my_field.domain.skill.models import SkillInstallRequest
 from oh_my_field.mcp.schemas import McpInstallRequest
 
@@ -16,7 +20,7 @@ def install_skill(
     runtime: Annotated[TargetRuntime, typer.Option("--runtime")],
     project: Annotated[Path, typer.Option("--project")] = Path(),
     profile: Annotated[str | None, typer.Option("--profile")] = None,
-    out: Annotated[Path, typer.Option("--out")] = Path(".omf/agent/omf-skill"),
+    out: Annotated[Path, typer.Option("--out")] = DEFAULT_AGENT_SKILL_DIR,
     dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
     overwrite: Annotated[bool, typer.Option("--overwrite")] = False,
 ) -> None:
@@ -36,7 +40,7 @@ def install_skill(
 def install_mcp(
     client: Annotated[McpClient, typer.Option("--client")],
     project: Annotated[Path, typer.Option("--project")] = Path(),
-    out: Annotated[Path, typer.Option("--out")] = Path(".omf/mcp.json"),
+    out: Annotated[Path, typer.Option("--out")] = DEFAULT_MCP_CONFIG_PATH,
     dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
     overwrite: Annotated[bool, typer.Option("--overwrite")] = False,
 ) -> None:

@@ -11,6 +11,16 @@ from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field, ValidationError
 
+from oh_my_field.domain.layout import (
+    DEFAULT_CAPABILITIES_DIR,
+    DEFAULT_EVAL_DIR,
+    DEFAULT_EVAL_SET_DIR,
+    DEFAULT_EVIDENCE_DIR,
+    DEFAULT_LEARNING_PATCH_DIR,
+    DEFAULT_REPLAYS_DIR,
+    DEFAULT_REVIEW_DIR,
+    DEFAULT_WORKFLOWS_DIR,
+)
 from oh_my_field.health import health_entry_from_manifest
 from oh_my_field.models import (
     CapabilityManifest,
@@ -51,14 +61,14 @@ class DashboardError(Exception):
 
 
 class DashboardPaths(StrictModel):
-    capabilities_dir: Path = Path("capabilities")
-    evidence_dir: Path = Path(".omf/evidence")
-    replay_dir: Path = Path(".omf/replays")
-    eval_dir: Path = Path(".omf/evals")
-    workflow_dir: Path = Path(".omf/workflows")
-    review_dir: Path = Path(".omf/reviews")
-    eval_set_dir: Path = Path(".omf/eval_sets")
-    learning_patch_dir: Path = Path(".omf/learning_patches")
+    capabilities_dir: Path = DEFAULT_CAPABILITIES_DIR
+    evidence_dir: Path = DEFAULT_EVIDENCE_DIR
+    replay_dir: Path = DEFAULT_REPLAYS_DIR
+    eval_dir: Path = DEFAULT_EVAL_DIR
+    workflow_dir: Path = DEFAULT_WORKFLOWS_DIR
+    review_dir: Path = DEFAULT_REVIEW_DIR
+    eval_set_dir: Path = DEFAULT_EVAL_SET_DIR
+    learning_patch_dir: Path = DEFAULT_LEARNING_PATCH_DIR
 
 
 class DashboardServeRequest(StrictModel):

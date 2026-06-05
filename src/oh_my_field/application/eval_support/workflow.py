@@ -7,6 +7,7 @@ from typing import TypedDict
 
 from pydantic import Field
 
+from oh_my_field.domain.layout import DEFAULT_EVAL_SET_DIR
 from oh_my_field.models import (
     CAPABILITY_NAME_PATTERN,
     EVIDENCE_ID_PATTERN,
@@ -63,7 +64,7 @@ class EvalRequest(StrictModel):
     evidence_dir: Path
     replay_dir: Path
     eval_dir: Path
-    eval_set_dir: Path = Path(".omf/eval_sets")
+    eval_set_dir: Path = DEFAULT_EVAL_SET_DIR
     eval_set_name: str | None = Field(default=None, pattern=CAPABILITY_NAME_PATTERN)
     runtime_profile: str | None = None
     harness_commands: tuple[str, ...] = ()

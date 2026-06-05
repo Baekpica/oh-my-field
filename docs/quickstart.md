@@ -12,8 +12,10 @@ Set up the repo-local field once:
 omf init
 ```
 
-This writes `.omf/config.yaml`, `.omfignore`, and the artifact directories
-(`.omf/evidence`, `.omf/sessions`, `.omf/exports`, …).
+This writes `.omf/config.yaml`, `.omfignore`, the top-level `capabilities/`
+library, and the artifact directories (`.omf/evidence`, `.omf/sessions`,
+`.omf/exports`, …). Capability packages under `capabilities/<name>/` are the
+reviewable source of truth; `.omf/registry.yaml` is local registry metadata.
 
 ## Path A: Agent-Assisted Session Tracking
 

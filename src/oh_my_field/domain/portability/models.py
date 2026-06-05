@@ -3,6 +3,7 @@ from typing import Literal
 
 from pydantic import Field, model_validator
 
+from oh_my_field.domain.layout import DEFAULT_EVIDENCE_DIR
 from oh_my_field.domain.models import (
     CAPABILITY_NAME_PATTERN,
     CommandRiskCategory,
@@ -234,7 +235,7 @@ class CapabilityPortabilityExportRequest(StrictModel):
     source_reasoning_effort: str | None = None
     source_context_tokens: int | None = Field(default=None, ge=1)
     target_context_tokens: int | None = Field(default=None, ge=1)
-    evidence_dir: Path = Path(".omf/evidence")
+    evidence_dir: Path = DEFAULT_EVIDENCE_DIR
     include_evidence: EvidenceInclusionMode = "summary"
 
 

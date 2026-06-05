@@ -10,6 +10,14 @@ from oh_my_field.application.verify import (
 )
 from oh_my_field.cli.errors import cli_errors
 from oh_my_field.cli.output import emit_json
+from oh_my_field.domain.layout import (
+    DEFAULT_CAPABILITIES_DIR,
+    DEFAULT_CONTEXT_DIR,
+    DEFAULT_EVAL_DIR,
+    DEFAULT_EXPORTS_DIR,
+    DEFAULT_LEARNING_PATCH_DIR,
+    DEFAULT_REVIEW_DIR,
+)
 
 
 def verify(
@@ -29,29 +37,29 @@ def verify(
         typer.Argument(),
     ],
     target_id: Annotated[str, typer.Argument()],
-    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
-        "capabilities",
-    ),
+    capabilities_dir: Annotated[
+        Path, typer.Option("--capabilities-dir")
+    ] = DEFAULT_CAPABILITIES_DIR,
     evidence_dir: Annotated[Path, typer.Option("--evidence-dir")] = Path(
         ".omf/evidence",
     ),
     replay_dir: Annotated[Path, typer.Option("--replay-dir")] = Path(
         ".omf/replays",
     ),
-    eval_dir: Annotated[Path, typer.Option("--eval-dir")] = Path(".omf/evals"),
-    context_dir: Annotated[Path, typer.Option("--context-dir")] = Path(".omf/context"),
+    eval_dir: Annotated[Path, typer.Option("--eval-dir")] = DEFAULT_EVAL_DIR,
+    context_dir: Annotated[Path, typer.Option("--context-dir")] = DEFAULT_CONTEXT_DIR,
     learning_dir: Annotated[Path, typer.Option("--learning-dir")] = Path(
         ".omf/learning",
     ),
     learning_patch_dir: Annotated[
         Path,
         typer.Option("--learning-patch-dir"),
-    ] = Path(".omf/learning_patches"),
+    ] = DEFAULT_LEARNING_PATCH_DIR,
     reflection_dir: Annotated[Path, typer.Option("--reflection-dir")] = Path(
         ".omf/reflections",
     ),
-    review_dir: Annotated[Path, typer.Option("--review-dir")] = Path(".omf/reviews"),
-    export_dir: Annotated[Path, typer.Option("--export-dir")] = Path(".omf/exports"),
+    review_dir: Annotated[Path, typer.Option("--review-dir")] = DEFAULT_REVIEW_DIR,
+    export_dir: Annotated[Path, typer.Option("--export-dir")] = DEFAULT_EXPORTS_DIR,
 ) -> None:
     with cli_errors(VerifyError):
         request = VerifyRequest(

@@ -10,19 +10,23 @@ from oh_my_field.application.reflect import (
 )
 from oh_my_field.cli.errors import cli_errors
 from oh_my_field.cli.output import emit_json
+from oh_my_field.domain.layout import (
+    DEFAULT_CAPABILITIES_DIR,
+    DEFAULT_EVAL_DIR,
+)
 
 
 def reflect(
     capability_name: Annotated[str, typer.Argument()],
     eval_id: Annotated[str | None, typer.Option("--eval-id")] = None,
     note: Annotated[list[str] | None, typer.Option("--note")] = None,
-    capabilities_dir: Annotated[Path, typer.Option("--capabilities-dir")] = Path(
-        "capabilities",
-    ),
+    capabilities_dir: Annotated[
+        Path, typer.Option("--capabilities-dir")
+    ] = DEFAULT_CAPABILITIES_DIR,
     evidence_dir: Annotated[Path, typer.Option("--evidence-dir")] = Path(
         ".omf/evidence",
     ),
-    eval_dir: Annotated[Path, typer.Option("--eval-dir")] = Path(".omf/evals"),
+    eval_dir: Annotated[Path, typer.Option("--eval-dir")] = DEFAULT_EVAL_DIR,
     reflection_dir: Annotated[Path, typer.Option("--reflection-dir")] = Path(
         ".omf/reflections",
     ),

@@ -6,6 +6,7 @@ from typing import Literal, cast
 import yaml
 from pydantic import Field
 
+from oh_my_field.domain.layout import DEFAULT_EXPORTS_DIR
 from oh_my_field.models import CAPABILITY_NAME_PATTERN, EVIDENCE_ID_PATTERN, StrictModel
 from oh_my_field.storage import (
     load_context_bundle,
@@ -49,7 +50,7 @@ class InspectRequest(StrictModel):
     context_dir: Path
     learning_dir: Path
     reflection_dir: Path
-    export_dir: Path = Path(".omf/exports")
+    export_dir: Path = DEFAULT_EXPORTS_DIR
     target: str | None = None
     model: str | None = None
 

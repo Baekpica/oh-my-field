@@ -3,6 +3,13 @@ from typing import Literal
 
 from pydantic import Field
 
+from oh_my_field.domain.layout import (
+    DEFAULT_CAPABILITIES_DIR,
+    DEFAULT_EVAL_DIR,
+    DEFAULT_EVIDENCE_DIR,
+    DEFAULT_MCP_CONFIG_PATH,
+    DEFAULT_SESSIONS_DIR,
+)
 from oh_my_field.domain.models import (
     CAPABILITY_NAME_PATTERN,
     EVIDENCE_ID_PATTERN,
@@ -22,7 +29,7 @@ class StartSessionToolRequest(StrictModel):
     model: str | None = None
     project_root: Path = Path()
     goal: str = Field(min_length=1)
-    sessions_dir: Path = Path(".omf/sessions")
+    sessions_dir: Path = DEFAULT_SESSIONS_DIR
 
 
 class RecordEventToolRequest(StrictModel):
@@ -33,19 +40,19 @@ class RecordEventToolRequest(StrictModel):
     command: str | None = None
     exit_code: int | None = None
     risk_categories: tuple[CommandRiskCategory, ...] = ()
-    sessions_dir: Path = Path(".omf/sessions")
+    sessions_dir: Path = DEFAULT_SESSIONS_DIR
 
 
 class FinishSessionToolRequest(StrictModel):
     session_id: str = Field(pattern=EVIDENCE_ID_PATTERN)
     outcome: TaskOutcome
-    sessions_dir: Path = Path(".omf/sessions")
+    sessions_dir: Path = DEFAULT_SESSIONS_DIR
 
 
 class MaterializeSessionToolRequest(StrictModel):
     session_id: str = Field(pattern=EVIDENCE_ID_PATTERN)
-    sessions_dir: Path = Path(".omf/sessions")
-    evidence_dir: Path = Path(".omf/evidence")
+    sessions_dir: Path = DEFAULT_SESSIONS_DIR
+    evidence_dir: Path = DEFAULT_EVIDENCE_DIR
 
 
 class PromoteCapabilityToolRequest(StrictModel):
@@ -53,9 +60,9 @@ class PromoteCapabilityToolRequest(StrictModel):
     name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
     description: str = Field(min_length=1)
     version: str = Field(default="0.1.0", min_length=1)
-    evidence_dir: Path = Path(".omf/evidence")
-    eval_dir: Path = Path(".omf/evals")
-    capabilities_dir: Path = Path("capabilities")
+    evidence_dir: Path = DEFAULT_EVIDENCE_DIR
+    eval_dir: Path = DEFAULT_EVAL_DIR
+    capabilities_dir: Path = DEFAULT_CAPABILITIES_DIR
 
 
 class ExportCapabilityToolRequest(StrictModel):
@@ -69,14 +76,14 @@ class ExportCapabilityToolRequest(StrictModel):
     source_context_tokens: int | None = Field(default=None, ge=1)
     target_context_tokens: int | None = Field(default=None, ge=1)
     include_evidence: EvidenceInclusionMode = "summary"
-    capabilities_dir: Path = Path("capabilities")
-    evidence_dir: Path = Path(".omf/evidence")
+    capabilities_dir: Path = DEFAULT_CAPABILITIES_DIR
+    evidence_dir: Path = DEFAULT_EVIDENCE_DIR
 
 
 class HealthToolRequest(StrictModel):
     capability_name: str | None = Field(default=None, pattern=CAPABILITY_NAME_PATTERN)
-    capabilities_dir: Path = Path("capabilities")
-    eval_dir: Path = Path(".omf/evals")
+    capabilities_dir: Path = DEFAULT_CAPABILITIES_DIR
+    eval_dir: Path = DEFAULT_EVAL_DIR
 
 
 class McpToolDefinition(StrictModel):
@@ -91,7 +98,7 @@ type McpInstallClient = Literal["generic"]
 class McpInstallRequest(StrictModel):
     client: McpInstallClient
     project: Path = Path()
-    out: Path = Path(".omf/mcp.json")
+    out: Path = DEFAULT_MCP_CONFIG_PATH
     dry_run: bool = False
     overwrite: bool = False
 
