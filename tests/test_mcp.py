@@ -5,6 +5,7 @@ from typing import cast
 from pydantic import BaseModel, ConfigDict
 from typer.testing import CliRunner
 
+from oh_my_field import __version__
 from oh_my_field.cli import app
 from oh_my_field.domain.layout import DEFAULT_CAPABILITIES_DIR
 from oh_my_field.mcp.schemas import (
@@ -151,6 +152,17 @@ def test_mcp_server_handles_tools_list_jsonrpc() -> None:
     result = cast("dict[str, object]", response["result"])
     tools = cast("list[dict[str, object]]", result["tools"])
     assert any(tool["name"] == "omf_health" for tool in tools)
+
+
+def test_mcp_server_initialize_uses_package_version() -> None:
+    response = handle_message(
+        {"jsonrpc": "2.0", "id": 1, "method": "initialize"},
+    )
+
+    assert response is not None
+    result = cast("dict[str, object]", response["result"])
+    server_info = cast("dict[str, object]", result["serverInfo"])
+    assert server_info == {"name": "oh-my-field", "version": __version__}
 
 
 def test_install_mcp_generic_writes_config(tmp_path: Path) -> None:

@@ -3,6 +3,7 @@ import sys
 from collections.abc import Mapping
 from typing import cast
 
+from oh_my_field import __version__
 from oh_my_field.mcp.tools import dispatch_tool, mcp_tool_definitions
 
 type JsonValue = (
@@ -97,7 +98,7 @@ def _initialize_result() -> JsonObject:
     return {
         "protocolVersion": "2024-11-05",
         "capabilities": {"tools": {}},
-        "serverInfo": {"name": "oh-my-field", "version": "0.1.0"},
+        "serverInfo": {"name": "oh-my-field", "version": __version__},
     }
 
 
