@@ -32,17 +32,21 @@ jobs:
 
       - name: Smoke test wheel
         run: |
+          wheel_packages=(dist/*.whl)
           uv run --isolated --no-project --with dist/*.whl omf --help
           uv run --isolated --no-project --with dist/*.whl omf doctor --json
           uv run --isolated --no-project --with dist/*.whl omf install skill --runtime generic --out /tmp/omf-wheel-skill
           uv run --isolated --no-project --with dist/*.whl omf install mcp --client generic --out /tmp/omf-wheel-mcp.json
+          bash scripts/smoke-default-flow.sh "${wheel_packages[0]}"
 
       - name: Smoke test sdist
         run: |
+          sdist_packages=(dist/*.tar.gz)
           uv run --isolated --no-project --with dist/*.tar.gz omf --help
           uv run --isolated --no-project --with dist/*.tar.gz omf doctor --json
           uv run --isolated --no-project --with dist/*.tar.gz omf install skill --runtime generic --out /tmp/omf-sdist-skill
           uv run --isolated --no-project --with dist/*.tar.gz omf install mcp --client generic --out /tmp/omf-sdist-mcp.json
+          bash scripts/smoke-default-flow.sh "${sdist_packages[0]}"
 
       - name: Create checksums
         run: shasum -a 256 dist/* > dist/SHA256SUMS
