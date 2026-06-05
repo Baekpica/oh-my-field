@@ -15,6 +15,7 @@ class AgentImportOutput(BaseModel):
     evidence_path: str
     adapter: str
     artifact_count: int
+    warnings: tuple[str, ...]
 
 
 def test_import_run_captures_external_agent_log_and_artifacts(
@@ -253,6 +254,42 @@ def test_import_run_applies_default_artifact_root_excludes(
         "codex.log",
         "keep.txt",
     ]
+    assert output.warnings == ()
+
+
+def test_import_run_warns_for_unbounded_current_directory_artifact_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    log_path = tmp_path / "codex.log"
+    evidence_dir = tmp_path / "evidence"
+    log_path.write_text("Codex finished.", encoding="utf-8")
+    tmp_path.joinpath("keep.txt").write_text("keep", encoding="utf-8")
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "import-run",
+            "codex",
+            "--log",
+            str(log_path),
+            "--goal",
+            "capture broad artifacts",
+            "--artifact-root",
+            ".",
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = AgentImportOutput.model_validate_json(result.stdout)
+    assert output.warnings == (
+        "--artifact-root . was used without --max-artifact-count, "
+        "--max-total-artifact-bytes, or --redact-secrets; broad imports can "
+        "capture unintended local artifacts",
+    )
 
 
 def test_import_run_applies_explicit_excludes_and_omfignore(

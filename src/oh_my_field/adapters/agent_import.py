@@ -150,6 +150,7 @@ class AgentImportSummary(StrictModel):
     evidence_path: str
     adapter: AgentImporterName
     artifact_count: int
+    warnings: tuple[str, ...] = ()
 
 
 class ImporterAdapter:
@@ -332,11 +333,30 @@ def _run_agent_import(
         evidence_path=str(evidence_path),
         adapter=importer,
         artifact_count=len(files),
+        warnings=_broad_artifact_import_warnings(request),
     )
 
 
 def _default_dependencies() -> AgentImportDependencies:
     return AgentImportDependencies(clock=_now_utc, token_factory=_token_suffix)
+
+
+def _broad_artifact_import_warnings(request: AgentImportRequest) -> tuple[str, ...]:
+    if (
+        not request.artifact_roots
+        or request.max_artifact_count is not None
+        or request.max_total_artifact_bytes is not None
+        or request.redact_secrets
+    ):
+        return ()
+    current_dir = Path.cwd().resolve()
+    if not any(root.resolve() == current_dir for root in request.artifact_roots):
+        return ()
+    return (
+        "--artifact-root . was used without --max-artifact-count, "
+        "--max-total-artifact-bytes, or --redact-secrets; broad imports can "
+        "capture unintended local artifacts",
+    )
 
 
 def _now_utc() -> datetime:
