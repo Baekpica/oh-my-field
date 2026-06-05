@@ -3,8 +3,8 @@ from oh_my_field.adapters.runtime_export.base import (
     RuntimeExportSummary,
 )
 from oh_my_field.application.portability.rendering import (
+    agent_skill_markdown,
     base_instructions,
-    claude_memory,
     examples_markdown,
     harness_markdown,
 )
@@ -20,19 +20,24 @@ class ClaudeCodeRuntimeExportAdapter:
         request: RuntimeExportRequest,
     ) -> RuntimeExportSummary:
         runtime_path = request.bundle_path / "runtime" / self.target
+        skill_path = (
+            runtime_path / ".claude" / "skills" / request.manifest.name / "SKILL.md"
+        )
+        reference_path = skill_path.parent / "references"
         write_text_exclusive(
-            runtime_path / "CLAUDE.md", claude_memory(request.manifest)
+            skill_path,
+            agent_skill_markdown(request.manifest),
         )
         write_text_exclusive(
-            runtime_path / "capability.md",
+            reference_path / "capability.md",
             base_instructions(request.manifest),
         )
         write_text_exclusive(
-            runtime_path / "examples.md",
+            reference_path / "examples.md",
             examples_markdown(request.manifest),
         )
         write_text_exclusive(
-            runtime_path / "checks.md",
+            reference_path / "checks.md",
             harness_markdown(request.manifest),
         )
         return RuntimeExportSummary(

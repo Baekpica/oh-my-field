@@ -5,15 +5,17 @@ through `oh_my_field.adapters.runtime_export`.
 
 ## Generated Files
 
-- `AGENTS.md`
-- `capability.md`
-- `context.policy.md`
-- `harness.md`
+- `.agents/skills/<capability>/SKILL.md`
+- `.agents/skills/<capability>/references/capability.md`
+- `.agents/skills/<capability>/references/context.policy.md`
+- `.agents/skills/<capability>/references/harness.md`
 
 ## Expected Install Location
 
-Copy or merge the generated files into the target Codex project root. Keep the
-OMF export directory as provenance until the target run has been validated.
+Copy the generated `.agents/skills/<capability>/` directory into the target
+Codex project root, or into the user-level skill directory if the capability is
+intended to be global. Keep the OMF export directory as provenance until the
+target run has been validated.
 
 ## Manual Import
 
@@ -44,5 +46,5 @@ can perform the task in the target project.
 
 ## Target Run Example
 
-Run Codex with the generated `AGENTS.md`, then import the resulting log with
+Run Codex with the generated skill installed, then import the resulting log with
 `omf import-run codex --outcome success|failure|unknown`.

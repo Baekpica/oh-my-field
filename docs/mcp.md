@@ -5,17 +5,36 @@ calls. The MCP server is not a shell wrapper around the CLI. Each tool calls the
 same application workflows used by the CLI and returns JSON-serializable
 summary models.
 
-Install a generic client config:
+Install a runtime MCP config:
 
 ```bash
-omf install mcp --client generic --out .omf/mcp.json
+omf install mcp --client codex
+omf install mcp --client claude_code
+omf install mcp --client hermes
+omf install mcp --client generic --scope export --out .omf/mcp.json
 ```
 
-The generated config starts the server with:
+`--scope auto` is the default. It resolves to user config patching for Codex,
+Claude Code, and Hermes, and to export-only JSON generation for `generic`.
+
+| Client | User config | Project config |
+| --- | --- | --- |
+| `codex` | `~/.codex/config.toml` | `<project>/.codex/config.toml` |
+| `claude_code` | `~/.claude.json` | `<project>/.mcp.json` |
+| `hermes` | `~/.hermes/config.yaml` | unsupported |
+| `generic` | unsupported | unsupported; writes JSON to `--out` |
+
+The installed config starts the server with:
 
 ```bash
 omf mcp serve
 ```
+
+If an `oh-my-field` server already exists, install skips it unless
+`--overwrite` is set. Existing config files are backed up before modification.
+Use `--dry-run` to inspect the same action plan without writing files or
+backups. Use `--server-command` when the agent runtime needs an absolute path to
+the `omf` executable.
 
 Initial tool surface:
 

@@ -116,14 +116,21 @@ meta-skill for the target agent runtime:
 omf install skill --runtime codex
 omf install skill --runtime claude_code
 omf install skill --runtime hermes
-omf install skill --runtime generic
+omf install skill --runtime generic --scope export
 ```
 
-For MCP-capable clients, generate a generic client config and run the stdio
+By default Codex, Claude Code, and Hermes install into their user-level skill
+discovery paths (`~/.agents/skills`, `~/.claude/skills`, `~/.hermes/skills`).
+`generic` keeps producing reviewable export assets under `.omf/agent/omf-skill`.
+
+For MCP-capable clients, patch the matching client config and run the stdio
 server:
 
 ```bash
-omf install mcp --client generic --out .omf/mcp.json
+omf install mcp --client codex
+omf install mcp --client claude_code
+omf install mcp --client hermes
+omf install mcp --client generic --scope export --out .omf/mcp.json
 omf mcp serve
 ```
 

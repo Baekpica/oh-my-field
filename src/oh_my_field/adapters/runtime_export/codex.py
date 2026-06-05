@@ -3,8 +3,8 @@ from oh_my_field.adapters.runtime_export.base import (
     RuntimeExportSummary,
 )
 from oh_my_field.application.portability.rendering import (
+    agent_skill_markdown,
     base_instructions,
-    codex_agents_markdown,
     context_markdown,
     harness_markdown,
 )
@@ -20,20 +20,24 @@ class CodexRuntimeExportAdapter:
         request: RuntimeExportRequest,
     ) -> RuntimeExportSummary:
         runtime_path = request.bundle_path / "runtime" / self.target
+        skill_path = (
+            runtime_path / ".agents" / "skills" / request.manifest.name / "SKILL.md"
+        )
+        reference_path = skill_path.parent / "references"
         write_text_exclusive(
-            runtime_path / "AGENTS.md",
-            codex_agents_markdown(request.manifest),
+            skill_path,
+            agent_skill_markdown(request.manifest),
         )
         write_text_exclusive(
-            runtime_path / "capability.md",
+            reference_path / "capability.md",
             base_instructions(request.manifest),
         )
         write_text_exclusive(
-            runtime_path / "harness.md",
+            reference_path / "harness.md",
             harness_markdown(request.manifest),
         )
         write_text_exclusive(
-            runtime_path / "context.policy.md",
+            reference_path / "context.policy.md",
             context_markdown(request.manifest),
         )
         return RuntimeExportSummary(

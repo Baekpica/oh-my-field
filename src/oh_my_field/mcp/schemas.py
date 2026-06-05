@@ -92,13 +92,18 @@ class McpToolDefinition(StrictModel):
     input_schema: dict[str, object]
 
 
-type McpInstallClient = Literal["generic"]
+type McpInstallClient = Literal["generic", "codex", "claude_code", "hermes"]
+type McpInstallScope = Literal["auto", "user", "project", "export"]
+type ResolvedMcpInstallScope = Literal["user", "project", "export"]
 
 
 class McpInstallRequest(StrictModel):
     client: McpInstallClient
     project: Path = Path()
     out: Path = DEFAULT_MCP_CONFIG_PATH
+    scope: McpInstallScope = "auto"
+    home: Path | None = None
+    server_command: str | None = Field(default=None, min_length=1)
     dry_run: bool = False
     overwrite: bool = False
 
@@ -112,9 +117,11 @@ class McpInstallAction(StrictModel):
 
 class McpInstallSummary(StrictModel):
     client: McpInstallClient
+    scope: ResolvedMcpInstallScope
     installed: bool
     dry_run: bool = False
     server_name: str = "oh-my-field"
     config_path: str
+    backup_path: str | None = None
     actions: tuple[McpInstallAction, ...] = ()
     next_action: str = Field(min_length=1)

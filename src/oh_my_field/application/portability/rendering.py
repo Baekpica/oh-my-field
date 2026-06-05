@@ -189,6 +189,22 @@ def skill_markdown(manifest: CapabilityManifest) -> str:
     )
 
 
+def agent_skill_markdown(manifest: CapabilityManifest) -> str:
+    frontmatter = yaml.safe_dump(
+        {"name": manifest.name, "description": manifest.description},
+        sort_keys=False,
+    ).strip()
+    return "\n".join(
+        [
+            "---",
+            frontmatter,
+            "---",
+            "",
+            skill_markdown(manifest),
+        ],
+    )
+
+
 def codex_agents_markdown(manifest: CapabilityManifest) -> str:
     control = manifest.workflow_control
     approvals = _join_or(control.approval_required_actions, "none")

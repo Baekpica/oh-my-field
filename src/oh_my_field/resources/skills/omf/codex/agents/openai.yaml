@@ -1,0 +1,6 @@
+interface:
+  display_name: "OMF"
+  short_description: "Track agent work, evidence, and reusable capabilities with OMF."
+  default_prompt: "/omf"
+policy:
+  allow_implicit_invocation: true

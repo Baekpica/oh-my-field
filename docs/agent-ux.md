@@ -32,12 +32,18 @@ omf capability validate <capability_name> --target <runtime> --run-command "..."
 ```
 
 The CLI is the fallback interface. When MCP tools are available, the agent can
-use structured tool calls for the same workflow. Install the generic config
-with:
+use structured tool calls for the same workflow. Install the matching runtime
+config with:
 
 ```bash
-omf install mcp --client generic --out .omf/mcp.json
+omf install mcp --client codex
+omf install mcp --client claude_code
+omf install mcp --client hermes
+omf install mcp --client generic --scope export --out .omf/mcp.json
 ```
+
+Codex, Claude Code, and Hermes patch their real user config paths by default.
+`generic` writes a reviewable JSON snippet under `--out`.
 
 The initial MCP surface mirrors the activation loop:
 `omf_start_session`, `omf_record_event`, `omf_finish_session`,

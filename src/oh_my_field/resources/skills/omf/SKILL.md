@@ -1,3 +1,8 @@
+---
+name: omf
+description: Track agent work with OMF, preserve evidence, and promote reusable capabilities.
+---
+
 # OMF Skill
 
 ## Purpose

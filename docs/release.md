@@ -14,8 +14,8 @@ Local release smoke:
 
 ```bash
 uv build
-uv run --isolated --no-project --with dist/*.whl omf install skill --runtime generic --out /tmp/omf-wheel-skill
-uv run --isolated --no-project --with dist/*.whl omf install mcp --client generic --out /tmp/omf-wheel-mcp.json
+uv run --isolated --no-project --with dist/*.whl omf install skill --runtime generic --scope export --out /tmp/omf-wheel-skill
+uv run --isolated --no-project --with dist/*.whl omf install mcp --client generic --scope export --out /tmp/omf-wheel-mcp.json
 uv run --isolated --no-project --with dist/*.whl omf doctor --json
 bash scripts/smoke-default-flow.sh dist/oh_my_field-0.1.0-py3-none-any.whl
 bash scripts/smoke-default-flow.sh dist/oh_my_field-0.1.0.tar.gz
@@ -38,7 +38,7 @@ User-facing install path:
 ```bash
 pipx install oh-my-field
 omf install skill --runtime codex
-omf install mcp --client generic --out .omf/mcp.json
+omf install mcp --client codex
 ```
 
 Trial path:
