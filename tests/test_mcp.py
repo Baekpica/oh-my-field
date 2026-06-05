@@ -1,7 +1,9 @@
 import json
+import tomllib
 from pathlib import Path
 from typing import cast
 
+import yaml
 from pydantic import BaseModel, ConfigDict
 from typer.testing import CliRunner
 
@@ -21,10 +23,12 @@ class InstallMcpOutput(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     client: str
+    scope: str
     installed: bool
     dry_run: bool
     server_name: str
     config_path: str
+    backup_path: str | None
     actions: list[dict[str, object]]
     next_action: str
 
@@ -179,13 +183,227 @@ def test_install_mcp_generic_writes_config(tmp_path: Path) -> None:
             str(tmp_path),
             "--out",
             str(out),
+            "--server-command",
+            "omf",
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = InstallMcpOutput.model_validate_json(result.stdout)
+    assert output.client == "generic"
+    assert output.scope == "export"
+    assert output.installed
+    assert output.config_path == str(out)
+    assert output.backup_path is None
+    config = json.loads(out.read_text(encoding="utf-8"))
+    assert config["mcpServers"]["oh-my-field"]["command"] == "omf"
+    assert config["mcpServers"]["oh-my-field"]["args"] == ["mcp", "serve"]
+
+
+def test_install_mcp_codex_patches_user_config(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    fake_command = tmp_path / "fake-omf"
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "install",
+            "mcp",
+            "--client",
+            "codex",
+            "--home",
+            str(home),
+            "--server-command",
+            str(fake_command),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = InstallMcpOutput.model_validate_json(result.stdout)
+    config_path = home / ".codex" / "config.toml"
+    assert output.client == "codex"
+    assert output.scope == "user"
+    assert output.installed
+    assert output.config_path == str(config_path)
+    config = tomllib.loads(config_path.read_text(encoding="utf-8"))
+    server = config["mcp_servers"]["oh-my-field"]
+    assert server["command"] == str(fake_command)
+    assert server["args"] == ["mcp", "serve"]
+
+
+def test_install_mcp_claude_project_config(tmp_path: Path) -> None:
+    result = CliRunner().invoke(
+        app,
+        [
+            "install",
+            "mcp",
+            "--client",
+            "claude_code",
+            "--scope",
+            "project",
+            "--project",
+            str(tmp_path),
+            "--server-command",
+            "omf",
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = InstallMcpOutput.model_validate_json(result.stdout)
+    config_path = tmp_path / ".mcp.json"
+    assert output.scope == "project"
+    assert output.config_path == str(config_path)
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    assert config["mcpServers"]["oh-my-field"]["command"] == "omf"
+
+
+def test_install_mcp_hermes_patches_yaml(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "install",
+            "mcp",
+            "--client",
+            "hermes",
+            "--home",
+            str(home),
+            "--server-command",
+            "omf",
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = InstallMcpOutput.model_validate_json(result.stdout)
+    config_path = home / ".hermes" / "config.yaml"
+    assert output.config_path == str(config_path)
+    config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    assert config["mcp_servers"]["oh-my-field"]["command"] == "omf"
+    assert config["mcp_servers"]["oh-my-field"]["args"] == ["mcp", "serve"]
+
+
+def test_install_mcp_existing_server_skips_without_overwrite(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    config_path = home / ".claude.json"
+    config_path.parent.mkdir(parents=True)
+    config_path.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "oh-my-field": {"command": "existing", "args": []},
+                },
+            },
+        ),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "install",
+            "mcp",
+            "--client",
+            "claude_code",
+            "--home",
+            str(home),
+            "--server-command",
+            "omf",
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = InstallMcpOutput.model_validate_json(result.stdout)
+    assert not output.installed
+    assert output.backup_path is None
+    assert output.actions[0]["action"] == "skip_existing"
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    assert config["mcpServers"]["oh-my-field"]["command"] == "existing"
+
+
+def test_install_mcp_overwrite_creates_backup(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    config_path = home / ".claude.json"
+    config_path.parent.mkdir(parents=True)
+    config_path.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "oh-my-field": {"command": "existing", "args": []},
+                },
+            },
+        ),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "install",
+            "mcp",
+            "--client",
+            "claude_code",
+            "--home",
+            str(home),
+            "--server-command",
+            "omf",
+            "--overwrite",
         ],
     )
 
     assert result.exit_code == 0
     output = InstallMcpOutput.model_validate_json(result.stdout)
     assert output.installed
-    assert output.config_path == str(out)
-    config = json.loads(out.read_text(encoding="utf-8"))
+    assert output.backup_path is not None
+    assert Path(output.backup_path).exists()
+    config = json.loads(config_path.read_text(encoding="utf-8"))
     assert config["mcpServers"]["oh-my-field"]["command"] == "omf"
-    assert config["mcpServers"]["oh-my-field"]["args"] == ["mcp", "serve"]
+
+
+def test_install_mcp_rejects_invalid_existing_config(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    config_path = home / ".claude.json"
+    config_path.parent.mkdir(parents=True)
+    config_path.write_text("{not-json", encoding="utf-8")
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "install",
+            "mcp",
+            "--client",
+            "claude_code",
+            "--home",
+            str(home),
+            "--server-command",
+            "omf",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "invalid JSON MCP config" in result.stderr
+    assert config_path.read_text(encoding="utf-8") == "{not-json"
+
+
+def test_install_mcp_dry_run_writes_nothing(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "install",
+            "mcp",
+            "--client",
+            "codex",
+            "--home",
+            str(home),
+            "--dry-run",
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = InstallMcpOutput.model_validate_json(result.stdout)
+    assert output.dry_run
+    assert not output.installed
+    assert output.actions[0]["action"] == "plan_only"
+    assert not home.exists()

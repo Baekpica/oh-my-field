@@ -23,7 +23,7 @@ Use this when an agent can call OMF *during* the work. Optionally install the
 meta-skill first so the agent knows when and how to call OMF:
 
 ```bash
-omf install skill --runtime generic
+omf install skill --runtime codex
 ```
 
 Start a session, record meaningful events, then finish it:

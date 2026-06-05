@@ -5,16 +5,13 @@ through `oh_my_field.adapters.runtime_export`.
 
 ## Generated Files
 
-- `SOUL.md`
-- `skills/<capability>.md`
-- `profile.patch.yaml`
-- `harness.md`
+- `skills/<capability>/SKILL.md`
+- `skills/<capability>/references/harness.md`
 
 ## Expected Install Location
 
-Apply `profile.patch.yaml` to the target Hermes profile and place generated
-skills under the target profile's skills directory. Keep `harness.md` with the
-capability export for validation.
+Copy `skills/<capability>/` into the target Hermes skill directory. Keep the OMF
+export directory as provenance until the target run has been validated.
 
 ## Manual Import
 
@@ -40,8 +37,8 @@ omf capability validate repo_issue_triage \
 
 ## Known Limitations
 
-Hermes profile layouts can vary. Treat generated profile patches as reviewable
-input, not an automatic overwrite.
+Hermes profile layouts can vary. OMF exports an installable skill directory, but
+does not automatically modify Hermes profiles during capability export.
 
 ## Target Run Example
 

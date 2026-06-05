@@ -1,50 +1,130 @@
-from importlib.resources import files
+import shutil
 from pathlib import Path
-from typing import Literal
 
-from oh_my_field.infrastructure.install import read_resource_text, write_text_if_allowed
+from oh_my_field.infrastructure.install.mcp_config import (
+    McpConfigPatchError,
+    McpConfigPatchRequest,
+    McpConfigPatchResult,
+    McpServerConfig,
+    patch_json_mcp_config,
+    patch_toml_mcp_config,
+    patch_yaml_mcp_config,
+)
 from oh_my_field.mcp.schemas import (
     McpInstallAction,
     McpInstallRequest,
     McpInstallSummary,
+    ResolvedMcpInstallScope,
 )
 
-RESOURCE_PACKAGE = "oh_my_field.resources.mcp"
+SERVER_NAME = "oh-my-field"
+
+
+class McpInstallError(ValueError):
+    """Raised when an MCP client config cannot be installed."""
 
 
 def install_mcp_config(request: McpInstallRequest) -> McpInstallSummary:
-    resource = read_resource_text(files(RESOURCE_PACKAGE).joinpath("generic.json"))
-    target_path = _resolve_output_path(request)
-    wrote = write_text_if_allowed(
-        target_path=target_path,
-        content=resource.content,
-        overwrite=request.overwrite,
-        dry_run=request.dry_run,
-    )
-    action = _action_for_target(
-        target_path=target_path,
-        dry_run=request.dry_run,
-        wrote=wrote,
-    )
+    scope = _resolve_scope(request)
+    server_command, command_needs_path_check = _server_command(request)
+    server = McpServerConfig(command=server_command, args=("mcp", "serve"))
+    try:
+        result = _patch_config(request=request, scope=scope, server=server)
+    except McpConfigPatchError as exc:
+        raise McpInstallError(str(exc)) from exc
     return McpInstallSummary(
         client=request.client,
-        installed=wrote,
+        scope=scope,
+        installed=result.wrote,
         dry_run=request.dry_run,
-        config_path=str(target_path),
+        server_name=SERVER_NAME,
+        config_path=str(result.config_path),
+        backup_path=str(result.backup_path) if result.backup_path is not None else None,
         actions=(
             McpInstallAction(
-                target_path=str(target_path),
-                action=action,
-                source=resource.source,
-                reason=_reason_for_target(
-                    target_path=target_path,
-                    dry_run=request.dry_run,
-                    wrote=wrote,
-                ),
+                target_path=str(result.config_path),
+                action=result.action,
+                source=result.source,
+                reason=result.reason,
             ),
         ),
-        next_action=_next_action(installed=wrote),
+        next_action=_next_action(
+            request=request,
+            scope=scope,
+            installed=result.wrote,
+            skipped=result.action == "skip_existing",
+            command_needs_path_check=command_needs_path_check,
+        ),
     )
+
+
+def _resolve_scope(request: McpInstallRequest) -> ResolvedMcpInstallScope:
+    if request.scope == "auto":
+        return "export" if request.client == "generic" else "user"
+    if request.client == "generic" and request.scope != "export":
+        msg = "generic MCP installs only support export scope"
+        raise McpInstallError(msg)
+    if request.scope == "export" and request.client != "generic":
+        msg = "only the generic MCP client supports export scope"
+        raise McpInstallError(msg)
+    if request.scope == "project" and request.client == "hermes":
+        msg = "Hermes MCP installs do not support project scope"
+        raise McpInstallError(msg)
+    if request.scope in ("user", "project", "export"):
+        return request.scope
+    msg = f"unsupported MCP install scope {request.scope!r}"
+    raise McpInstallError(msg)
+
+
+def _patch_config(
+    *,
+    request: McpInstallRequest,
+    scope: ResolvedMcpInstallScope,
+    server: McpServerConfig,
+) -> McpConfigPatchResult:
+    source = f"{request.client}:{scope}"
+    config_path = _config_path(request=request, scope=scope)
+    patch_request = McpConfigPatchRequest(
+        config_path=config_path,
+        server_name=SERVER_NAME,
+        server=server,
+        dry_run=request.dry_run,
+        overwrite=request.overwrite,
+        source=source,
+    )
+    match request.client:
+        case "generic" | "claude_code":
+            return patch_json_mcp_config(request=patch_request)
+        case "codex":
+            return patch_toml_mcp_config(request=patch_request)
+        case "hermes":
+            return patch_yaml_mcp_config(request=patch_request)
+    msg = f"unsupported MCP client {request.client!r}"
+    raise McpInstallError(msg)
+
+
+def _config_path(
+    *,
+    request: McpInstallRequest,
+    scope: ResolvedMcpInstallScope,
+) -> Path:
+    if scope == "export":
+        return _resolve_output_path(request)
+    home = _home_root(request)
+    match (request.client, scope):
+        case ("codex", "user"):
+            return home / ".codex" / "config.toml"
+        case ("codex", "project"):
+            return request.project / ".codex" / "config.toml"
+        case ("claude_code", "user"):
+            return home / ".claude.json"
+        case ("claude_code", "project"):
+            return request.project / ".mcp.json"
+        case ("hermes", "user"):
+            return home / ".hermes" / "config.yaml"
+        case _:
+            msg = f"{request.client} MCP installs do not support {scope} scope"
+            raise McpInstallError(msg)
 
 
 def _resolve_output_path(request: McpInstallRequest) -> Path:
@@ -53,35 +133,45 @@ def _resolve_output_path(request: McpInstallRequest) -> Path:
     return request.project / request.out
 
 
-def _action_for_target(
-    *,
-    target_path: Path,
-    dry_run: bool,
-    wrote: bool,
-) -> Literal["write", "skip_existing", "plan_only"]:
-    if wrote:
-        return "write"
-    if dry_run or not target_path.exists():
-        return "plan_only"
-    return "skip_existing"
+def _home_root(request: McpInstallRequest) -> Path:
+    return (request.home or Path.home()).expanduser()
 
 
-def _reason_for_target(
+def _server_command(request: McpInstallRequest) -> tuple[str, bool]:
+    if request.server_command is not None:
+        return request.server_command, False
+    resolved = shutil.which("omf")
+    if resolved is not None:
+        return resolved, False
+    return "omf", True
+
+
+def _next_action(
     *,
-    target_path: Path,
-    dry_run: bool,
-    wrote: bool,
+    request: McpInstallRequest,
+    scope: ResolvedMcpInstallScope,
+    installed: bool,
+    skipped: bool,
+    command_needs_path_check: bool,
 ) -> str:
-    if wrote:
-        return "generic MCP server config written"
-    if dry_run:
-        return "dry-run requested"
-    if target_path.exists():
-        return "target exists and overwrite is false"
-    return "target would be written"
-
-
-def _next_action(*, installed: bool) -> str:
-    if installed:
-        return "Add this MCP config to your agent client, then call omf_health."
-    return "Review the planned MCP config or rerun with --overwrite."
+    if request.dry_run:
+        return "Review the dry-run MCP config plan before installing."
+    if skipped:
+        return "MCP server already exists; rerun with --overwrite to replace it."
+    if not installed:
+        return "Review the MCP config plan or rerun with --overwrite."
+    path_note = (
+        " Ensure the omf executable is on PATH for the agent runtime."
+        if command_needs_path_check
+        else ""
+    )
+    action = "Verify the MCP server in the target agent client."
+    if request.client == "generic" and scope == "export":
+        action = "Add this MCP config to your agent client, then call omf_health."
+    elif request.client == "codex":
+        action = "Open Codex and run /mcp to verify oh-my-field is connected."
+    elif request.client == "claude_code":
+        action = "Open Claude Code and run /mcp to verify oh-my-field is connected."
+    elif request.client == "hermes":
+        action = "Run /reload-mcp in Hermes or restart Hermes, then use /omf."
+    return f"{action}{path_note}"

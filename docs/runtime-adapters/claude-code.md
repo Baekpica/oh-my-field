@@ -5,16 +5,16 @@ registered through `oh_my_field.adapters.runtime_export`.
 
 ## Generated Files
 
-- `CLAUDE.md`
-- `capability.md`
-- `examples.md`
-- `checks.md`
+- `.claude/skills/<capability>/SKILL.md`
+- `.claude/skills/<capability>/references/capability.md`
+- `.claude/skills/<capability>/references/examples.md`
+- `.claude/skills/<capability>/references/checks.md`
 
 ## Expected Install Location
 
-Copy or merge `CLAUDE.md` into the target Claude Code project root. Keep the
-supporting markdown files near the project memory or in a documented capability
-folder.
+Copy the generated `.claude/skills/<capability>/` directory into the target
+Claude Code project root, or into the user-level skill directory if the
+capability is intended to be global.
 
 ## Manual Import
 
@@ -41,7 +41,8 @@ omf capability validate repo_issue_triage \
 ## Known Limitations
 
 Claude Code project memory may already contain local instructions. Review
-conflicts before merging generated `CLAUDE.md` content.
+conflicts between project memory and the generated capability skill before
+validating the target run.
 
 ## Target Run Example
 

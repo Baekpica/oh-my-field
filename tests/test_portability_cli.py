@@ -270,28 +270,26 @@ def test_capability_import_writes_validation_report(tmp_path: Path) -> None:
         (
             "codex",
             (
-                "AGENTS.md",
-                "capability.md",
-                "context.policy.md",
-                "harness.md",
+                ".agents/skills/repo_issue_triage/SKILL.md",
+                ".agents/skills/repo_issue_triage/references/capability.md",
+                ".agents/skills/repo_issue_triage/references/context.policy.md",
+                ".agents/skills/repo_issue_triage/references/harness.md",
             ),
         ),
         (
             "claude_code",
             (
-                "CLAUDE.md",
-                "capability.md",
-                "examples.md",
-                "checks.md",
+                ".claude/skills/repo_issue_triage/SKILL.md",
+                ".claude/skills/repo_issue_triage/references/capability.md",
+                ".claude/skills/repo_issue_triage/references/examples.md",
+                ".claude/skills/repo_issue_triage/references/checks.md",
             ),
         ),
         (
             "hermes",
             (
-                "SOUL.md",
-                "skills/repo_issue_triage.md",
-                "profile.patch.yaml",
-                "harness.md",
+                "skills/repo_issue_triage/SKILL.md",
+                "skills/repo_issue_triage/references/harness.md",
             ),
         ),
         (
@@ -936,8 +934,9 @@ def test_runtime_export_assets_have_native_sections(tmp_path: Path) -> None:
     )
 
     skill = (
-        hermes_dir / "runtime" / "hermes" / "skills" / "repo_issue_triage.md"
+        hermes_dir / "runtime" / "hermes" / "skills" / "repo_issue_triage" / "SKILL.md"
     ).read_text(encoding="utf-8")
+    assert "name: repo_issue_triage" in skill
     assert "## Trigger" in skill
     assert "## Context Policy" in skill
     assert "## Procedure" in skill
@@ -945,10 +944,18 @@ def test_runtime_export_assets_have_native_sections(tmp_path: Path) -> None:
     assert "schema_valid" in skill
     assert ".env" in skill
 
-    agents = (codex_dir / "runtime" / "codex" / "AGENTS.md").read_text(encoding="utf-8")
-    assert "## Activation" in agents
-    assert "## Safety Boundary" in agents
-    assert "schema_valid" in agents
+    codex_skill = (
+        codex_dir
+        / "runtime"
+        / "codex"
+        / ".agents"
+        / "skills"
+        / "repo_issue_triage"
+        / "SKILL.md"
+    ).read_text(encoding="utf-8")
+    assert "name: repo_issue_triage" in codex_skill
+    assert "## Trigger" in codex_skill
+    assert "schema_valid" in codex_skill
 
     generic_skill = (generic_dir / "runtime" / "generic" / "skill.md").read_text(
         encoding="utf-8"
