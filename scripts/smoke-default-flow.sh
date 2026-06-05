@@ -42,5 +42,12 @@ evidence_id="$(
 
 "${omf[@]}" health repo_issue_triage
 
+export_json="$("${omf[@]}" export repo_issue_triage --approve-export)"
+export_path="$(
+  python3 -c 'import json, sys; print(json.load(sys.stdin)["export_path"])' \
+    <<<"$export_json"
+)"
+
 test -f capabilities/repo_issue_triage/capability.yaml
+test -f "$export_path"
 test ! -e .omf/capabilities/repo_issue_triage

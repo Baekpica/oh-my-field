@@ -6,7 +6,7 @@ Public release is tag-driven.
 2. Build wheel and sdist.
 3. Smoke test both artifacts with isolated `omf --help`, `omf doctor --json`,
    `omf install skill`, `omf install mcp`, and the default
-   `omf init -> import-run -> promote -> health` flow.
+   `omf init -> import-run -> promote -> health -> export` flow.
 4. Publish with PyPI Trusted Publishing from the release workflow.
 5. Upload GitHub release artifacts and checksums.
 
