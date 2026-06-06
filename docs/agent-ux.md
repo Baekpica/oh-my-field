@@ -39,10 +39,13 @@ config with:
 omf install mcp --client codex
 omf install mcp --client claude_code
 omf install mcp --client hermes
+omf install mcp --client pi
+omf install mcp --client odysseus --project /path/to/odysseus
 omf install mcp --client generic --scope export --out .omf/mcp.json
 ```
 
-Codex, Claude Code, and Hermes patch their real user config paths by default.
+Codex, Claude Code, Hermes, and Pi patch their runtime config paths by default.
+Odysseus writes a reviewable admin API payload for `/api/mcp/servers`.
 `generic` writes a reviewable JSON snippet under `--out`.
 
 The initial MCP surface mirrors the activation loop:

@@ -82,6 +82,32 @@ def test_install_skill_codex_defaults_to_user_skill_home(tmp_path: Path) -> None
     assert "name: omf" in skill_path.read_text(encoding="utf-8")
 
 
+def test_install_skill_pi_defaults_to_user_skill_home(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "install",
+            "skill",
+            "--runtime",
+            "pi",
+            "--home",
+            str(home),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = InstallSkillOutput.model_validate_json(result.stdout)
+    skill_path = home / ".pi" / "agent" / "skills" / "omf" / "SKILL.md"
+    assert output.runtime == "pi"
+    assert output.scope == "user"
+    assert output.installed
+    assert output.skill_path == str(skill_path)
+    assert skill_path.exists()
+    assert "name: omf" in skill_path.read_text(encoding="utf-8")
+
+
 def test_install_skill_project_scope_writes_project_discovery_path(
     tmp_path: Path,
 ) -> None:
@@ -106,6 +132,33 @@ def test_install_skill_project_scope_writes_project_discovery_path(
     assert output.installed
     assert output.skill_path == str(skill_path)
     assert "name: omf" in skill_path.read_text(encoding="utf-8")
+
+
+def test_install_skill_odysseus_project_scope_writes_data_skill(tmp_path: Path) -> None:
+    result = CliRunner().invoke(
+        app,
+        [
+            "install",
+            "skill",
+            "--runtime",
+            "odysseus",
+            "--scope",
+            "project",
+            "--project",
+            str(tmp_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = InstallSkillOutput.model_validate_json(result.stdout)
+    skill_path = tmp_path / "data" / "skills" / "omf" / "omf" / "SKILL.md"
+    assert output.runtime == "odysseus"
+    assert output.scope == "project"
+    assert output.installed
+    assert output.skill_path == str(skill_path)
+    content = skill_path.read_text(encoding="utf-8")
+    assert "name: omf" in content
+    assert "category: omf" in content
 
 
 def test_install_skill_export_scope_writes_reviewable_layout(tmp_path: Path) -> None:

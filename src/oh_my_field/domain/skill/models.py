@@ -6,7 +6,9 @@ from pydantic import Field
 from oh_my_field.domain.layout import DEFAULT_AGENT_SKILL_DIR
 from oh_my_field.domain.models import StrictModel
 
-type SkillInstallRuntime = Literal["codex", "claude_code", "hermes", "generic"]
+type SkillInstallRuntime = Literal[
+    "codex", "claude_code", "hermes", "pi", "odysseus", "generic"
+]
 type SkillInstallScope = Literal["auto", "user", "project", "export"]
 type ResolvedSkillInstallScope = Literal["user", "project", "export"]
 

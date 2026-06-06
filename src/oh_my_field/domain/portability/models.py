@@ -10,7 +10,9 @@ from oh_my_field.domain.models import (
     StrictModel,
 )
 
-type ExportTarget = Literal["codex", "claude_code", "hermes", "generic"]
+type ExportTarget = Literal[
+    "codex", "claude_code", "hermes", "pi", "odysseus", "generic"
+]
 type ValidationStatus = Literal["needs_validation", "needs_adaptation", "validated"]
 type ToolCompatibilityStatus = Literal["pass", "partial", "unknown"]
 type EvidenceInclusionMode = Literal["none", "summary", "redacted", "full"]

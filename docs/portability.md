@@ -39,3 +39,24 @@ omf capability validate repo_issue_triage \
   --run-command "hermes-code --profile target --skill repo_issue_triage" \
   --approve-command-risk
 ```
+
+
+## Pi And Odysseus Capability Flow
+
+Pi exports render a project-local `.pi/skills/<capability>/SKILL.md` tree plus a
+`package.json` with a Pi manifest. That gives users two native import paths:
+copy `.pi/skills/<capability>` into a project, or run `pi install /path/to/runtime/pi`
+against the exported runtime package.
+
+Odysseus exports render `data/skills/omf/<capability>/SKILL.md` with Odysseus'
+structured sections (`When to Use`, `Procedure`, `Pitfalls`, `Verification`). To
+import into a running Odysseus checkout, copy the generated `data/skills/omf/`
+subtree into the Odysseus project data directory and reload/restart Odysseus so
+its skill scanner sees the file.
+
+For cross-agent portability, keep the OMF export bundle as the canonical source.
+The native Pi/Odysseus skill files are projections. After copying or installing a
+projection, run `omf capability import ... --runtime pi|odysseus --validate` in
+the target project, then run an actual target-agent task and record the result
+with `omf import-run pi|odysseus` or OMF session evidence before marking the
+capability portable.

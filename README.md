@@ -31,7 +31,7 @@ surface to keep tightening while feedback lands.
 
 ## What OMF Is Not
 
-- Not an agent runtime — Codex, Claude Code, Hermes, or another agent does the work.
+- Not an agent runtime — Codex, Claude Code, Hermes, Pi, Odysseus, or another agent does the work.
 - Not a prompt vault — a capability is instructions plus context policy, harness,
   evidence, eval cases, and integrity metadata.
 - Not an autonomous shell runner — risky commands are recorded as intent and
@@ -58,7 +58,7 @@ capability actually works on another runtime or project.
 
 ```text
 external agent runtime
-  Codex / Claude Code / Hermes / local agent
+  Codex / Claude Code / Hermes / Pi / Odysseus / local agent
         │
         ▼
 OMF session  ──or──  imported run
@@ -116,12 +116,16 @@ meta-skill for the target agent runtime:
 omf install skill --runtime codex
 omf install skill --runtime claude_code
 omf install skill --runtime hermes
+omf install skill --runtime pi
+omf install skill --runtime odysseus --project /path/to/odysseus
 omf install skill --runtime generic --scope export
 ```
 
-By default Codex, Claude Code, and Hermes install into their user-level skill
-discovery paths (`~/.agents/skills`, `~/.claude/skills`, `~/.hermes/skills`).
-`generic` keeps producing reviewable export assets under `.omf/agent/omf-skill`.
+By default Codex, Claude Code, Hermes, and Pi install into their user-level
+skill discovery paths (`~/.agents/skills`, `~/.claude/skills`,
+`~/.hermes/skills`, `~/.pi/agent/skills`). Odysseus installs into the target
+checkout's `data/skills` tree. `generic` keeps producing reviewable export
+assets under `.omf/agent/omf-skill`.
 
 For MCP-capable clients, patch the matching client config and run the stdio
 server:
@@ -130,6 +134,8 @@ server:
 omf install mcp --client codex
 omf install mcp --client claude_code
 omf install mcp --client hermes
+omf install mcp --client pi
+omf install mcp --client odysseus --project /path/to/odysseus
 omf install mcp --client generic --scope export --out .omf/mcp.json
 omf mcp serve
 ```
@@ -244,9 +250,9 @@ capabilities/
   datasets/      reflections/  workflows/    runs/
 ```
 
-Runtime-specific files (Codex instructions, Claude Code memory, Hermes profile
-assets, generic skill bundles) are **projections** of the package, not the
-source of truth.
+Runtime-specific files (Codex instructions, Claude Code memory,
+Hermes/Pi/Odysseus skill projections, and generic skill bundles) are
+**projections** of the package, not the source of truth.
 
 `.omf/config.yaml` records local field defaults and `.omf/registry.yaml` is local
 registry metadata. The package files under `capabilities/<name>/` remain the

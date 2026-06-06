@@ -23,7 +23,7 @@ from oh_my_field.portability import (
     validate_capability_package,
 )
 
-TargetRuntime = Literal["codex", "claude_code", "hermes", "generic"]
+TargetRuntime = Literal["codex", "claude_code", "hermes", "pi", "odysseus", "generic"]
 
 
 def capability_export(

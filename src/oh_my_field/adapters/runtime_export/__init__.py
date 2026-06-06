@@ -10,6 +10,10 @@ from oh_my_field.adapters.runtime_export.claude_code import (
 from oh_my_field.adapters.runtime_export.codex import CodexRuntimeExportAdapter
 from oh_my_field.adapters.runtime_export.generic import GenericRuntimeExportAdapter
 from oh_my_field.adapters.runtime_export.hermes import HermesRuntimeExportAdapter
+from oh_my_field.adapters.runtime_export.odysseus import (
+    OdysseusRuntimeExportAdapter,
+)
+from oh_my_field.adapters.runtime_export.pi import PiRuntimeExportAdapter
 from oh_my_field.domain.models import CapabilityManifest
 from oh_my_field.domain.portability.models import ExportTarget, PortabilityManifest
 
@@ -18,6 +22,8 @@ _ADAPTERS: dict[ExportTarget, RuntimeExportAdapter] = {
     "codex": CodexRuntimeExportAdapter(),
     "generic": GenericRuntimeExportAdapter(),
     "hermes": HermesRuntimeExportAdapter(),
+    "odysseus": OdysseusRuntimeExportAdapter(),
+    "pi": PiRuntimeExportAdapter(),
 }
 
 
