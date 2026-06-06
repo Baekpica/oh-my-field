@@ -78,7 +78,7 @@ truth.
 
 `omf capability export` builds the canonical portability bundle through the
 application workflow, then asks the runtime export registry for the matching
-Codex, Claude Code, Hermes, or generic adapter. Import and validation workflows
+Codex, Claude Code, Hermes, Pi, Odysseus, or generic adapter. Import and validation workflows
 read bundle and overlay state through infrastructure stores rather than writing
 target files from the CLI layer.
 

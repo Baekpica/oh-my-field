@@ -283,6 +283,68 @@ def test_install_mcp_hermes_patches_yaml(tmp_path: Path) -> None:
     assert config["mcp_servers"]["oh-my-field"]["args"] == ["mcp", "serve"]
 
 
+def test_install_mcp_pi_project_config(tmp_path: Path) -> None:
+    result = CliRunner().invoke(
+        app,
+        [
+            "install",
+            "mcp",
+            "--client",
+            "pi",
+            "--scope",
+            "project",
+            "--project",
+            str(tmp_path),
+            "--server-command",
+            "omf",
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = InstallMcpOutput.model_validate_json(result.stdout)
+    config_path = tmp_path / ".mcp.json"
+    assert output.client == "pi"
+    assert output.scope == "project"
+    assert output.config_path == str(config_path)
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    assert config["mcpServers"]["oh-my-field"]["command"] == "omf"
+    assert config["mcpServers"]["oh-my-field"]["args"] == ["mcp", "serve"]
+
+
+def test_install_mcp_odysseus_project_config(tmp_path: Path) -> None:
+    result = CliRunner().invoke(
+        app,
+        [
+            "install",
+            "mcp",
+            "--client",
+            "odysseus",
+            "--scope",
+            "project",
+            "--project",
+            str(tmp_path),
+            "--server-command",
+            "omf",
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = InstallMcpOutput.model_validate_json(result.stdout)
+    config_path = (
+        tmp_path / ".omf" / "agent" / "odysseus" / "oh-my-field.add-server.json"
+    )
+    assert output.client == "odysseus"
+    assert output.scope == "project"
+    assert output.config_path == str(config_path)
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    assert payload["method"] == "POST"
+    assert payload["path"] == "/api/mcp/servers"
+    assert payload["form"]["name"] == "oh-my-field"
+    assert payload["form"]["transport"] == "stdio"
+    assert payload["form"]["command"] == "omf"
+    assert payload["form"]["args"] == '["mcp", "serve"]'
+
+
 def test_install_mcp_existing_server_skips_without_overwrite(tmp_path: Path) -> None:
     home = tmp_path / "home"
     config_path = home / ".claude.json"

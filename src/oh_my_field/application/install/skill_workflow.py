@@ -92,11 +92,20 @@ def install_omf_skill(request: SkillInstallRequest) -> SkillInstallSummary:
 
 def _resolve_scope(request: SkillInstallRequest) -> ResolvedSkillInstallScope:
     if request.scope == "auto":
-        return "export" if request.runtime == "generic" else "user"
-    if request.scope == "user" and request.runtime == "generic":
-        msg = "generic skills can only be installed with export scope"
+        if request.runtime == "generic":
+            return "export"
+        if request.runtime == "odysseus":
+            return "project"
+        return "user"
+    if request.scope == "user" and request.runtime in ("generic", "odysseus"):
+        msg = f"{request.runtime} skills do not support user scope"
         raise SkillInstallError(msg)
-    if request.scope == "project" and request.runtime not in ("codex", "claude_code"):
+    if request.scope == "project" and request.runtime not in (
+        "codex",
+        "claude_code",
+        "pi",
+        "odysseus",
+    ):
         msg = f"{request.runtime} skills do not support project scope"
         raise SkillInstallError(msg)
     if request.scope in ("user", "project", "export"):
@@ -155,8 +164,17 @@ def _user_skill_targets(request: SkillInstallRequest) -> tuple[SkillTarget, ...]
                     primary=True,
                 ),
             )
-        case "generic":
-            msg = "generic skills can only be installed with export scope"
+        case "pi":
+            return (
+                SkillTarget(
+                    Path("pi/SKILL.md"),
+                    home / ".pi" / "agent" / "skills" / "omf" / "SKILL.md",
+                    "Pi user skill written",
+                    primary=True,
+                ),
+            )
+        case "generic" | "odysseus":
+            msg = f"{request.runtime} skills do not support user scope"
             raise SkillInstallError(msg)
 
 
@@ -184,6 +202,24 @@ def _project_skill_targets(request: SkillInstallRequest) -> tuple[SkillTarget, .
                     Path("claude_code/SKILL.md"),
                     project / ".claude" / "skills" / "omf" / "SKILL.md",
                     "Claude Code project skill written",
+                    primary=True,
+                ),
+            )
+        case "pi":
+            return (
+                SkillTarget(
+                    Path("pi/SKILL.md"),
+                    project / ".pi" / "skills" / "omf" / "SKILL.md",
+                    "Pi project skill written",
+                    primary=True,
+                ),
+            )
+        case "odysseus":
+            return (
+                SkillTarget(
+                    Path("odysseus/SKILL.md"),
+                    project / "data" / "skills" / "omf" / "omf" / "SKILL.md",
+                    "Odysseus project skill written",
                     primary=True,
                 ),
             )
@@ -248,6 +284,40 @@ def _export_skill_targets(request: SkillInstallRequest) -> tuple[SkillTarget, ..
                     primary=True,
                 ),
             )
+        case "pi":
+            return (
+                SkillTarget(
+                    Path("SKILL.md"),
+                    out_root / "SKILL.md",
+                    "shared OMF skill resource written",
+                ),
+                SkillTarget(
+                    Path("pi/SKILL.md"),
+                    out_root / "pi" / ".pi" / "skills" / "omf" / "SKILL.md",
+                    "Pi export skill written",
+                    primary=True,
+                ),
+            )
+        case "odysseus":
+            return (
+                SkillTarget(
+                    Path("SKILL.md"),
+                    out_root / "SKILL.md",
+                    "shared OMF skill resource written",
+                ),
+                SkillTarget(
+                    Path("odysseus/SKILL.md"),
+                    out_root
+                    / "odysseus"
+                    / "data"
+                    / "skills"
+                    / "omf"
+                    / "omf"
+                    / "SKILL.md",
+                    "Odysseus export skill written",
+                    primary=True,
+                ),
+            )
         case "generic":
             return (
                 SkillTarget(
@@ -309,18 +379,28 @@ def _next_action(
         return "Review the dry-run plan before installing the OMF skill."
     if not installed:
         return "Review skipped targets or rerun with --overwrite."
-    action = "Open the target agent and type /omf."
-    if runtime == "codex" and scope == "user":
-        action = "Open Codex and type /omf; restart Codex if the skill is not listed."
-    elif runtime == "codex" and scope == "project":
-        action = "Open Codex from this project and type /omf."
-    elif runtime == "claude_code" and scope in ("user", "project"):
-        action = "Reload Claude Code if needed, then type /omf."
-    elif runtime == "hermes" and scope == "user":
-        action = (
+    actions: dict[tuple[str, str], str] = {
+        ("codex", "user"): (
+            "Open Codex and type /omf; restart Codex if the skill is not listed."
+        ),
+        ("codex", "project"): "Open Codex from this project and type /omf.",
+        ("claude_code", "user"): "Reload Claude Code if needed, then type /omf.",
+        ("claude_code", "project"): "Reload Claude Code if needed, then type /omf.",
+        ("hermes", "user"): (
             "Start Hermes and type /omf; reload skills if the session "
             "is already running."
-        )
-    elif scope == "export":
-        action = "Review the exported OMF skill assets and copy them to the runtime."
-    return action
+        ),
+        ("pi", "user"): "Restart Pi if needed, then type /skill:omf or /omf.",
+        ("pi", "project"): "Open Pi from this project, then type /skill:omf or /omf.",
+        ("odysseus", "project"): (
+            "Restart Odysseus or reload skills, then use the OMF skill."
+        ),
+        ("*", "export"): (
+            "Review the exported OMF skill assets and copy them to the runtime."
+        ),
+    }
+    return (
+        actions.get((runtime, scope))
+        or actions.get(("*", scope))
+        or "Open the target agent and type /omf."
+    )

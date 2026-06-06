@@ -293,6 +293,24 @@ def test_capability_import_writes_validation_report(tmp_path: Path) -> None:
             ),
         ),
         (
+            "pi",
+            (
+                ".pi/skills/repo_issue_triage/SKILL.md",
+                ".pi/skills/repo_issue_triage/references/capability.md",
+                ".pi/skills/repo_issue_triage/references/context.policy.md",
+                ".pi/skills/repo_issue_triage/references/harness.md",
+                "package.json",
+            ),
+        ),
+        (
+            "odysseus",
+            (
+                "data/skills/omf/repo_issue_triage/SKILL.md",
+                "data/skills/omf/repo_issue_triage/references/capability.md",
+                "data/skills/omf/repo_issue_triage/references/harness.md",
+            ),
+        ),
+        (
             "generic",
             (
                 "skill.md",
@@ -886,6 +904,8 @@ def test_runtime_export_assets_have_native_sections(tmp_path: Path) -> None:
     write_manifest(make_manifest(), caps)
     hermes_dir = tmp_path / "exports" / "hermes"
     codex_dir = tmp_path / "exports" / "codex"
+    pi_dir = tmp_path / "exports" / "pi"
+    odysseus_dir = tmp_path / "exports" / "odysseus"
     generic_dir = tmp_path / "exports" / "generic"
     _run_ok(
         [
@@ -913,6 +933,36 @@ def test_runtime_export_assets_have_native_sections(tmp_path: Path) -> None:
             "gpt-5.5",
             "--out",
             str(codex_dir),
+            "--capabilities-dir",
+            str(caps),
+        ],
+    )
+    _run_ok(
+        [
+            "capability",
+            "export",
+            "repo_issue_triage",
+            "--target",
+            "pi",
+            "--target-model",
+            "local",
+            "--out",
+            str(pi_dir),
+            "--capabilities-dir",
+            str(caps),
+        ],
+    )
+    _run_ok(
+        [
+            "capability",
+            "export",
+            "repo_issue_triage",
+            "--target",
+            "odysseus",
+            "--target-model",
+            "local",
+            "--out",
+            str(odysseus_dir),
             "--capabilities-dir",
             str(caps),
         ],
@@ -956,6 +1006,28 @@ def test_runtime_export_assets_have_native_sections(tmp_path: Path) -> None:
     assert "name: repo_issue_triage" in codex_skill
     assert "## Trigger" in codex_skill
     assert "schema_valid" in codex_skill
+
+    pi_skill = (
+        pi_dir / "runtime" / "pi" / ".pi" / "skills" / "repo_issue_triage" / "SKILL.md"
+    ).read_text(encoding="utf-8")
+    assert "name: repo_issue_triage" in pi_skill
+    assert "## Trigger" in pi_skill
+    assert "schema_valid" in pi_skill
+
+    odysseus_skill = (
+        odysseus_dir
+        / "runtime"
+        / "odysseus"
+        / "data"
+        / "skills"
+        / "omf"
+        / "repo_issue_triage"
+        / "SKILL.md"
+    ).read_text(encoding="utf-8")
+    assert "name: repo_issue_triage" in odysseus_skill
+    assert "category: omf" in odysseus_skill
+    assert "## When to Use" in odysseus_skill
+    assert "schema_valid" in odysseus_skill
 
     generic_skill = (generic_dir / "runtime" / "generic" / "skill.md").read_text(
         encoding="utf-8"

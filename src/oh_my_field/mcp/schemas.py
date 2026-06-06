@@ -92,7 +92,9 @@ class McpToolDefinition(StrictModel):
     input_schema: dict[str, object]
 
 
-type McpInstallClient = Literal["generic", "codex", "claude_code", "hermes"]
+type McpInstallClient = Literal[
+    "generic", "codex", "claude_code", "hermes", "pi", "odysseus"
+]
 type McpInstallScope = Literal["auto", "user", "project", "export"]
 type ResolvedMcpInstallScope = Literal["user", "project", "export"]
 

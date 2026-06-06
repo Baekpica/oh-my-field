@@ -205,6 +205,62 @@ def agent_skill_markdown(manifest: CapabilityManifest) -> str:
     )
 
 
+def odysseus_skill_markdown(manifest: CapabilityManifest) -> str:
+    frontmatter = yaml.safe_dump(
+        {
+            "name": manifest.name,
+            "description": manifest.description,
+            "version": manifest.version,
+            "category": "omf",
+            "tags": ["omf", "capability"],
+            "status": "published",
+            "confidence": 1.0,
+            "source": "imported",
+        },
+        sort_keys=False,
+    ).strip()
+    return "\n".join(
+        [
+            "---",
+            frontmatter,
+            "---",
+            "",
+            f"# {manifest.name}",
+            "",
+            "## When to Use",
+            "",
+            f"Use this skill when the task matches: {manifest.normalized_goal}.",
+            "",
+            "## Procedure",
+            "",
+            "1. Load the required context before acting.",
+            "2. Identify the smallest relevant surface for the goal.",
+            "3. Make the minimal change or output that satisfies the goal.",
+            "4. Run the harness checks before accepting the result.",
+            "5. Record unresolved failures as OMF evidence.",
+            "",
+            "## Pitfalls",
+            "",
+            "- Do not treat OMF as the agent runtime; use Odysseus normally.",
+            "- Do not read forbidden context or run risky tools without approval.",
+            "",
+            "## Verification",
+            "",
+            _bullets(manifest.harness.required_checks, "Harness checks pass."),
+            "- No unrelated changes.",
+            "",
+            "## Context Policy",
+            "",
+            "### Required",
+            _bullets(manifest.context.required, "No required context recorded."),
+            "",
+            "### Forbidden",
+            _bullets(manifest.context.forbidden, "No forbidden context recorded."),
+            "",
+        ],
+    )
+
+
 def codex_agents_markdown(manifest: CapabilityManifest) -> str:
     control = manifest.workflow_control
     approvals = _join_or(control.approval_required_actions, "none")

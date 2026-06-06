@@ -20,7 +20,13 @@ from oh_my_field.models import AgentImporterSpec
 
 
 def test_builtin_registry_exposes_known_runtimes() -> None:
-    assert BUILTIN_ADAPTERS.available() == ("claude_code", "codex", "hermes")
+    assert BUILTIN_ADAPTERS.available() == (
+        "claude_code",
+        "codex",
+        "hermes",
+        "odysseus",
+        "pi",
+    )
     assert BUILTIN_ADAPTERS.get("codex").spec.name == "codex"
 
 
@@ -39,6 +45,8 @@ def test_registry_lists_available_runtimes_in_error() -> None:
     assert "claude_code" in message
     assert "codex" in message
     assert "hermes" in message
+    assert "odysseus" in message
+    assert "pi" in message
 
 
 def test_importer_adapter_satisfies_protocol() -> None:
@@ -73,7 +81,14 @@ def test_build_registry_loads_runtime_adapter_entry_points() -> None:
         entry_points=(FakeEntryPoint(name="acme", adapter=AcmeAdapter()),),
     )
 
-    assert registry.available() == ("acme", "claude_code", "codex", "hermes")
+    assert registry.available() == (
+        "acme",
+        "claude_code",
+        "codex",
+        "hermes",
+        "odysseus",
+        "pi",
+    )
     assert registry.get("acme").spec.name == "acme"
 
 

@@ -56,6 +56,20 @@ IMPORTER_SPECS: tuple[AgentImporterSpec, ...] = (
         replays=("capability eval",),
         artifact_roles=("artifact", "diff", "test_result"),
     ),
+    AgentImporterSpec(
+        name="pi",
+        display_name="Pi Coding Agent",
+        captures=("run log", "diff", "test result", "command output", "artifact"),
+        replays=("capability eval",),
+        artifact_roles=("artifact", "diff", "test_result"),
+    ),
+    AgentImporterSpec(
+        name="odysseus",
+        display_name="Odysseus",
+        captures=("run log", "diff", "test result", "command output", "artifact"),
+        replays=("capability eval",),
+        artifact_roles=("artifact", "diff", "test_result"),
+    ),
 )
 ADAPTER_SPECS = IMPORTER_SPECS
 OMFIGNORE_FILE_NAME: Final = ".omfignore"

@@ -223,7 +223,9 @@ def _harden_actions(entry: CapabilityHealthEntry) -> tuple[str, ...]:
             f"run `omf eval {entry.name} --eval-set {entry.name}_regression`",
         )
     if entry.export_status == "not_exported" and entry.import_count == 0:
-        actions.append("export to Codex, Claude Code, Hermes, or generic target")
+        actions.append(
+            "export to Codex, Claude Code, Hermes, Pi, Odysseus, or generic target"
+        )
     if entry.validation_status == "needs_adaptation":
         actions.append(
             "adapt the failing target import (tools/context), then re-run "
