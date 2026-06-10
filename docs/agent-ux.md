@@ -18,7 +18,10 @@ Human-facing prompts should stay short:
 ## Agent Internal UX
 
 When OMF is active, the agent should translate those short requests into the
-stable machine interface:
+stable machine interface. Before using CLI syntax from memory, run `omf --help`
+and the relevant subcommand help such as `omf session --help`,
+`omf session event --help`, `omf promote --help`, or
+`omf capability export --help`:
 
 ```bash
 omf session start --runtime <runtime> --model <model> --goal "..."
@@ -48,10 +51,11 @@ Codex, Claude Code, Hermes, and Pi patch their runtime config paths by default.
 Odysseus writes a reviewable admin API payload for `/api/mcp/servers`.
 `generic` writes a reviewable JSON snippet under `--out`.
 
-The initial MCP surface mirrors the activation loop:
-`omf_start_session`, `omf_record_event`, `omf_finish_session`,
-`omf_materialize_session`, `omf_promote_capability`,
-`omf_export_capability`, and `omf_health`.
+The MCP surface mirrors the activation loop. Prefer the structured record
+tools when their roles are known: `omf_start_session`, `omf_record_input`,
+`omf_record_artifact`, `omf_record_validation`, `omf_record_decision`,
+`omf_record_event`, `omf_finish_session`, `omf_materialize_session`,
+`omf_promote_capability`, `omf_export_capability`, and `omf_health`.
 
 ## Activation Semantics
 

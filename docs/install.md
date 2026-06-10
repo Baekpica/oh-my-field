@@ -56,7 +56,9 @@ stores skills under its app data directory. For `generic`, `auto` resolves to
 
 OMF's internal state still lives under `.omf` (`.omf/config.yaml`,
 `.omf/evidence`, `.omf/sessions`, `.omf/exports`, ...). Agent activation assets
-are separate and are installed where the selected runtime discovers skills.
+are separate and are installed where the selected runtime discovers skills. The
+installed skills tell agents to inspect `omf --help` and the relevant subcommand
+help before using remembered CLI syntax.
 
 If a target already exists and you did not pass `--overwrite`, OMF skips that
 target and reports `skip_existing` in the JSON `actions`. `--dry-run` reports the
@@ -132,9 +134,11 @@ server executable path; otherwise OMF uses `shutil.which("omf")` and falls back
 to `"omf"` with a `next_action` reminder to check PATH.
 
 Add or verify this config in your agent client's MCP settings, then the agent
-can use the OMF tool surface (`omf_start_session`, `omf_record_event`,
-`omf_materialize_session`, `omf_promote_capability`, `omf_export_capability`,
-`omf_health`). The JSON summary includes the resolved `scope`, `config_path`,
+can use the OMF tool surface (`omf_start_session`, `omf_record_input`,
+`omf_record_artifact`, `omf_record_validation`, `omf_record_decision`,
+`omf_record_event`, `omf_materialize_session`, `omf_promote_capability`,
+`omf_export_capability`, `omf_health`). The JSON summary includes the resolved
+`scope`, `config_path`,
 optional `backup_path`, `server_name`, `next_action`, and idempotent `actions`.
 See [mcp.md](mcp.md) and [agent-ux.md](agent-ux.md).
 

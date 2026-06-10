@@ -9,6 +9,10 @@ registered through `oh_my_field.adapters.runtime_export`.
 - `.claude/skills/<capability>/references/capability.md`
 - `.claude/skills/<capability>/references/examples.md`
 - `.claude/skills/<capability>/references/checks.md`
+- `.claude/skills/<capability>/references/task_contract.yaml`
+- `.claude/skills/<capability>/references/artifacts.yaml`
+- `.claude/skills/<capability>/references/validation.md`
+- `.claude/skills/<capability>/references/replay_plan.yaml`
 
 ## Expected Install Location
 

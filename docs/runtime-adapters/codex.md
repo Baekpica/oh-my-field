@@ -8,6 +8,10 @@ through `oh_my_field.adapters.runtime_export`.
 - `.agents/skills/<capability>/SKILL.md`
 - `.agents/skills/<capability>/references/capability.md`
 - `.agents/skills/<capability>/references/context.policy.md`
+- `.agents/skills/<capability>/references/task_contract.yaml`
+- `.agents/skills/<capability>/references/artifacts.yaml`
+- `.agents/skills/<capability>/references/validation.md`
+- `.agents/skills/<capability>/references/replay_plan.yaml`
 - `.agents/skills/<capability>/references/harness.md`
 
 ## Expected Install Location

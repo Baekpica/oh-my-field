@@ -143,7 +143,8 @@ omf mcp serve
 Once activated, a human can say `/omf` or "track this task with OMF" and the
 agent records its work as an OMF session, materializes that session into
 immutable evidence, and proposes a reusable capability package. The MCP surface
-mirrors the same loop (`omf_start_session`, `omf_record_event`,
+mirrors the same loop (`omf_start_session`, `omf_record_input`,
+`omf_record_artifact`, `omf_record_validation`, `omf_record_decision`,
 `omf_materialize_session`, `omf_promote_capability`, …). See
 [docs/mcp.md](docs/mcp.md) and [docs/agent-ux.md](docs/agent-ux.md).
 
@@ -161,16 +162,40 @@ omf session start \
   --activation-source skill
 ```
 
-Copy the `session_id` from the JSON output, then record meaningful events:
+Create a tiny input, output artifact, and validation result for the example:
+
+```bash
+mkdir -p output
+printf "issue: repository bug report\n" > issue.md
+printf '{"status":"triaged"}\n' > output/report.json
+printf "pytest passed\n" > output/pytest.txt
+```
+
+Copy the `session_id` from the JSON output, then record meaningful events. The
+context, artifact, and validation paths make the materialized evidence
+strict-ready for promotion:
 
 ```bash
 omf session event <session_id> \
-  --type assumption \
-  --summary "The target project uses pytest and pyright as acceptance checks."
+  --type context \
+  --summary "Captured issue report" \
+  --path issue.md
 
 omf session event <session_id> \
   --type command \
   --summary "Ran the test suite" \
+  --command "uv run pytest" \
+  --exit-code 0
+
+omf session event <session_id> \
+  --type artifact \
+  --summary "Produced triage report" \
+  --path output/report.json
+
+omf session event <session_id> \
+  --type test_result \
+  --summary "pytest passed" \
+  --path output/pytest.txt \
   --command "uv run pytest" \
   --exit-code 0
 
@@ -179,7 +204,9 @@ omf session materialize <session_id>
 omf session suggest-capability <session_id>
 ```
 
-Promote the resulting evidence into a capability and check its health:
+Promote the resulting evidence into a capability and check its health. `promote`
+is strict by default; use `--no-strict` only when intentionally promoting legacy
+or incomplete evidence:
 
 ```bash
 omf promote <evidence_id> \
@@ -230,7 +257,18 @@ capabilities/<name>/
   instructions.md     # runtime-neutral agent instructions
   harness.yaml        # verification and approval boundaries
   README.md           # human-readable capability card
+  contracts/
+    task_contract.yaml
+    artifacts.yaml
+    validation.md
+    replay_plan.yaml
+  validators/
+    validate_contract.py
 ```
+
+The contract bundle is generated from hardened evidence and is copied into
+runtime exports so target agents can see the task, artifact, validation, and
+replay contract without reconstructing it from prose.
 
 That per-capability `README.md` is the capability *card* — purpose, source
 evidence, harness summary, portability and review status — and is distinct from

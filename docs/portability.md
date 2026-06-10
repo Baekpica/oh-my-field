@@ -10,6 +10,22 @@ OMF keeps runtime conversion separate from target validation.
 Static import validation can show that files and metadata are present, but it
 does not prove the target runtime can perform the task.
 
+## Contract Bundle
+
+Promotion and export carry the hardened run contract forward. The canonical
+capability package includes:
+
+- `contracts/task_contract.yaml`: required inputs, expected artifacts, and checks.
+- `contracts/artifacts.yaml`: artifact kind, path, role, and validation mapping.
+- `contracts/validation.md`: human-readable validation guide.
+- `contracts/replay_plan.yaml`: replay and target-run expectations.
+- `validators/validate_contract.py`: generic contract validator.
+
+Dedicated runtime projections copy the same contract into `references/` next to
+the generated skill. The generic projection keeps the `contracts/` and
+`validators/` directories directly in the runtime export. Target agents should
+read those files before deciding that a generated output is complete.
+
 ## Implementation Layout
 
 The public import path remains `oh_my_field.portability`, but it is a

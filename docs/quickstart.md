@@ -36,16 +36,39 @@ omf session start \
   --activation-source skill
 ```
 
-Copy the `session_id` from the JSON output:
+Create a tiny input, output artifact, and validation result for the example:
+
+```bash
+mkdir -p output
+printf "issue: repository bug report\n" > issue.md
+printf '{"status":"triaged"}\n' > output/report.json
+printf "pytest passed\n" > output/pytest.txt
+```
+
+Copy the `session_id` from the JSON output and record the task context,
+commands, produced artifact, and validation result:
 
 ```bash
 omf session event <session_id> \
-  --type assumption \
-  --summary "The target project uses pytest and pyright as acceptance checks."
+  --type context \
+  --summary "Captured issue report" \
+  --path issue.md
 
 omf session event <session_id> \
   --type command \
   --summary "Ran the test suite" \
+  --command "uv run pytest" \
+  --exit-code 0
+
+omf session event <session_id> \
+  --type artifact \
+  --summary "Produced triage report" \
+  --path output/report.json
+
+omf session event <session_id> \
+  --type test_result \
+  --summary "pytest passed" \
+  --path output/pytest.txt \
   --command "uv run pytest" \
   --exit-code 0
 
@@ -54,6 +77,8 @@ omf session finish <session_id> --outcome success
 
 Event `--type` accepts `goal`, `assumption`, `context`, `command`, `diff`,
 `test_result`, `artifact`, `user_feedback`, `decision`, and `completion`.
+`promote` is strict by default, so reusable successful runs should include at
+least one required context path, produced artifact path, and validation result.
 
 Materialize the session into immutable evidence and (optionally) ask OMF to
 suggest a capability name:
@@ -63,7 +88,8 @@ omf session materialize <session_id>
 omf session suggest-capability <session_id>
 ```
 
-Promote the resulting evidence into a capability and check its health:
+Promote the resulting evidence into a capability and check its health. Use
+`--no-strict` only for intentional legacy or incomplete evidence promotion:
 
 ```bash
 omf promote <evidence_id> \
@@ -90,7 +116,8 @@ omf import-run codex \
   --outcome success
 ```
 
-Copy the `evidence_id` from the JSON output:
+Copy the `evidence_id` from the JSON output. Imported runs are hardened into
+the same canonical record shape before promotion:
 
 ```bash
 omf promote <evidence_id> \
