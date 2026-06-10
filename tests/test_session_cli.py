@@ -160,6 +160,121 @@ def test_session_suggest_capability(tmp_path: Path) -> None:
     assert output.suggested_capabilities == ["fix_flaky_tests"]
 
 
+def test_session_materialize_ignores_pathless_validation_as_artifact(
+    tmp_path: Path,
+) -> None:
+    sessions_dir = tmp_path / "sessions"
+    evidence_dir = tmp_path / "evidence"
+    input_path = tmp_path / "inputs" / "portfolio.json"
+    output_path = tmp_path / "output" / "report.json"
+    input_path.parent.mkdir(parents=True)
+    output_path.parent.mkdir(parents=True)
+    input_path.write_text('{"cash": 100}', encoding="utf-8")
+    output_path.write_text('{"total": 100}', encoding="utf-8")
+
+    start = CliRunner().invoke(
+        app,
+        [
+            "session",
+            "start",
+            "--runtime",
+            "hermes",
+            "--project-root",
+            str(tmp_path),
+            "--goal",
+            "Generate finance portfolio output",
+            "--sessions-dir",
+            str(sessions_dir),
+        ],
+    )
+    assert start.exit_code == 0
+    session_id = SessionStartOutput.model_validate_json(start.stdout).session_id
+
+    _run_ok(
+        [
+            "session",
+            "event",
+            session_id,
+            "--type",
+            "context",
+            "--summary",
+            "portfolio input",
+            "--path",
+            "inputs/portfolio.json",
+            "--sessions-dir",
+            str(sessions_dir),
+        ],
+    )
+    _run_ok(
+        [
+            "session",
+            "event",
+            session_id,
+            "--type",
+            "artifact",
+            "--summary",
+            "portfolio report",
+            "--path",
+            "output/report.json",
+            "--sessions-dir",
+            str(sessions_dir),
+        ],
+    )
+    _run_ok(
+        [
+            "session",
+            "event",
+            session_id,
+            "--type",
+            "test_result",
+            "--summary",
+            "pytest passed without producing a report file",
+            "--command",
+            "uv run pytest",
+            "--exit-code",
+            "0",
+            "--sessions-dir",
+            str(sessions_dir),
+        ],
+    )
+    _run_ok(
+        [
+            "session",
+            "finish",
+            session_id,
+            "--outcome",
+            "success",
+            "--sessions-dir",
+            str(sessions_dir),
+        ],
+    )
+
+    materialize = CliRunner().invoke(
+        app,
+        [
+            "session",
+            "materialize",
+            session_id,
+            "--sessions-dir",
+            str(sessions_dir),
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
+    )
+
+    assert materialize.exit_code == 0
+    output = SessionMaterializeOutput.model_validate_json(materialize.stdout)
+    evidence = load_evidence(output.evidence_id, evidence_dir)
+    assert evidence.final_artifacts == ("output/report.json",)
+    assert evidence.generated_commands == ("uv run pytest",)
+    assert evidence.command_executions[0].command == "uv run pytest"
+    assert evidence.harness.checks[0] == "pytest passed without producing a report file"
+    assert evidence.task_contract is not None
+    assert evidence.task_contract.expected_artifacts == ("output/report.json",)
+    assert evidence.record_quality is not None
+    assert evidence.record_quality.strict_ready
+
+
 def test_session_materialize_hardens_artifact_contracts(tmp_path: Path) -> None:
     sessions_dir = tmp_path / "sessions"
     evidence_dir = tmp_path / "evidence"

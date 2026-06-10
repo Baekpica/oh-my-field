@@ -105,37 +105,70 @@ def _required_inputs(evidence: EvidenceRecord) -> tuple[str, ...]:
 
 def _snapshot_artifact(path_value: str, root: Path) -> ArtifactSnapshot:
     display_path = Path(path_value).as_posix()
-    absolute_path = _absolute_path(path_value, root)
+    root_path = root.resolve(strict=False)
+    absolute_path = _absolute_path(path_value, root_path)
+    if absolute_path is None:
+        return ArtifactSnapshot(
+            path=display_path,
+            role="final",
+            kind=_kind_for_path(Path(path_value)),
+            size_bytes=0,
+            metadata={
+                "exists": False,
+                "path_within_project": False,
+                "blocked_reason": "outside_project_root",
+            },
+        )
     if not absolute_path.exists():
         return ArtifactSnapshot(
             path=display_path,
             role="final",
             kind=_kind_for_path(absolute_path),
             size_bytes=0,
-            metadata={"exists": False},
+            metadata={"exists": False, "path_within_project": True},
         )
     if absolute_path.is_dir():
-        return _snapshot_directory(display_path, absolute_path)
+        return _snapshot_directory(display_path, absolute_path, root_path)
     return _snapshot_file(display_path, absolute_path)
 
 
-def _absolute_path(path_value: str, root: Path) -> Path:
+def _absolute_path(path_value: str, root: Path) -> Path | None:
     path = Path(path_value)
-    if path.is_absolute():
-        return path
-    return root / path
+    root_path = root.resolve(strict=False)
+    candidate = path if path.is_absolute() else root_path / path
+    resolved = candidate.resolve(strict=False)
+    if not _is_relative_to(resolved, root_path):
+        return None
+    return resolved
 
 
-def _snapshot_directory(display_path: str, directory: Path) -> ArtifactSnapshot:
+def _is_relative_to(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+    except ValueError:
+        return False
+    return True
+
+
+def _snapshot_directory(
+    display_path: str,
+    directory: Path,
+    root: Path,
+) -> ArtifactSnapshot:
     entries: list[str] = []
     total_size = 0
+    skipped_outside_project = 0
     digest = hashlib.sha256()
     for child in sorted(item for item in directory.rglob("*") if item.is_file()):
+        resolved_child = child.resolve(strict=False)
+        if not _is_relative_to(resolved_child, root):
+            skipped_outside_project += 1
+            continue
         relative = child.relative_to(directory).as_posix()
         if len(entries) < DIRECTORY_ENTRY_LIMIT:
             entries.append(relative)
         try:
-            raw = child.read_bytes()
+            raw = resolved_child.read_bytes()
         except OSError:
             raw = b""
         total_size += len(raw)
@@ -150,7 +183,9 @@ def _snapshot_directory(display_path: str, directory: Path) -> ArtifactSnapshot:
         directory_entries=tuple(entries),
         metadata={
             "exists": True,
+            "path_within_project": True,
             "entry_count": len(entries),
+            "skipped_outside_project_count": skipped_outside_project,
             "truncated": len(entries) >= DIRECTORY_ENTRY_LIMIT,
         },
     )
@@ -169,7 +204,7 @@ def _snapshot_file(display_path: str, path: Path) -> ArtifactSnapshot:
         size_bytes=len(raw),
         mime_type=mimetypes.guess_type(path.name)[0],
         text_preview=text_preview,
-        metadata={"exists": True, **metadata},
+        metadata={"exists": True, "path_within_project": True, **metadata},
     )
 
 
@@ -258,6 +293,15 @@ def _text_preview(path: Path, raw: bytes, kind: str) -> str | None:
 def _validate_snapshot(
     snapshot: ArtifactSnapshot,
 ) -> tuple[ValidationCheckResult, ...]:
+    if snapshot.metadata.get("path_within_project") is False:
+        return (
+            ValidationCheckResult(
+                name=f"artifact_within_project:{snapshot.path}",
+                status="fail",
+                message="artifact path escapes project root",
+                artifact_path=snapshot.path,
+            ),
+        )
     exists = bool(snapshot.metadata.get("exists"))
     results = [
         ValidationCheckResult(

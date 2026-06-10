@@ -207,11 +207,12 @@ def _evidence_from_session(
     created_at: datetime,
     evidence_id: str,
 ) -> EvidenceRecord:
-    commands = tuple(
-        event.command
+    command_events = tuple(
+        event
         for event in session.events
-        if event.type == "command" and event.command is not None
+        if event.type in ("command", "test_result") and event.command is not None
     )
+    commands = tuple(event.command for event in command_events if event.command)
     command_executions = tuple(
         CommandExecution(
             command=event.command,
@@ -220,10 +221,8 @@ def _evidence_from_session(
             duration_ms=0,
             risk_categories=event.risk_categories,
         )
-        for event in session.events
-        if event.type == "command"
-        and event.command is not None
-        and event.exit_code is not None
+        for event in command_events
+        if event.command is not None and event.exit_code is not None
     )
     feedback = tuple(
         event.summary for event in session.events if event.type == "user_feedback"
@@ -234,9 +233,9 @@ def _evidence_from_session(
         if event.type == "context"
     )
     artifacts = tuple(
-        event.path or event.summary
+        event.path
         for event in session.events
-        if event.type in ("artifact", "diff", "test_result")
+        if event.type in ("artifact", "diff", "test_result") and event.path is not None
     )
     failures = tuple(
         event.summary

@@ -82,3 +82,75 @@ def test_harden_evidence_record_marks_missing_artifact_not_strict_ready(
     assert hardened.record_quality is not None
     assert hardened.record_quality.strict_ready is False
     assert "passing_validation" in hardened.record_quality.missing_sections
+
+
+def test_harden_evidence_record_blocks_artifact_paths_outside_project_root(
+    tmp_path: Path,
+) -> None:
+    input_path = tmp_path / "inputs" / "portfolio.json"
+    input_path.parent.mkdir(parents=True)
+    input_path.write_text('{"cash": 100}', encoding="utf-8")
+    secret_path = tmp_path.parent / f"{tmp_path.name}-secret.json"
+    secret_path.write_text('{"token": "super-secret"}', encoding="utf-8")
+    link_path = tmp_path / "output" / "linked-secret.json"
+    link_path.parent.mkdir(parents=True)
+    artifact_paths = [str(secret_path), f"../{secret_path.name}"]
+    try:
+        link_path.symlink_to(secret_path)
+    except OSError:
+        pass
+    else:
+        artifact_paths.append("output/linked-secret.json")
+
+    hardened = harden_evidence_record(
+        make_record(artifacts=tuple(artifact_paths)),
+        project_root=tmp_path,
+    )
+
+    assert all(
+        snapshot.metadata["path_within_project"] is False
+        for snapshot in hardened.artifact_snapshots
+    )
+    assert all(
+        snapshot.text_preview is None for snapshot in hardened.artifact_snapshots
+    )
+    assert "super-secret" not in hardened.model_dump_json()
+    assert all(result.status == "fail" for result in hardened.validation_results)
+    assert {result.name for result in hardened.validation_results} == {
+        f"artifact_within_project:{path}" for path in artifact_paths
+    }
+    assert hardened.record_quality is not None
+    assert hardened.record_quality.strict_ready is False
+    assert "passing_validation" in hardened.record_quality.missing_sections
+
+
+def test_harden_evidence_record_skips_directory_symlink_escapes(
+    tmp_path: Path,
+) -> None:
+    input_path = tmp_path / "inputs" / "portfolio.json"
+    input_path.parent.mkdir(parents=True)
+    input_path.write_text('{"cash": 100}', encoding="utf-8")
+    secret_path = tmp_path.parent / f"{tmp_path.name}-directory-secret.json"
+    secret_path.write_text('{"token": "super-secret"}', encoding="utf-8")
+    output_dir = tmp_path / "output" / "bundle"
+    output_dir.mkdir(parents=True)
+    link_path = output_dir / "leak.json"
+    try:
+        link_path.symlink_to(secret_path)
+    except OSError:
+        return
+
+    hardened = harden_evidence_record(
+        make_record(artifacts=("output/bundle",)),
+        project_root=tmp_path,
+    )
+
+    snapshot = hardened.artifact_snapshots[0]
+    assert snapshot.path == "output/bundle"
+    assert snapshot.directory_entries == ()
+    assert snapshot.metadata["skipped_outside_project_count"] == 1
+    assert "super-secret" not in hardened.model_dump_json()
+    assert any(
+        result.name == "directory_has_entries:output/bundle" and result.status == "fail"
+        for result in hardened.validation_results
+    )
