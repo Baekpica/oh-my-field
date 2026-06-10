@@ -41,7 +41,7 @@ def test_version_outputs_json_schema_versions() -> None:
 
     assert result.exit_code == 0
     output = VersionOutput.model_validate_json(result.stdout)
-    assert output.version == "0.2.1"
+    assert output.version == "0.2.2"
     assert output.schema_versions["capability"] == "0.1"
     assert output.schema_versions["evidence"] == "0.1"
     assert output.schema_versions["harness"] == "0.1"
@@ -53,7 +53,7 @@ def test_doctor_outputs_json_environment_summary() -> None:
 
     assert result.exit_code == 0
     output = DoctorOutput.model_validate_json(result.stdout)
-    assert output.version == "0.2.1"
+    assert output.version == "0.2.2"
     assert output.canonical_capabilities_dir == "capabilities"
     assert set(output.optional_runtimes) == {"codex", "claude", "hermes-code"}
 
