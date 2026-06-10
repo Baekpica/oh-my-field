@@ -45,7 +45,10 @@ def test_run_executes_full_workflow_and_writes_checkpoints(
     tmp_path: Path,
 ) -> None:
     prompt_path = tmp_path / "prompt.md"
+    artifact_path = tmp_path / "output" / "report.json"
     prompt_path.write_text("Find the bug.", encoding="utf-8")
+    artifact_path.parent.mkdir()
+    artifact_path.write_text('{"status": "triaged"}\n', encoding="utf-8")
 
     result = CliRunner().invoke(
         app,
@@ -59,6 +62,8 @@ def test_run_executes_full_workflow_and_writes_checkpoints(
             "GitHub issue triage capability",
             "--prompt",
             str(prompt_path),
+            "--artifact",
+            str(artifact_path),
             "--command",
             "printf orchestrated",
             "--harness-command",

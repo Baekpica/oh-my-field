@@ -12,6 +12,7 @@ from typing import Final, Protocol, cast
 
 from pydantic import Field
 
+from oh_my_field.application.record_builder import harden_evidence_record
 from oh_my_field.domain.models import (
     AgentImporterName,
     AgentImporterSpec,
@@ -335,6 +336,10 @@ def _run_agent_import(
                 ),
             ),
         },
+    )
+    evidence = harden_evidence_record(
+        evidence,
+        project_root=request.log_path.parent,
     )
     evidence = append_integrity_link(
         evidence,
