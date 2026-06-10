@@ -39,6 +39,10 @@ def test_mcp_tools_cover_session_promote_export_and_health(tmp_path: Path) -> No
     eval_dir = tmp_path / ".omf" / "evals"
     capabilities_dir = tmp_path / "capabilities"
 
+    artifact_path = tmp_path / "output" / "report.json"
+    artifact_path.parent.mkdir(parents=True)
+    artifact_path.write_text('{"ok": true}', encoding="utf-8")
+
     start = dispatch_tool(
         "omf_start_session",
         {
@@ -64,6 +68,46 @@ def test_mcp_tools_cover_session_promote_export_and_health(tmp_path: Path) -> No
         },
     )
     assert event["event_count"] == 2
+    assert "next_action" in event
+
+    dispatch_tool(
+        "omf_record_input",
+        {
+            "session_id": session_id,
+            "path": "AGENTS.md",
+            "summary": "required project instructions",
+            "sessions_dir": str(sessions_dir),
+        },
+    )
+    dispatch_tool(
+        "omf_record_artifact",
+        {
+            "session_id": session_id,
+            "path": "output/report.json",
+            "summary": "final generated report",
+            "sessions_dir": str(sessions_dir),
+        },
+    )
+    dispatch_tool(
+        "omf_record_validation",
+        {
+            "session_id": session_id,
+            "summary": "artifact contract validation passed",
+            "command": "python validators/validate_contract.py",
+            "exit_code": 0,
+            "artifact_path": "output/report.json",
+            "sessions_dir": str(sessions_dir),
+        },
+    )
+    decision = dispatch_tool(
+        "omf_record_decision",
+        {
+            "session_id": session_id,
+            "summary": "promote as a reusable portability capability",
+            "sessions_dir": str(sessions_dir),
+        },
+    )
+    assert decision["event_count"] == 6
 
     finish = dispatch_tool(
         "omf_finish_session",
@@ -126,6 +170,10 @@ def test_mcp_tools_list_uses_json_schema() -> None:
     tools = mcp_tool_definitions()
     names = {cast("str", tool["name"]) for tool in tools}
     assert "omf_start_session" in names
+    assert "omf_record_input" in names
+    assert "omf_record_artifact" in names
+    assert "omf_record_validation" in names
+    assert "omf_record_decision" in names
     assert "omf_health" in names
     start = next(tool for tool in tools if tool["name"] == "omf_start_session")
     schema = cast("dict[str, object]", start["inputSchema"])

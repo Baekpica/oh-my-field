@@ -43,6 +43,35 @@ class RecordEventToolRequest(StrictModel):
     sessions_dir: Path = DEFAULT_SESSIONS_DIR
 
 
+class RecordInputToolRequest(StrictModel):
+    session_id: str = Field(pattern=EVIDENCE_ID_PATTERN)
+    path: str = Field(min_length=1)
+    summary: str = Field(min_length=1)
+    sessions_dir: Path = DEFAULT_SESSIONS_DIR
+
+
+class RecordArtifactToolRequest(StrictModel):
+    session_id: str = Field(pattern=EVIDENCE_ID_PATTERN)
+    path: str = Field(min_length=1)
+    summary: str = Field(min_length=1)
+    sessions_dir: Path = DEFAULT_SESSIONS_DIR
+
+
+class RecordValidationToolRequest(StrictModel):
+    session_id: str = Field(pattern=EVIDENCE_ID_PATTERN)
+    summary: str = Field(min_length=1)
+    artifact_path: str | None = None
+    command: str | None = None
+    exit_code: int | None = 0
+    sessions_dir: Path = DEFAULT_SESSIONS_DIR
+
+
+class RecordDecisionToolRequest(StrictModel):
+    session_id: str = Field(pattern=EVIDENCE_ID_PATTERN)
+    summary: str = Field(min_length=1)
+    sessions_dir: Path = DEFAULT_SESSIONS_DIR
+
+
 class FinishSessionToolRequest(StrictModel):
     session_id: str = Field(pattern=EVIDENCE_ID_PATTERN)
     outcome: TaskOutcome
@@ -63,6 +92,7 @@ class PromoteCapabilityToolRequest(StrictModel):
     evidence_dir: Path = DEFAULT_EVIDENCE_DIR
     eval_dir: Path = DEFAULT_EVAL_DIR
     capabilities_dir: Path = DEFAULT_CAPABILITIES_DIR
+    strict: bool = True
 
 
 class ExportCapabilityToolRequest(StrictModel):

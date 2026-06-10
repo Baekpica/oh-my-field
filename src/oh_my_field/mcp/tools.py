@@ -20,7 +20,11 @@ from oh_my_field.mcp.schemas import (
     MaterializeSessionToolRequest,
     McpToolDefinition,
     PromoteCapabilityToolRequest,
+    RecordArtifactToolRequest,
+    RecordDecisionToolRequest,
     RecordEventToolRequest,
+    RecordInputToolRequest,
+    RecordValidationToolRequest,
     StartSessionToolRequest,
 )
 
@@ -94,6 +98,51 @@ def _record_event(arguments: object) -> StrictModel:
     )
 
 
+def _record_input(arguments: object) -> StrictModel:
+    request = RecordInputToolRequest.model_validate(arguments)
+    return record_session_event(
+        session_id=request.session_id,
+        event_type="context",
+        summary=request.summary,
+        path=request.path,
+        sessions_dir=request.sessions_dir,
+    )
+
+
+def _record_artifact(arguments: object) -> StrictModel:
+    request = RecordArtifactToolRequest.model_validate(arguments)
+    return record_session_event(
+        session_id=request.session_id,
+        event_type="artifact",
+        summary=request.summary,
+        path=request.path,
+        sessions_dir=request.sessions_dir,
+    )
+
+
+def _record_validation(arguments: object) -> StrictModel:
+    request = RecordValidationToolRequest.model_validate(arguments)
+    return record_session_event(
+        session_id=request.session_id,
+        event_type="test_result",
+        summary=request.summary,
+        path=request.artifact_path,
+        command=request.command,
+        exit_code=request.exit_code,
+        sessions_dir=request.sessions_dir,
+    )
+
+
+def _record_decision(arguments: object) -> StrictModel:
+    request = RecordDecisionToolRequest.model_validate(arguments)
+    return record_session_event(
+        session_id=request.session_id,
+        event_type="decision",
+        summary=request.summary,
+        sessions_dir=request.sessions_dir,
+    )
+
+
 def _finish_session(arguments: object) -> StrictModel:
     request = FinishSessionToolRequest.model_validate(arguments)
     return finish_session(
@@ -123,6 +172,7 @@ def _promote_capability(arguments: object) -> StrictModel:
             evidence_dir=request.evidence_dir,
             eval_dir=request.eval_dir,
             capabilities_dir=request.capabilities_dir,
+            strict=request.strict,
         ),
     )
 
@@ -171,9 +221,37 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
     ),
     ToolSpec(
         name="omf_record_event",
-        description="Append an event to an active OMF agent session.",
+        description=(
+            "Append a generic event to an active OMF agent session. "
+            "Prefer omf_record_input/artifact/validation/decision for "
+            "portable capability evidence."
+        ),
         request_model=RecordEventToolRequest,
         handler=_record_event,
+    ),
+    ToolSpec(
+        name="omf_record_input",
+        description="Record required input context for a strict portable capability.",
+        request_model=RecordInputToolRequest,
+        handler=_record_input,
+    ),
+    ToolSpec(
+        name="omf_record_artifact",
+        description="Record a produced artifact path for contract snapshotting.",
+        request_model=RecordArtifactToolRequest,
+        handler=_record_artifact,
+    ),
+    ToolSpec(
+        name="omf_record_validation",
+        description="Record a validation result, command, and optional artifact path.",
+        request_model=RecordValidationToolRequest,
+        handler=_record_validation,
+    ),
+    ToolSpec(
+        name="omf_record_decision",
+        description="Record a reusable-workflow or portability decision.",
+        request_model=RecordDecisionToolRequest,
+        handler=_record_decision,
     ),
     ToolSpec(
         name="omf_finish_session",
