@@ -1,5 +1,61 @@
 {
   "$defs": {
+    "ArtifactContract": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_kind": {
+          "minLength": 1,
+          "title": "Artifact Kind",
+          "type": "string"
+        },
+        "artifact_path": {
+          "minLength": 1,
+          "title": "Artifact Path",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "role": {
+          "$ref": "#/$defs/ArtifactSnapshotRole",
+          "default": "final"
+        },
+        "validation_checks": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Validation Checks",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "artifact_path",
+        "artifact_kind"
+      ],
+      "title": "ArtifactContract",
+      "type": "object"
+    },
     "ArtifactIntegrityLink": {
       "additionalProperties": false,
       "properties": {
@@ -39,6 +95,16 @@
       ],
       "title": "ArtifactIntegrityLink",
       "type": "object"
+    },
+    "ArtifactSnapshotRole": {
+      "enum": [
+        "input",
+        "intermediate",
+        "final",
+        "validation",
+        "unknown"
+      ],
+      "type": "string"
     },
     "CapabilityPatchSet": {
       "additionalProperties": false,
@@ -749,6 +815,43 @@
       "title": "PromotionMetrics",
       "type": "object"
     },
+    "RecordQuality": {
+      "additionalProperties": false,
+      "properties": {
+        "missing_sections": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Missing Sections",
+          "type": "array"
+        },
+        "score": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Score",
+          "type": "number"
+        },
+        "strict_ready": {
+          "default": false,
+          "title": "Strict Ready",
+          "type": "boolean"
+        },
+        "warnings": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "score"
+      ],
+      "title": "RecordQuality",
+      "type": "object"
+    },
     "RuntimeInfo": {
       "additionalProperties": false,
       "properties": {
@@ -790,6 +893,50 @@
         "name"
       ],
       "title": "RuntimeInfo",
+      "type": "object"
+    },
+    "TaskContract": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_artifacts": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Expected Artifacts",
+          "type": "array"
+        },
+        "goal": {
+          "minLength": 1,
+          "title": "Goal",
+          "type": "string"
+        },
+        "mock_outputs_allowed": {
+          "default": false,
+          "title": "Mock Outputs Allowed",
+          "type": "boolean"
+        },
+        "required_inputs": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Inputs",
+          "type": "array"
+        },
+        "validation_checks": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Validation Checks",
+          "type": "array"
+        }
+      },
+      "required": [
+        "goal"
+      ],
+      "title": "TaskContract",
       "type": "object"
     },
     "WorkflowControl": {
@@ -984,6 +1131,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
+    "artifact_contracts": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ArtifactContract"
+      },
+      "title": "Artifact Contracts",
+      "type": "array"
+    },
     "context": {
       "$ref": "#/$defs/ContextPolicy"
     },
@@ -1082,6 +1237,17 @@
       ],
       "default": null
     },
+    "record_quality": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RecordQuality"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
     "runtime": {
       "$ref": "#/$defs/RuntimeInfo"
     },
@@ -1113,6 +1279,17 @@
     },
     "status": {
       "$ref": "#/$defs/CapabilityStatus"
+    },
+    "task_contract": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TaskContract"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     },
     "version": {
       "minLength": 1,

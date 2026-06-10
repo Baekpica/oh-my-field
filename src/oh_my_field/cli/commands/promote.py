@@ -32,6 +32,10 @@ def promote(
     capabilities_dir: Annotated[
         Path, typer.Option("--capabilities-dir")
     ] = DEFAULT_CAPABILITIES_DIR,
+    strict: Annotated[
+        bool,
+        typer.Option("--strict/--no-strict"),
+    ] = True,
 ) -> None:
     with cli_errors(PromoteError):
         request = PromoteRequest(
@@ -43,6 +47,7 @@ def promote(
             evidence_dir=evidence_dir,
             eval_dir=eval_dir,
             capabilities_dir=capabilities_dir,
+            strict=strict,
         )
         summary = run_promote_workflow(request)
         emit_json(summary)

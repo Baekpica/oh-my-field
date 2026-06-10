@@ -49,6 +49,16 @@ This keeps product rules testable without invoking the CLI and keeps technical
 details such as YAML, JSON, atomic writes, and process execution out of command
 functions.
 
+## Canonical Evidence Records
+
+`capture`, `session materialize`, and `import-run` all feed evidence through the
+same hardening path. The hardened record preserves run observations, artifact
+snapshots, artifact contracts, validation results, task contract, and record
+quality metadata before promotion. `promote` is strict by default and rejects
+records that lack input context, artifact contracts, validation results, or a
+passing harness unless the caller explicitly opts into `--no-strict` for legacy
+evidence.
+
 ## Artifact Pipeline
 
 The core product loop is:
@@ -71,6 +81,13 @@ capabilities/<name>/
   instructions.md
   harness.yaml
   README.md
+  contracts/
+    task_contract.yaml
+    artifacts.yaml
+    validation.md
+    replay_plan.yaml
+  validators/
+    validate_contract.py
 ```
 
 Runtime-specific assets are projections of that package, not the source of

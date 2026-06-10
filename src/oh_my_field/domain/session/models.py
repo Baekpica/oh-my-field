@@ -65,6 +65,7 @@ class SessionEventSummary(StrictModel):
     event_id: str = Field(pattern=EVIDENCE_ID_PATTERN)
     event_count: int = Field(ge=1)
     session_path: str
+    next_action: str = "record input, artifact, validation, and decision events"
 
 
 class SessionFinishSummary(StrictModel):

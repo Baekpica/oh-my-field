@@ -22,6 +22,10 @@ Sources: <https://github.com/pewdiepie-archdaemon/odysseus>,
 - `data/skills/omf/<capability>/references/capability.md`
 - `data/skills/omf/<capability>/references/context.policy.md`
 - `data/skills/omf/<capability>/references/harness.md`
+- `data/skills/omf/<capability>/references/task_contract.yaml`
+- `data/skills/omf/<capability>/references/artifacts.yaml`
+- `data/skills/omf/<capability>/references/validation.md`
+- `data/skills/omf/<capability>/references/replay_plan.yaml`
 
 ## Expected Install Location
 

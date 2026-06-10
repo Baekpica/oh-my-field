@@ -81,6 +81,25 @@ type IntegrityVerificationStatus = Literal["pass", "fail"]
 type ArtifactStorageMode = Literal["inline", "external"]
 type ExportStatus = Literal["not_exported", "exported"]
 type ImportStatus = Literal["not_imported", "imported"]
+type RunObservationKind = Literal[
+    "goal",
+    "input",
+    "command",
+    "artifact",
+    "validation",
+    "decision",
+    "failure",
+    "feedback",
+]
+type ArtifactSnapshotRole = Literal[
+    "input",
+    "intermediate",
+    "final",
+    "validation",
+    "unknown",
+]
+type ValidationCheckStatus = Literal["pass", "fail"]
+type RecordMetadataValue = str | int | float | bool | None
 type TargetValidationStatus = Literal[
     "not_run",
     "needs_validation",
@@ -309,6 +328,60 @@ class HarnessResult(StrictModel):
     human_review_required: bool = False
 
 
+class RunObservation(StrictModel):
+    kind: RunObservationKind
+    summary: str = Field(min_length=1)
+    path: str | None = None
+    command: str | None = None
+    exit_code: int | None = None
+    created_at: datetime | None = None
+
+
+class ArtifactSnapshot(StrictModel):
+    path: str = Field(min_length=1)
+    role: ArtifactSnapshotRole = "unknown"
+    kind: str = Field(min_length=1)
+    sha256: str | None = Field(default=None, pattern=SHA256_PATTERN)
+    size_bytes: int = Field(ge=0)
+    mime_type: str | None = None
+    text_preview: str | None = None
+    directory_entries: tuple[str, ...] = ()
+    metadata: dict[str, RecordMetadataValue] = Field(default_factory=dict)
+
+
+class ArtifactContract(StrictModel):
+    name: str = Field(min_length=1)
+    artifact_path: str = Field(min_length=1)
+    artifact_kind: str = Field(min_length=1)
+    role: ArtifactSnapshotRole = "final"
+    required: bool = True
+    description: str | None = None
+    validation_checks: tuple[str, ...] = ()
+
+
+class ValidationCheckResult(StrictModel):
+    name: str = Field(min_length=1)
+    status: ValidationCheckStatus
+    message: str = Field(min_length=1)
+    artifact_path: str | None = None
+    command: str | None = None
+
+
+class TaskContract(StrictModel):
+    goal: str = Field(min_length=1)
+    required_inputs: tuple[str, ...] = ()
+    expected_artifacts: tuple[str, ...] = ()
+    validation_checks: tuple[str, ...] = ()
+    mock_outputs_allowed: bool = False
+
+
+class RecordQuality(StrictModel):
+    score: float = Field(ge=0.0, le=1.0)
+    warnings: tuple[str, ...] = ()
+    missing_sections: tuple[str, ...] = ()
+    strict_ready: bool = False
+
+
 class EvidenceRecord(StrictModel):
     schema_version: str = EVIDENCE_SCHEMA_VERSION
     id: str = Field(pattern=EVIDENCE_ID_PATTERN)
@@ -340,6 +413,12 @@ class EvidenceRecord(StrictModel):
     improvement_notes: tuple[str, ...] = ()
     human_review: HumanReview = Field(default_factory=HumanReview)
     integrity_chain: tuple[ArtifactIntegrityLink, ...] = ()
+    run_observations: tuple[RunObservation, ...] = ()
+    artifact_snapshots: tuple[ArtifactSnapshot, ...] = ()
+    artifact_contracts: tuple[ArtifactContract, ...] = ()
+    validation_results: tuple[ValidationCheckResult, ...] = ()
+    task_contract: TaskContract | None = None
+    record_quality: RecordQuality | None = None
 
 
 class WorkflowManifest(StrictModel):
@@ -438,6 +517,9 @@ class CapabilityManifest(StrictModel):
     promotion_metrics: PromotionMetrics | None = None
     patches: CapabilityPatchSet = Field(default_factory=CapabilityPatchSet)
     integrity_chain: tuple[ArtifactIntegrityLink, ...] = ()
+    artifact_contracts: tuple[ArtifactContract, ...] = ()
+    task_contract: TaskContract | None = None
+    record_quality: RecordQuality | None = None
 
 
 class ReplayRecord(StrictModel):

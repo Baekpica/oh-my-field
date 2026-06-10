@@ -11,6 +11,7 @@ from typer.testing import CliRunner
 from oh_my_field.cli import app
 from oh_my_field.integrity import append_integrity_link
 from oh_my_field.models import (
+    ArtifactContract,
     CapabilityManifest,
     CapturedTextFile,
     ContextPolicy,
@@ -18,7 +19,9 @@ from oh_my_field.models import (
     HarnessResult,
     PromotionCriteria,
     PromotionMetrics,
+    RecordQuality,
     RuntimeInfo,
+    TaskContract,
     WorkflowControl,
     WorkflowManifest,
 )
@@ -148,6 +151,11 @@ def test_capability_export_writes_portability_bundle(tmp_path: Path) -> None:
     assert export_dir.joinpath("context", "context.policy.yaml").exists()
     assert export_dir.joinpath("context", "context.pack.md").exists()
     assert export_dir.joinpath("harness", "harness.yaml").exists()
+    assert export_dir.joinpath("contracts", "task_contract.yaml").exists()
+    assert export_dir.joinpath("contracts", "artifacts.yaml").exists()
+    assert export_dir.joinpath("contracts", "validation.md").exists()
+    assert export_dir.joinpath("contracts", "replay_plan.yaml").exists()
+    assert export_dir.joinpath("validators", "validate_contract.py").exists()
     assert export_dir.joinpath("provenance", "source_runtime.yaml").exists()
     assert export_dir.joinpath("runtime", "hermes").exists()
     assert portability["schema_version"] == "omf.portability.v0.1"
@@ -274,6 +282,9 @@ def test_capability_import_writes_validation_report(tmp_path: Path) -> None:
                 ".agents/skills/repo_issue_triage/references/capability.md",
                 ".agents/skills/repo_issue_triage/references/context.policy.md",
                 ".agents/skills/repo_issue_triage/references/harness.md",
+                ".agents/skills/repo_issue_triage/references/task_contract.yaml",
+                ".agents/skills/repo_issue_triage/references/artifacts.yaml",
+                ".agents/skills/repo_issue_triage/references/validation.md",
             ),
         ),
         (
@@ -283,6 +294,9 @@ def test_capability_import_writes_validation_report(tmp_path: Path) -> None:
                 ".claude/skills/repo_issue_triage/references/capability.md",
                 ".claude/skills/repo_issue_triage/references/examples.md",
                 ".claude/skills/repo_issue_triage/references/checks.md",
+                ".claude/skills/repo_issue_triage/references/task_contract.yaml",
+                ".claude/skills/repo_issue_triage/references/artifacts.yaml",
+                ".claude/skills/repo_issue_triage/references/validation.md",
             ),
         ),
         (
@@ -290,6 +304,9 @@ def test_capability_import_writes_validation_report(tmp_path: Path) -> None:
             (
                 "skills/repo_issue_triage/SKILL.md",
                 "skills/repo_issue_triage/references/harness.md",
+                "skills/repo_issue_triage/references/task_contract.yaml",
+                "skills/repo_issue_triage/references/artifacts.yaml",
+                "skills/repo_issue_triage/references/validation.md",
             ),
         ),
         (
@@ -299,6 +316,9 @@ def test_capability_import_writes_validation_report(tmp_path: Path) -> None:
                 ".pi/skills/repo_issue_triage/references/capability.md",
                 ".pi/skills/repo_issue_triage/references/context.policy.md",
                 ".pi/skills/repo_issue_triage/references/harness.md",
+                ".pi/skills/repo_issue_triage/references/task_contract.yaml",
+                ".pi/skills/repo_issue_triage/references/artifacts.yaml",
+                ".pi/skills/repo_issue_triage/references/validation.md",
                 "package.json",
             ),
         ),
@@ -308,6 +328,9 @@ def test_capability_import_writes_validation_report(tmp_path: Path) -> None:
                 "data/skills/omf/repo_issue_triage/SKILL.md",
                 "data/skills/omf/repo_issue_triage/references/capability.md",
                 "data/skills/omf/repo_issue_triage/references/harness.md",
+                "data/skills/omf/repo_issue_triage/references/task_contract.yaml",
+                "data/skills/omf/repo_issue_triage/references/artifacts.yaml",
+                "data/skills/omf/repo_issue_triage/references/validation.md",
             ),
         ),
         (
@@ -317,6 +340,9 @@ def test_capability_import_writes_validation_report(tmp_path: Path) -> None:
                 "context.policy.yaml",
                 "harness.yaml",
                 "eval_set.yaml",
+                "contracts/task_contract.yaml",
+                "contracts/artifacts.yaml",
+                "contracts/validation.md",
             ),
         ),
     ],
@@ -1692,6 +1718,21 @@ def make_manifest() -> CapabilityManifest:
         ),
         runtime=RuntimeInfo(name="codex", model="gpt-5.5", tools=("shell",)),
         workflow_control=WorkflowControl(allowed_tools=("shell",)),
+        artifact_contracts=(
+            ArtifactContract(
+                name="output_report_json",
+                artifact_path="output/report.json",
+                artifact_kind="json",
+                validation_checks=("artifact_exists:output/report.json",),
+            ),
+        ),
+        task_contract=TaskContract(
+            goal="triage repo issue",
+            required_inputs=("AGENTS.md",),
+            expected_artifacts=("output/report.json",),
+            validation_checks=("artifact_exists:output/report.json",),
+        ),
+        record_quality=RecordQuality(score=1.0, strict_ready=True),
         promotion_criteria=PromotionCriteria(
             min_success_runs=3,
             max_human_intervention_rate=0.3,

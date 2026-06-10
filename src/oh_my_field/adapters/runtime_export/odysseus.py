@@ -1,6 +1,7 @@
 from oh_my_field.adapters.runtime_export.base import (
     RuntimeExportRequest,
     RuntimeExportSummary,
+    write_contract_reference_files,
 )
 from oh_my_field.application.portability.rendering import (
     base_instructions,
@@ -38,6 +39,7 @@ class OdysseusRuntimeExportAdapter:
             reference_path / "harness.md",
             harness_markdown(request.manifest),
         )
+        write_contract_reference_files(reference_path, request.manifest)
         return RuntimeExportSummary(
             runtime_path=str(runtime_path),
             target_runtime=self.target,

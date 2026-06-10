@@ -20,6 +20,10 @@ Sources: <https://pi.dev/docs/latest/skills>, <https://pi.dev/docs/latest/packag
 - `.pi/skills/<capability>/references/capability.md`
 - `.pi/skills/<capability>/references/context.policy.md`
 - `.pi/skills/<capability>/references/harness.md`
+- `.pi/skills/<capability>/references/task_contract.yaml`
+- `.pi/skills/<capability>/references/artifacts.yaml`
+- `.pi/skills/<capability>/references/validation.md`
+- `.pi/skills/<capability>/references/replay_plan.yaml`
 - `package.json` with `pi.skills` pointing at `./.pi/skills`
 
 ## Expected Install Location

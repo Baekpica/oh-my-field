@@ -3,6 +3,7 @@ import yaml
 from oh_my_field.adapters.runtime_export.base import (
     RuntimeExportRequest,
     RuntimeExportSummary,
+    write_contract_bundle_files,
 )
 from oh_my_field.application.portability.rendering import skill_markdown, yaml_dump
 from oh_my_field.domain.portability.models import ExportTarget
@@ -29,6 +30,7 @@ class GenericRuntimeExportAdapter:
             runtime_path / "harness.yaml",
             yaml_dump(request.manifest.harness),
         )
+        write_contract_bundle_files(runtime_path, request.manifest)
         write_text_exclusive(
             runtime_path / "eval_set.yaml",
             yaml.safe_dump(

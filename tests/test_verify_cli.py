@@ -6,11 +6,15 @@ from typer.testing import CliRunner
 from oh_my_field.cli import app
 from oh_my_field.integrity import append_integrity_link
 from oh_my_field.models import (
+    ArtifactContract,
     CapturedTextFile,
     EvidenceRecord,
     HarnessResult,
     IntegrityVerificationResult,
+    RecordQuality,
     RuntimeInfo,
+    TaskContract,
+    ValidationCheckResult,
 )
 from oh_my_field.storage import write_evidence
 
@@ -31,7 +35,38 @@ def make_evidence_record() -> EvidenceRecord:
                 sha256="0" * 64,
             ),
         ),
-        harness=HarnessResult(status="pass", checks=("schema_valid",)),
+        feedback=("looks reusable",),
+        final_artifacts=("output/report.json",),
+        harness=HarnessResult(
+            status="pass",
+            checks=("files_readable", "schema_valid"),
+            failures=(),
+        ),
+        validation_results=(
+            ValidationCheckResult(
+                name="artifact_exists:output/report.json",
+                status="pass",
+                message="artifact exists",
+                artifact_path="output/report.json",
+            ),
+        ),
+        artifact_contracts=(
+            ArtifactContract(
+                name="output_report_json",
+                artifact_path="output/report.json",
+                artifact_kind="json",
+                validation_checks=("artifact_exists:output/report.json",),
+            ),
+        ),
+        task_contract=TaskContract(
+            goal="triage repo issue",
+            required_inputs=("prompt.md",),
+            expected_artifacts=("output/report.json",),
+            validation_checks=("artifact_exists:output/report.json",),
+        ),
+        record_quality=RecordQuality(score=1.0, strict_ready=True),
+        task_outcome="success",
+        success_or_failure_label="success",
     )
     return append_integrity_link(
         evidence,

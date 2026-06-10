@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from oh_my_field.application.portability.ids import new_id
+from oh_my_field.application.record_builder import harden_evidence_record
 from oh_my_field.domain.models import (
     CommandExecution,
     CommandRiskCategory,
@@ -149,6 +150,10 @@ def materialize_session(
         session=session,
         created_at=created_at,
         evidence_id=new_id(created_at),
+    )
+    evidence = harden_evidence_record(
+        evidence,
+        project_root=Path(session.project_root),
     )
     evidence = append_integrity_link(
         evidence,

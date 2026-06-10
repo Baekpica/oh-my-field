@@ -7,6 +7,10 @@ through `oh_my_field.adapters.runtime_export`.
 
 - `skills/<capability>/SKILL.md`
 - `skills/<capability>/references/harness.md`
+- `skills/<capability>/references/task_contract.yaml`
+- `skills/<capability>/references/artifacts.yaml`
+- `skills/<capability>/references/validation.md`
+- `skills/<capability>/references/replay_plan.yaml`
 
 ## Expected Install Location
 

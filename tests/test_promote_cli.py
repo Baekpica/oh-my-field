@@ -6,12 +6,16 @@ from typer.testing import CliRunner
 
 from oh_my_field.cli import app
 from oh_my_field.models import (
+    ArtifactContract,
     CapturedTextFile,
     EvalCheck,
     EvalResult,
     EvidenceRecord,
     HarnessResult,
+    RecordQuality,
     RuntimeInfo,
+    TaskContract,
+    ValidationCheckResult,
 )
 from oh_my_field.storage import load_manifest, write_eval_result, write_evidence
 
@@ -46,11 +50,35 @@ def make_evidence_record() -> EvidenceRecord:
             ),
         ),
         feedback=("looks reusable",),
+        final_artifacts=("output/report.json",),
         harness=HarnessResult(
             status="pass",
             checks=("files_readable", "schema_valid"),
             failures=(),
         ),
+        validation_results=(
+            ValidationCheckResult(
+                name="artifact_exists:output/report.json",
+                status="pass",
+                message="artifact exists",
+                artifact_path="output/report.json",
+            ),
+        ),
+        artifact_contracts=(
+            ArtifactContract(
+                name="output_report_json",
+                artifact_path="output/report.json",
+                artifact_kind="json",
+                validation_checks=("artifact_exists:output/report.json",),
+            ),
+        ),
+        task_contract=TaskContract(
+            goal="triage repo issue",
+            required_inputs=("prompt.md",),
+            expected_artifacts=("output/report.json",),
+            validation_checks=("artifact_exists:output/report.json",),
+        ),
+        record_quality=RecordQuality(score=1.0, strict_ready=True),
         task_outcome="success",
         success_or_failure_label="success",
     )
@@ -149,6 +177,11 @@ def _assert_package_output(output: PromoteOutput, package_path: Path) -> None:
     assert (package_path / "instructions.md").exists()
     assert (package_path / "harness.yaml").exists()
     assert (package_path / "README.md").exists()
+    assert (package_path / "contracts" / "task_contract.yaml").exists()
+    assert (package_path / "contracts" / "artifacts.yaml").exists()
+    assert (package_path / "contracts" / "validation.md").exists()
+    assert (package_path / "contracts" / "replay_plan.yaml").exists()
+    assert (package_path / "validators" / "validate_contract.py").exists()
     card_text = (package_path / "README.md").read_text(encoding="utf-8")
     instructions_text = (package_path / "instructions.md").read_text(
         encoding="utf-8",
@@ -156,6 +189,75 @@ def _assert_package_output(output: PromoteOutput, package_path: Path) -> None:
     assert "## Package Contents" in card_text
     assert "runtime-neutral agent instruction surface" in card_text
     assert "Treat the package as the source of truth" in instructions_text
+
+
+def test_promote_rejects_weak_evidence_by_default(tmp_path: Path) -> None:
+    evidence_dir = tmp_path / "evidence"
+    capabilities_dir = tmp_path / "capabilities"
+    evidence = make_evidence_record().model_copy(
+        update={
+            "artifact_contracts": (),
+            "task_contract": None,
+            "record_quality": None,
+            "validation_results": (),
+        },
+    )
+    write_evidence(evidence, evidence_dir)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "promote",
+            evidence.id,
+            "--name",
+            "weak_repo_issue_triage",
+            "--description",
+            "Weak evidence should not promote under strict gate",
+            "--evidence-dir",
+            str(evidence_dir),
+            "--capabilities-dir",
+            str(capabilities_dir),
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "strict quality gate" in result.stderr
+    assert "--no-strict" in result.stderr
+
+
+def test_promote_allows_weak_evidence_with_no_strict(tmp_path: Path) -> None:
+    evidence_dir = tmp_path / "evidence"
+    capabilities_dir = tmp_path / "capabilities"
+    evidence = make_evidence_record().model_copy(
+        update={
+            "artifact_contracts": (),
+            "task_contract": None,
+            "record_quality": None,
+            "validation_results": (),
+        },
+    )
+    write_evidence(evidence, evidence_dir)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "promote",
+            evidence.id,
+            "--name",
+            "weak_repo_issue_triage",
+            "--description",
+            "Weak evidence with explicit relaxed gate",
+            "--no-strict",
+            "--evidence-dir",
+            str(evidence_dir),
+            "--capabilities-dir",
+            str(capabilities_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = PromoteOutput.model_validate_json(result.stdout)
+    assert output.capability_name == "weak_repo_issue_triage"
 
 
 def test_promote_creates_manifest_from_evidence_set(tmp_path: Path) -> None:

@@ -160,6 +160,100 @@ def test_session_suggest_capability(tmp_path: Path) -> None:
     assert output.suggested_capabilities == ["fix_flaky_tests"]
 
 
+def test_session_materialize_hardens_artifact_contracts(tmp_path: Path) -> None:
+    sessions_dir = tmp_path / "sessions"
+    evidence_dir = tmp_path / "evidence"
+    output_path = tmp_path / "output" / "report.json"
+    output_path.parent.mkdir(parents=True)
+    output_path.write_text('{"total": 100}', encoding="utf-8")
+
+    start = CliRunner().invoke(
+        app,
+        [
+            "session",
+            "start",
+            "--runtime",
+            "hermes",
+            "--model",
+            "frontier",
+            "--project-root",
+            str(tmp_path),
+            "--goal",
+            "Generate finance portfolio output",
+            "--sessions-dir",
+            str(sessions_dir),
+        ],
+    )
+    assert start.exit_code == 0
+    session_id = SessionStartOutput.model_validate_json(start.stdout).session_id
+
+    _run_ok(
+        [
+            "session",
+            "event",
+            session_id,
+            "--type",
+            "context",
+            "--summary",
+            "portfolio input",
+            "--path",
+            "inputs/portfolio.json",
+            "--sessions-dir",
+            str(sessions_dir),
+        ],
+    )
+    _run_ok(
+        [
+            "session",
+            "event",
+            session_id,
+            "--type",
+            "artifact",
+            "--summary",
+            "portfolio report",
+            "--path",
+            "output/report.json",
+            "--sessions-dir",
+            str(sessions_dir),
+        ],
+    )
+    _run_ok(
+        [
+            "session",
+            "finish",
+            session_id,
+            "--outcome",
+            "success",
+            "--sessions-dir",
+            str(sessions_dir),
+        ],
+    )
+
+    materialize = CliRunner().invoke(
+        app,
+        [
+            "session",
+            "materialize",
+            session_id,
+            "--sessions-dir",
+            str(sessions_dir),
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
+    )
+
+    assert materialize.exit_code == 0
+    output = SessionMaterializeOutput.model_validate_json(materialize.stdout)
+    evidence = load_evidence(output.evidence_id, evidence_dir)
+    assert evidence.runtime.name == "hermes"
+    assert evidence.artifact_snapshots[0].path == "output/report.json"
+    assert evidence.artifact_contracts[0].artifact_path == "output/report.json"
+    assert evidence.task_contract is not None
+    assert evidence.task_contract.required_inputs == ("inputs/portfolio.json",)
+    assert evidence.record_quality is not None
+    assert evidence.record_quality.strict_ready
+
+
 def _run_ok(args: list[str]) -> None:
     result = CliRunner().invoke(app, args)
     assert result.exit_code == 0, result.stdout

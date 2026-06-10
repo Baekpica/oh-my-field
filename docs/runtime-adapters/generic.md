@@ -9,6 +9,11 @@ registered through `oh_my_field.adapters.runtime_export`.
 - `context.policy.yaml`
 - `harness.yaml`
 - `eval_set.yaml`
+- `contracts/task_contract.yaml`
+- `contracts/artifacts.yaml`
+- `contracts/validation.md`
+- `contracts/replay_plan.yaml`
+- `validators/validate_contract.py`
 
 ## Expected Install Location
 

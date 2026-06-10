@@ -1,6 +1,11 @@
 # Release
 
-Public release is tag-driven.
+Public release is tag-driven. The release target for this branch is `v0.2.0`.
+Use `0.2.0` rather than `0.1.1` because this release adds new record contracts,
+runtime export artifacts, MCP tools, and a stricter default promotion gate.
+
+Tag only after the release commit has merged to `main` and the local gates below
+pass from a clean checkout.
 
 1. Verify local gates.
 2. Build wheel and sdist.
@@ -16,23 +21,24 @@ tokens to this repository unless the OIDC path is intentionally retired.
 Local release smoke:
 
 ```bash
+version=0.2.0
 uv build
 uv run --isolated --no-project --with dist/*.whl omf install skill --runtime generic --scope export --out /tmp/omf-wheel-skill
 uv run --isolated --no-project --with dist/*.whl omf install mcp --client generic --scope export --out /tmp/omf-wheel-mcp.json
 uv run --isolated --no-project --with dist/*.whl omf doctor --json
 pipx_root="$(mktemp -d)"
 mkdir -p "$pipx_root/home" "$pipx_root/bin"
-PIPX_HOME="$pipx_root/home" PIPX_BIN_DIR="$pipx_root/bin" pipx install dist/oh_my_field-0.1.0-py3-none-any.whl
+PIPX_HOME="$pipx_root/home" PIPX_BIN_DIR="$pipx_root/bin" pipx install "dist/oh_my_field-${version}-py3-none-any.whl"
 PATH="$pipx_root/bin:$PATH" omf doctor --json
-bash scripts/smoke-default-flow.sh dist/oh_my_field-0.1.0-py3-none-any.whl
-bash scripts/smoke-default-flow.sh dist/oh_my_field-0.1.0.tar.gz
+bash scripts/smoke-default-flow.sh "dist/oh_my_field-${version}-py3-none-any.whl"
+bash scripts/smoke-default-flow.sh "dist/oh_my_field-${version}.tar.gz"
 ```
 
 Public visibility timing:
 
 Switch the GitHub repository from private to public after the GitHub environments
 and PyPI/TestPyPI trusted publishers are configured, and after the final scrub
-passes. Do this before pushing the `v0.1.0` tag so release links, GitHub Release
+passes. Do this before pushing the `v0.2.0` tag so release links, GitHub Release
 assets, and PyPI metadata point at public pages from the first public publish.
 
 Repository scrub before making a release public:
@@ -79,11 +85,14 @@ The matching GitHub environments must exist before publishing. Keep `testpypi`
 unprotected for preflight publishing. Protect `pypi` with a required reviewer
 once GitHub environment protection is available for the repository visibility/plan.
 
-0.1.0 release tag:
+0.2.0 release tag:
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git checkout main
+git pull --ff-only
+version=0.2.0
+git tag "v${version}"
+git push origin "v${version}"
 ```
 
 PyPI/TestPyPI publishing requires configuring the matching GitHub environment

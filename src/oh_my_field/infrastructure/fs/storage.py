@@ -1,5 +1,6 @@
 import os
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, cast
@@ -7,6 +8,13 @@ from typing import Final, cast
 import yaml
 from pydantic import BaseModel, ValidationError
 
+from oh_my_field.contract_rendering import (
+    artifact_contracts_yaml,
+    replay_plan_yaml,
+    task_contract_yaml,
+    validation_markdown,
+    validator_script,
+)
 from oh_my_field.domain.portability.lifecycle import (
     build_portability_health,
     normalize_target_validation_status,
@@ -194,6 +202,11 @@ def write_capability_package(
         _capability_instructions_markdown(manifest),
     )
     _write_text_exclusive(paths.harness_path, _capability_harness_yaml(manifest))
+    _write_capability_contract_files(
+        paths.package_dir,
+        manifest,
+        writer=_write_text_exclusive,
+    )
     _write_text_exclusive(paths.card_path, render_capability_card(manifest))
     return paths
 
@@ -206,6 +219,11 @@ def update_manifest(manifest: CapabilityManifest, capabilities_dir: Path) -> Pat
         _capability_instructions_markdown(manifest),
     )
     _write_text_atomic(paths.harness_path, _capability_harness_yaml(manifest))
+    _write_capability_contract_files(
+        paths.package_dir,
+        manifest,
+        writer=_write_text_atomic,
+    )
     _write_text_atomic(
         paths.card_path,
         render_capability_card(manifest, read_portability_health(paths.package_dir)),
@@ -645,6 +663,28 @@ def _write_text_atomic(target_path: Path, content: str) -> None:
             temp_path.unlink()
 
 
+def _write_capability_contract_files(
+    package_dir: Path,
+    manifest: CapabilityManifest,
+    *,
+    writer: Callable[[Path, str], None],
+) -> None:
+    writer(
+        package_dir / "contracts" / "task_contract.yaml",
+        task_contract_yaml(manifest),
+    )
+    writer(
+        package_dir / "contracts" / "artifacts.yaml",
+        artifact_contracts_yaml(manifest),
+    )
+    writer(package_dir / "contracts" / "validation.md", validation_markdown(manifest))
+    writer(package_dir / "contracts" / "replay_plan.yaml", replay_plan_yaml(manifest))
+    writer(
+        package_dir / "validators" / "validate_contract.py",
+        validator_script(manifest),
+    )
+
+
 def _manifest_yaml(manifest: CapabilityManifest) -> str:
     yaml_text: str = yaml.safe_dump(
         _manifest_yaml_data(manifest),
@@ -737,6 +777,8 @@ def render_capability_card(
         f"- `{CAPABILITY_FILE_NAME}`: canonical capability metadata.",
         "- `instructions.md`: runtime-neutral agent instruction surface.",
         "- `harness.yaml`: verification and approval checks.",
+        "- `contracts/`: task, artifact, validation, and replay contracts.",
+        "- `validators/`: executable contract validation helpers.",
         "- `README.md`: human-readable capability card.",
         "",
         "## Required Context",
