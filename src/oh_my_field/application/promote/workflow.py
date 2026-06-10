@@ -11,6 +11,7 @@ from oh_my_field.domain.layout import DEFAULT_EVAL_DIR
 from oh_my_field.integrity import append_integrity_link, integrity_link
 from oh_my_field.models import (
     COMMAND_RISK_CATEGORIES,
+    ArtifactContract,
     ArtifactIntegrityLink,
     CapabilityManifest,
     CapabilityStatus,
@@ -26,8 +27,10 @@ from oh_my_field.models import (
     HarnessResult,
     PromotionCriteria,
     PromotionMetrics,
+    RecordQuality,
     RuntimeInfo,
     StrictModel,
+    TaskContract,
     WorkflowControl,
     WorkflowManifest,
 )
@@ -97,6 +100,19 @@ class EvidenceSetParseError(PromoteError):
         return f"could not parse evidence set {self.path}: {self.reason}"
 
 
+@dataclass
+class PromoteQualityGateError(PromoteError):
+    issues: tuple[str, ...]
+
+    def __str__(self) -> str:
+        details = "; ".join(self.issues)
+        return (
+            f"strict quality gate failed: {details}. "
+            "Capture or materialize richer evidence, or pass --no-strict "
+            "to promote legacy evidence intentionally."
+        )
+
+
 class PromoteRequest(StrictModel):
     evidence_id: str | None = Field(default=None, min_length=1)
     from_evidence_set: Path | None = None
@@ -106,6 +122,7 @@ class PromoteRequest(StrictModel):
     evidence_dir: Path
     eval_dir: Path = DEFAULT_EVAL_DIR
     capabilities_dir: Path
+    strict: bool = True
 
 
 class PromoteSummary(StrictModel):
@@ -162,6 +179,8 @@ def _load_evidence(state: PromoteState) -> PromoteState:
     evidence_records = tuple(
         load_evidence(evidence_id, request.evidence_dir) for evidence_id in evidence_ids
     )
+    if request.strict:
+        _enforce_quality_gate(evidence_records)
     return PromoteState(evidence_records=evidence_records)
 
 
@@ -229,6 +248,9 @@ def _build_manifest(state: PromoteState) -> PromoteState:
         ),
         promotion_criteria=promotion_criteria,
         promotion_metrics=promotion_metrics,
+        artifact_contracts=_artifact_contracts(evidence_records),
+        task_contract=_task_contract(evidence_records),
+        record_quality=_record_quality(evidence_records),
     )
     evidence_links = tuple(
         _evidence_integrity_link(record) for record in evidence_records
@@ -243,6 +265,42 @@ def _build_manifest(state: PromoteState) -> PromoteState:
         previous_sha256=manifest.integrity_chain[-1].sha256,
     )
     return PromoteState(manifest=manifest)
+
+
+def _enforce_quality_gate(evidence_records: tuple[EvidenceRecord, ...]) -> None:
+    issues = tuple(
+        issue
+        for evidence in evidence_records
+        for issue in _quality_gate_issues(evidence)
+    )
+    if issues:
+        raise PromoteQualityGateError(issues=issues)
+
+
+def _quality_gate_issues(evidence: EvidenceRecord) -> tuple[str, ...]:
+    issues: list[str] = []
+    prefix = f"evidence {evidence.id}"
+    if evidence.record_quality is None:
+        issues.append(f"{prefix} is missing record_quality")
+    elif not evidence.record_quality.strict_ready:
+        missing = ", ".join(evidence.record_quality.missing_sections)
+        issues.append(f"{prefix} is not strict-ready: {missing or 'quality warnings'}")
+    if evidence.task_contract is None:
+        issues.append(f"{prefix} is missing task_contract")
+    if not evidence.artifact_contracts:
+        issues.append(f"{prefix} is missing artifact_contracts")
+    if not evidence.validation_results:
+        issues.append(f"{prefix} is missing validation_results")
+    failed_validations = tuple(
+        result.name for result in evidence.validation_results if result.status == "fail"
+    )
+    if failed_validations:
+        issues.append(
+            f"{prefix} has failing validation: {', '.join(failed_validations)}",
+        )
+    if evidence.harness.status != "pass":
+        issues.append(f"{prefix} harness status is {evidence.harness.status}")
+    return tuple(issues)
 
 
 def _evidence_ids(request: PromoteRequest) -> tuple[str, ...]:
@@ -357,6 +415,56 @@ def _evidence_integrity_link(evidence: EvidenceRecord) -> ArtifactIntegrityLink:
         artifact_type="evidence",
         artifact_id=evidence.id,
         model=evidence,
+    )
+
+
+def _artifact_contracts(
+    evidence_records: tuple[EvidenceRecord, ...],
+) -> tuple[ArtifactContract, ...]:
+    contracts = [
+        contract
+        for evidence in evidence_records
+        for contract in evidence.artifact_contracts
+    ]
+    by_key = {
+        f"{contract.name}:{contract.artifact_path}": contract
+        for contract in contracts
+    }
+    return tuple(by_key.values())
+
+
+def _task_contract(
+    evidence_records: tuple[EvidenceRecord, ...],
+) -> TaskContract | None:
+    for evidence in evidence_records:
+        if evidence.task_contract is not None:
+            return evidence.task_contract
+    return None
+
+
+def _record_quality(
+    evidence_records: tuple[EvidenceRecord, ...],
+) -> RecordQuality | None:
+    qualities = tuple(
+        evidence.record_quality
+        for evidence in evidence_records
+        if evidence.record_quality is not None
+    )
+    if not qualities:
+        return None
+    warnings = tuple(
+        dict.fromkeys(warning for quality in qualities for warning in quality.warnings)
+    )
+    missing = tuple(
+        dict.fromkeys(
+            section for quality in qualities for section in quality.missing_sections
+        ),
+    )
+    return RecordQuality(
+        score=min(quality.score for quality in qualities),
+        warnings=warnings,
+        missing_sections=missing,
+        strict_ready=all(quality.strict_ready for quality in qualities),
     )
 
 
