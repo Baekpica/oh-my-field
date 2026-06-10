@@ -1,8 +1,15 @@
+from datetime import UTC, datetime
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 from typer.testing import CliRunner
 
+from oh_my_field.application.capture import (
+    CaptureDependencies,
+    CaptureFileInput,
+    CaptureRequest,
+    run_capture_workflow,
+)
 from oh_my_field.cli import app
 from oh_my_field.storage import load_evidence
 
@@ -258,3 +265,29 @@ def test_capture_hardens_final_artifact_contracts(tmp_path: Path) -> None:
     assert evidence.task_contract.expected_artifacts == ("output/report.json",)
     assert evidence.record_quality is not None
     assert evidence.record_quality.strict_ready
+
+
+def test_capture_workflow_uses_injected_clock_and_token_factory(
+    tmp_path: Path,
+) -> None:
+    prompt_path = tmp_path / "prompt.md"
+    evidence_dir = tmp_path / "evidence"
+    prompt_path.write_text("Find the bug.", encoding="utf-8")
+
+    summary = run_capture_workflow(
+        CaptureRequest(
+            goal="triage repo issue",
+            field="local",
+            runtime="codex",
+            evidence_dir=evidence_dir,
+            files=(CaptureFileInput(role="prompt", path=prompt_path),),
+        ),
+        CaptureDependencies(
+            clock=lambda: datetime(2026, 6, 2, 1, 2, 3, tzinfo=UTC),
+            token_factory=lambda: "deadbeef",
+        ),
+    )
+
+    assert summary.evidence_id == "20260602T010203Z-deadbeef"
+    evidence = load_evidence(summary.evidence_id, evidence_dir)
+    assert evidence.created_at == datetime(2026, 6, 2, 1, 2, 3, tzinfo=UTC)

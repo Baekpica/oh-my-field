@@ -21,7 +21,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        python-version: ["3.12"]
+        python-version: ["3.12", "3.13"]
 
     steps:
       - name: Checkout
@@ -50,7 +50,7 @@ jobs:
         run: uv run pyright
 
       - name: Pytest
-        run: uv run pytest
+        run: uv run pytest --cov=oh_my_field --cov-report=term
 
   build:
     name: build and smoke test

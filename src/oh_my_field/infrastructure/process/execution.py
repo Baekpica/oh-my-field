@@ -52,6 +52,7 @@ PRODUCTION_COMMANDS: Final = frozenset(
     {"aws", "docker", "helm", "kubectl", "terraform"}
 )
 PAID_COMMANDS: Final = frozenset({"aws", "gcloud", "openai", "stripe"})
+PRIVILEGE_COMMANDS: Final = frozenset({"doas", "su", "sudo"})
 DEFAULT_ENV_ALLOWLIST: Final = ("PATH", "HOME", "TMPDIR")
 DANGEROUS_ENV_NAMES: Final = frozenset(
     {
@@ -184,8 +185,12 @@ def assess_command_risk(
         COMMAND_RISK_CATEGORIES
     ),
 ) -> CommandRiskAssessment:
-    tokens = _shell_tokens(command)
+    raw_tokens = _shell_tokens(command)
     categories: list[CommandRiskCategory] = []
+    if raw_tokens and raw_tokens[0] in PRIVILEGE_COMMANDS:
+        categories.append("privilege_escalation")
+    # Classify the wrapped command so `sudo rm -rf` still reads as destructive.
+    tokens = _strip_privilege_prefix(raw_tokens)
     first_token = tokens[0] if tokens else ""
     command_text = command.casefold()
 
@@ -281,6 +286,22 @@ def _normalize_env_names(names: tuple[str, ...]) -> tuple[str, ...]:
 
 def _is_relative_to(path: Path, root: Path) -> bool:
     return path == root or root in path.parents
+
+
+_PRIVILEGE_FLAGS_WITH_VALUE: Final = frozenset({"--group", "--user", "-g", "-u"})
+
+
+def _strip_privilege_prefix(tokens: tuple[str, ...]) -> tuple[str, ...]:
+    remaining = tokens
+    while remaining and remaining[0] in PRIVILEGE_COMMANDS:
+        remaining = remaining[1:]
+        # Skip wrapper flags (`sudo -u deploy ...`) to reach the real command.
+        while remaining and remaining[0].startswith("-"):
+            flag = remaining[0]
+            remaining = remaining[1:]
+            if flag in _PRIVILEGE_FLAGS_WITH_VALUE:
+                remaining = remaining[1:]
+    return remaining
 
 
 def _shell_tokens(command: str) -> tuple[str, ...]:

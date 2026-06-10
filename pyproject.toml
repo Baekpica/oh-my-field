@@ -45,6 +45,7 @@ omf = "oh_my_field.cli:app"
 dev = [
     "pyright",
     "pytest",
+    "pytest-cov>=7.1.0",
     "ruff",
     "types-pyyaml",
 ]

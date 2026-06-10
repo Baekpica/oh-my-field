@@ -12,7 +12,7 @@ This project uses `uv` (Python `>=3.12`). All commands run through `uv run`.
 uv sync                      # install deps (including dev group)
 uv run omf --help            # run the CLI (entry point: oh_my_field.cli:app)
 
-uv run pytest                # full test suite (171 tests)
+uv run pytest                # full test suite (213 tests)
 uv run pytest tests/test_cli.py::test_help_lists_cli_name_when_invoked  # single test
 uv run pytest -k orchestrate # subset by keyword
 
@@ -83,12 +83,12 @@ Artifacts carry an `integrity_chain` of sha256 links. `model_sha256` hashes the 
 
 ### Safety / permission model (`infrastructure/process/execution.py`)
 
-Commands are classified into risk categories: `write`, `destructive`, `external_call`, `credential_access`, `production_write`, `paid_operation`. Risky commands are **recorded as intent but not executed** unless the user passes `--approve-command-risk`. Capability **exports are gated** behind `--approve-export`. Preserve this record-don't-execute default when extending command handling.
+Commands are classified into risk categories: `write`, `destructive`, `external_call`, `credential_access`, `production_write`, `paid_operation`, `privilege_escalation`. Risky commands are **recorded as intent but not executed** unless the user passes `--approve-command-risk`. Capability **exports are gated** behind `--approve-export`. Preserve this record-don't-execute default when extending command handling.
 
 Two more defaults round out the boundary:
 
 - **Minimal command environment.** Executed commands get only the `DEFAULT_ENV_ALLOWLIST` (`PATH`, `HOME`, `TMPDIR`); secret-bearing vars (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `AWS_*`, `GITHUB_TOKEN`, …) are stripped and the blocked names are recorded. Opt a variable back in with `--allow-env NAME`.
-- **Artifact-import safety (`adapters/agent_import.py`).** `import-run --artifact-root` skips `.git/`, `.venv/`, `node_modules/`, `.env*`, private-key patterns, and symlinks; honors `.omfignore`/`--exclude`; caps traversal via `--max-artifact-count`/`--max-total-artifact-bytes`; and stores binary/oversized files metadata-only.
+- **Artifact-import safety (`adapters/agent_import.py`).** `import-run --artifact-root` skips `.git/`, `.venv/`, `node_modules/`, `.env*`, private-key patterns, and symlinks; honors `.omfignore`/`--exclude`; caps traversal via `--max-artifact-count`/`--max-total-artifact-bytes`; stores binary/oversized files metadata-only; and **redacts secrets by default** (key/value secrets, bearer/GitHub/Slack tokens, AWS keys, JWTs, private-key blocks — opt out with `--no-redact-secrets`).
 
 ### Runtime portability (`adapters/`, `domain/portability/`, `export.py`)
 

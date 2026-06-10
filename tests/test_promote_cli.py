@@ -158,6 +158,7 @@ def test_promote_creates_capability_manifest_from_evidence(tmp_path: Path) -> No
         "credential_access",
         "production_write",
         "paid_operation",
+        "privilege_escalation",
     )
     assert manifest.workflow_control.safe_execution_mode
     assert manifest.workflow_control.network_policy == "disabled"

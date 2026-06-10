@@ -1,9 +1,15 @@
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 from pydantic import BaseModel, ConfigDict
 from typer.testing import CliRunner
 
+from oh_my_field.adapters.agent_import import (
+    AgentImportDependencies,
+    AgentImportRequest,
+    import_agent_run,
+)
 from oh_my_field.cli import app
 from oh_my_field.storage import load_evidence
 
@@ -66,11 +72,17 @@ def test_import_run_captures_external_agent_log_and_artifacts(
     assert evidence.integrity_chain[-1].artifact_type == "evidence"
 
 
-def test_import_run_redacts_secrets(tmp_path: Path) -> None:
+def test_import_run_redacts_secrets_by_default(tmp_path: Path) -> None:
     log_path = tmp_path / "codex.log"
     evidence_dir = tmp_path / "evidence"
     log_path.write_text(
-        "API_KEY=supersecret\nAuthorization: Bearer abc123xyz\nrun ok\n",
+        "API_KEY=supersecret\n"
+        "Authorization: Bearer abc123xyz\n"
+        "pat ghp_FAKE0token0value0FAKE0token0value0\n"
+        "jwt eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2lnbmF0dXJlLXBhcnQ\n"
+        "-----BEGIN OPENSSH PRIVATE KEY-----\nkeymaterial\n"
+        "-----END OPENSSH PRIVATE KEY-----\n"
+        "run ok\n",
         encoding="utf-8",
     )
 
@@ -83,7 +95,6 @@ def test_import_run_redacts_secrets(tmp_path: Path) -> None:
             str(log_path),
             "--goal",
             "capture external agent run",
-            "--redact-secrets",
             "--evidence-dir",
             str(evidence_dir),
         ],
@@ -97,7 +108,41 @@ def test_import_run_redacts_secrets(tmp_path: Path) -> None:
     assert log_file.storage_mode == "inline"
     assert "supersecret" not in log_file.content
     assert "abc123xyz" not in log_file.content
+    assert "ghp_" not in log_file.content
+    assert "eyJ" not in log_file.content
+    assert "keymaterial" not in log_file.content
     assert "[REDACTED]" in log_file.content
+    assert "run ok" in log_file.content
+
+
+def test_import_run_keeps_raw_content_when_redaction_disabled(
+    tmp_path: Path,
+) -> None:
+    log_path = tmp_path / "codex.log"
+    evidence_dir = tmp_path / "evidence"
+    log_path.write_text("API_KEY=supersecret\nrun ok\n", encoding="utf-8")
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "import-run",
+            "codex",
+            "--log",
+            str(log_path),
+            "--goal",
+            "capture external agent run",
+            "--no-redact-secrets",
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = AgentImportOutput.model_validate_json(result.stdout)
+    evidence = load_evidence(output.evidence_id, evidence_dir)
+    log_file = evidence.files[0]
+    assert not log_file.redacted
+    assert "supersecret" in log_file.content
 
 
 def test_import_run_externalizes_binary_artifact(tmp_path: Path) -> None:
@@ -286,9 +331,9 @@ def test_import_run_warns_for_unbounded_current_directory_artifact_root(
     assert result.exit_code == 0
     output = AgentImportOutput.model_validate_json(result.stdout)
     assert output.warnings == (
-        "--artifact-root . was used without --max-artifact-count, "
-        "--max-total-artifact-bytes, or --redact-secrets; broad imports can "
-        "capture unintended local artifacts",
+        "--artifact-root . was used without --max-artifact-count or "
+        "--max-total-artifact-bytes; broad imports can capture unintended "
+        "local artifacts",
     )
 
 
@@ -467,3 +512,29 @@ def test_import_run_records_explicit_task_outcome(tmp_path: Path) -> None:
     assert evidence.capture_status == "captured"
     assert evidence.task_outcome == "success"
     assert evidence.success_or_failure_label == "success"
+
+
+def test_import_agent_run_uses_injected_clock_and_token_factory(
+    tmp_path: Path,
+) -> None:
+    log_path = tmp_path / "codex.log"
+    evidence_dir = tmp_path / "evidence"
+    log_path.write_text("Codex completed the task.", encoding="utf-8")
+
+    summary = import_agent_run(
+        AgentImportRequest(
+            adapter="codex",
+            log_path=log_path,
+            goal="capture deterministic run",
+            field="local",
+            evidence_dir=evidence_dir,
+        ),
+        AgentImportDependencies(
+            clock=lambda: datetime(2026, 6, 2, 1, 2, 3, tzinfo=UTC),
+            token_factory=lambda: "deadbeef",
+        ),
+    )
+
+    assert summary.evidence_id == "20260602T010203Z-deadbeef"
+    evidence = load_evidence(summary.evidence_id, evidence_dir)
+    assert evidence.created_at == datetime(2026, 6, 2, 1, 2, 3, tzinfo=UTC)

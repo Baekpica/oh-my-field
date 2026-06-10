@@ -153,7 +153,8 @@
         "external_call",
         "credential_access",
         "production_write",
-        "paid_operation"
+        "paid_operation",
+        "privilege_escalation"
       ],
       "type": "string"
     },
@@ -441,7 +442,8 @@
             "external_call",
             "credential_access",
             "production_write",
-            "paid_operation"
+            "paid_operation",
+            "privilege_escalation"
           ],
           "items": {
             "$ref": "#/$defs/CommandRiskCategory"
@@ -957,7 +959,8 @@
             "external_call",
             "credential_access",
             "production_write",
-            "paid_operation"
+            "paid_operation",
+            "privilege_escalation"
           ],
           "items": {
             "$ref": "#/$defs/CommandRiskCategory"

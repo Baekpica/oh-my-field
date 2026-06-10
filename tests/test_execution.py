@@ -20,6 +20,42 @@ def test_assess_command_risk_classifies_representative_patterns() -> None:
     assert assess_command_risk("cat .env").categories == ("credential_access",)
 
 
+def test_assess_command_risk_flags_privilege_escalation() -> None:
+    assert assess_command_risk("sudo systemctl restart nginx").categories == (
+        "privilege_escalation",
+    )
+    assert assess_command_risk("doas reboot").categories == ("privilege_escalation",)
+
+
+def test_assess_command_risk_classifies_command_wrapped_by_sudo() -> None:
+    assert assess_command_risk("sudo rm -rf /var/data").categories == (
+        "privilege_escalation",
+        "destructive",
+    )
+    assert assess_command_risk("sudo -u deploy rm -rf /var/data").categories == (
+        "privilege_escalation",
+        "destructive",
+    )
+
+
+def test_execute_shell_command_blocks_privilege_escalation_without_approval(
+    tmp_path: Path,
+) -> None:
+    execution = execute_shell_command(
+        CommandExecutionRequest(
+            command="sudo printf ok",
+            cwd=tmp_path,
+            timeout_seconds=5,
+        ),
+    )
+
+    assert execution.exit_code == 126
+    assert execution.risk_categories == ("privilege_escalation",)
+    assert execution.approval_required is True
+    assert execution.approved is False
+    assert "privilege_escalation" in execution.stderr
+
+
 def test_assess_command_risk_honors_required_category_policy() -> None:
     risk = assess_command_risk(
         "touch output.txt",

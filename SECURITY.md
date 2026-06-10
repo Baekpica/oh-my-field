@@ -29,6 +29,8 @@ importing broad directories.
 
 ## Secret Redaction Limits
 
-`--redact-secrets` covers common key/value secrets, bearer tokens, and AWS access
-key patterns. It is not a formal DLP system. Prefer excluding sensitive files
-before import rather than relying on redaction after capture.
+Secret redaction is on by default for `import-run` (disable with
+`--no-redact-secrets`). It covers common key/value secrets, bearer tokens, AWS
+access keys, GitHub and Slack tokens, JWTs, and private-key blocks. It is not a
+formal DLP system. Prefer excluding sensitive files before import rather than
+relying on redaction after capture.

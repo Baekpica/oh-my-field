@@ -303,7 +303,9 @@ def test_capability_import_writes_validation_report(tmp_path: Path) -> None:
             "hermes",
             (
                 "skills/repo_issue_triage/SKILL.md",
+                "skills/repo_issue_triage/references/capability.md",
                 "skills/repo_issue_triage/references/harness.md",
+                "skills/repo_issue_triage/references/context.policy.md",
                 "skills/repo_issue_triage/references/task_contract.yaml",
                 "skills/repo_issue_triage/references/artifacts.yaml",
                 "skills/repo_issue_triage/references/validation.md",
