@@ -1,9 +1,9 @@
 # Release
 
-Public release is tag-driven. The release target for this branch is `v0.2.1`.
-Use `0.2.1` for the post-0.2.0 patch release that hardens artifact
-materialization and pathless validation records after the record-portability
-release.
+Public release is tag-driven. The release target for this branch is `v0.2.2`.
+Use `0.2.2` for the patch release that turns on import secret redaction by
+default, adds the `privilege_escalation` command risk category, and brings the
+Hermes runtime export to parity with the other targets.
 
 Tag only after the release commit has merged to `main` and the local gates below
 pass from a clean checkout.
@@ -22,7 +22,7 @@ tokens to this repository unless the OIDC path is intentionally retired.
 Local release smoke:
 
 ```bash
-version=0.2.1
+version=0.2.2
 uv build
 uv run --isolated --no-project --with dist/*.whl omf install skill --runtime generic --scope export --out /tmp/omf-wheel-skill
 uv run --isolated --no-project --with dist/*.whl omf install mcp --client generic --scope export --out /tmp/omf-wheel-mcp.json
@@ -39,7 +39,7 @@ Public visibility timing:
 
 Switch the GitHub repository from private to public after the GitHub environments
 and PyPI/TestPyPI trusted publishers are configured, and after the final scrub
-passes. Do this before pushing the `v0.2.1` tag so release links, GitHub Release
+passes. Do this before pushing the release tag so release links, GitHub Release
 assets, and PyPI metadata point at public pages from the first public publish.
 
 Repository scrub before making a release public:
@@ -86,12 +86,12 @@ The matching GitHub environments must exist before publishing. Keep `testpypi`
 unprotected for preflight publishing. Protect `pypi` with a required reviewer
 once GitHub environment protection is available for the repository visibility/plan.
 
-0.2.1 release tag:
+0.2.2 release tag:
 
 ```bash
 git checkout main
 git pull --ff-only
-version=0.2.1
+version=0.2.2
 git tag "v${version}"
 git push origin "v${version}"
 ```

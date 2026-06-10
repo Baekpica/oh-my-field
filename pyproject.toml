@@ -1,6 +1,6 @@
 [project]
 name = "oh-my-field"
-version = "0.2.1"
+version = "0.2.2"
 description = "Evidence-backed capability packaging layer for cross-runtime agents."
 readme = "README.md"
 requires-python = ">=3.12"

@@ -4,6 +4,10 @@ All notable changes to this project will be documented here.
 
 ## Unreleased
 
+- Nothing yet.
+
+## 0.2.2 - 2026-06-10
+
 ### Added
 
 - Added a `privilege_escalation` command risk category: `sudo`/`su`/`doas` are
