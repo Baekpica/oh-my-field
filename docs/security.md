@@ -47,9 +47,11 @@ omf import-run codex \
   --artifact-root . \
   --exclude "secrets/**" \
   --max-artifact-count 200 \
-  --max-total-artifact-bytes 52428800 \
-  --redact-secrets
+  --max-total-artifact-bytes 52428800
 ```
 
-Prefer excluding sensitive files before import. Redaction is a backup control,
-not a guarantee.
+Secret redaction is on by default: imported text is scanned for key/value
+secrets, bearer tokens, AWS access keys, GitHub and Slack tokens, JWTs, and
+private-key blocks, and matches are replaced with `[REDACTED]`. Pass
+`--no-redact-secrets` to keep raw content. Prefer excluding sensitive files
+before import. Redaction is a backup control, not a guarantee.

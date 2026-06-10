@@ -4,7 +4,23 @@ All notable changes to this project will be documented here.
 
 ## Unreleased
 
-- Nothing yet.
+### Added
+
+- Added a `privilege_escalation` command risk category: `sudo`/`su`/`doas` are
+  flagged, and the wrapped command is still classified (e.g. `sudo rm -rf`
+  also reads as `destructive`).
+- Added GitHub token, Slack token, JWT, and private-key-block patterns to
+  import-run secret redaction.
+- Added an end-to-end roundtrip test covering
+  import-run → promote → export → import → validate.
+- Added Python 3.13 to the CI quality matrix and a pytest coverage report.
+
+### Changed
+
+- `import-run` now redacts secrets by default; pass `--no-redact-secrets` to
+  keep raw content.
+- The Hermes runtime export now includes `capability.md` (base instructions)
+  and `context.policy.md`, matching the other runtime targets.
 
 ## 0.2.1 - 2026-06-10
 

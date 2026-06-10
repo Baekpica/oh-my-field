@@ -46,6 +46,7 @@ type CommandRiskCategory = Literal[
     "credential_access",
     "production_write",
     "paid_operation",
+    "privilege_escalation",
 ]
 type CommandEnvPolicy = Literal["minimal"]
 type NetworkPolicy = Literal["disabled", "internal_only", "allowed"]
@@ -114,6 +115,7 @@ COMMAND_RISK_CATEGORIES: Final[tuple[CommandRiskCategory, ...]] = (
     "credential_access",
     "production_write",
     "paid_operation",
+    "privilege_escalation",
 )
 
 

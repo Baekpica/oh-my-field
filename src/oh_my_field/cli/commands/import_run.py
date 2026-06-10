@@ -51,7 +51,10 @@ def import_run(
         Literal["success", "failure", "unknown"],
         typer.Option("--outcome"),
     ] = "unknown",
-    redact_secrets: Annotated[bool, typer.Option("--redact-secrets")] = False,
+    redact_secrets: Annotated[
+        bool,
+        typer.Option("--redact-secrets/--no-redact-secrets"),
+    ] = True,
     evidence_dir: Annotated[Path, typer.Option("--evidence-dir")] = Path(
         ".omf/evidence",
     ),

@@ -118,9 +118,9 @@ Command execution and environment filtering are infrastructure concerns
 product contract — preserve the defaults when extending command handling:
 
 - Risky commands (`write`, `destructive`, `external_call`, `credential_access`,
-  `production_write`, `paid_operation`) are recorded as intent and **not
-  executed** without `--approve-command-risk`. Exports are gated by
-  `--approve-export`.
+  `production_write`, `paid_operation`, `privilege_escalation`) are recorded as
+  intent and **not executed** without `--approve-command-risk`. Exports are
+  gated by `--approve-export`.
 - Commands run with a minimal environment (`PATH`, `HOME`, `TMPDIR`);
   secret-bearing variables are stripped and recorded.
 - `import-run --artifact-root` skips dangerous paths, honors

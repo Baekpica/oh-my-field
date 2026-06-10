@@ -156,7 +156,7 @@ class AgentImportRequest(StrictModel):
     max_artifact_count: int | None = Field(default=None, ge=1)
     max_total_artifact_bytes: int | None = Field(default=None, ge=1)
     exclude_patterns: tuple[str, ...] = ()
-    redact_secrets: bool = False
+    redact_secrets: bool = True
     task_outcome: TaskOutcome = "unknown"
 
 
@@ -365,16 +365,15 @@ def _broad_artifact_import_warnings(request: AgentImportRequest) -> tuple[str, .
         not request.artifact_roots
         or request.max_artifact_count is not None
         or request.max_total_artifact_bytes is not None
-        or request.redact_secrets
     ):
         return ()
     current_dir = Path.cwd().resolve()
     if not any(root.resolve() == current_dir for root in request.artifact_roots):
         return ()
     return (
-        "--artifact-root . was used without --max-artifact-count, "
-        "--max-total-artifact-bytes, or --redact-secrets; broad imports can "
-        "capture unintended local artifacts",
+        "--artifact-root . was used without --max-artifact-count or "
+        "--max-total-artifact-bytes; broad imports can capture unintended "
+        "local artifacts",
     )
 
 
@@ -439,14 +438,32 @@ _SECRET_KEY_VALUE: Final = re.compile(
 )
 _AWS_ACCESS_KEY: Final = re.compile(r"\bAKIA[0-9A-Z]{16}\b")
 _BEARER_TOKEN: Final = re.compile(r"(?i)(bearer\s+)\S+")
+_GITHUB_TOKEN: Final = re.compile(r"\b(?:gh[pousr]|github_pat)_[A-Za-z0-9_]{20,}\b")
+_SLACK_TOKEN: Final = re.compile(r"\bxox[abprs]-[A-Za-z0-9-]{10,}\b")
+_JWT_TOKEN: Final = re.compile(
+    r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b",
+)
+_PRIVATE_KEY_BLOCK: Final = re.compile(
+    r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----",
+    re.DOTALL,
+)
 _REDACTED: Final = "[REDACTED]"
 
 
 def _redact_secrets(text: str) -> tuple[str, bool]:
     redacted, key_value = _SECRET_KEY_VALUE.subn(rf"\1{_REDACTED}", text)
-    redacted, aws = _AWS_ACCESS_KEY.subn(_REDACTED, redacted)
+    total = key_value
+    for pattern in (
+        _AWS_ACCESS_KEY,
+        _GITHUB_TOKEN,
+        _SLACK_TOKEN,
+        _JWT_TOKEN,
+        _PRIVATE_KEY_BLOCK,
+    ):
+        redacted, count = pattern.subn(_REDACTED, redacted)
+        total += count
     redacted, bearer = _BEARER_TOKEN.subn(rf"\1{_REDACTED}", redacted)
-    return redacted, bool(key_value + aws + bearer)
+    return redacted, bool(total + bearer)
 
 
 def _discover_artifacts(
