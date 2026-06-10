@@ -74,6 +74,8 @@ def test_run_executes_full_workflow_and_writes_checkpoints(
             "quality:4:5:3:usable",
             "--runtime-tool",
             "shell",
+            "--command-cwd",
+            str(tmp_path),
             "--evidence-dir",
             str(tmp_path / "evidence"),
             "--capabilities-dir",
