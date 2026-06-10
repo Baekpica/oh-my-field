@@ -34,7 +34,7 @@ dependencies = [
 
 [project.urls]
 Documentation = "https://github.com/Baekpica/oh-my-field#readme"
-Homepage = "https://github.com/Baekpica/oh-my-field"
+Homepage = "https://oh-my-field.dev/"
 Issues = "https://github.com/Baekpica/oh-my-field/issues"
 Repository = "https://github.com/Baekpica/oh-my-field"
 

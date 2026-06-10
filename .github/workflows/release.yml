@@ -39,6 +39,20 @@ jobs:
           uv run --isolated --no-project --with dist/*.whl omf install mcp --client generic --out /tmp/omf-wheel-mcp.json
           bash scripts/smoke-default-flow.sh "${wheel_packages[0]}"
 
+      - name: Smoke test pipx wheel install
+        run: |
+          wheel_packages=(dist/*.whl)
+          python -m pip install --user pipx
+          export PIPX_HOME="$RUNNER_TEMP/pipx-home"
+          export PIPX_BIN_DIR="$RUNNER_TEMP/pipx-bin"
+          mkdir -p "$PIPX_HOME" "$PIPX_BIN_DIR"
+          export PATH="$PIPX_BIN_DIR:$PATH"
+          python -m pipx install "${wheel_packages[0]}"
+          omf --help
+          omf doctor --json
+          omf install skill --runtime generic --scope export --out "$RUNNER_TEMP/omf-pipx-skill"
+          omf install mcp --client generic --scope export --out "$RUNNER_TEMP/omf-pipx-mcp.json"
+
       - name: Smoke test sdist
         run: |
           sdist_packages=(dist/*.tar.gz)
