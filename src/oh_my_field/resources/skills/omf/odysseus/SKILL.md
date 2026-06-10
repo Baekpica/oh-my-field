@@ -29,6 +29,21 @@ capability, make a workflow reusable, or export a capability.
 5. Materialize evidence and promote only workflows that are meaningfully
    reusable.
 
+## CLI And MCP Discovery
+
+- Before using an OMF CLI command from memory, run `omf --help` and the
+  relevant subcommand help, such as `omf session --help`,
+  `omf session event --help`, `omf promote --help`, and
+  `omf capability export --help`.
+- Prefer structured MCP tools for portable records: `omf_record_input`,
+  `omf_record_artifact`, `omf_record_validation`, and `omf_record_decision`.
+- If MCP is unavailable, record equivalent CLI events: `context` for inputs,
+  `artifact` for outputs, `test_result` for validations, and `decision` for
+  promotion rationale.
+- `omf promote` uses the strict quality gate by default; do not use
+  `--no-strict` unless the user explicitly asks to promote legacy or incomplete
+  evidence.
+
 ## Pitfalls
 
 - Do not treat OMF as the Odysseus runtime.

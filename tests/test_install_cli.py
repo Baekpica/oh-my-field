@@ -187,6 +187,36 @@ def test_install_skill_export_scope_writes_reviewable_layout(tmp_path: Path) -> 
     assert out_dir.joinpath("SKILL.md").exists()
 
 
+def test_install_skill_resources_prompt_cli_help_and_structured_recording(
+    tmp_path: Path,
+) -> None:
+    for runtime in ("codex", "claude_code", "hermes", "pi", "odysseus", "generic"):
+        out_dir = tmp_path / f"{runtime}-skill"
+        result = CliRunner().invoke(
+            app,
+            [
+                "install",
+                "skill",
+                "--runtime",
+                runtime,
+                "--scope",
+                "export",
+                "--out",
+                str(out_dir),
+            ],
+        )
+
+        assert result.exit_code == 0
+        output = InstallSkillOutput.model_validate_json(result.stdout)
+        assert output.skill_path is not None
+        content = Path(output.skill_path).read_text(encoding="utf-8")
+        assert "omf --help" in content
+        assert "omf session --help" in content
+        assert "omf promote --help" in content
+        assert "omf_record_input" in content
+        assert "--no-strict" in content
+
+
 def test_install_skill_duplicate_skips_without_overwrite(tmp_path: Path) -> None:
     home = tmp_path / "home"
     skill_path = home / ".hermes" / "skills" / "omf" / "SKILL.md"
