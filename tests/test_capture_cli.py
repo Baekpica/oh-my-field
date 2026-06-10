@@ -218,3 +218,43 @@ def test_capture_executes_write_command_with_explicit_approval(
     assert execution.risk_categories == ("write",)
     assert execution.approval_required
     assert execution.approved
+
+
+def test_capture_hardens_final_artifact_contracts(tmp_path: Path) -> None:
+    evidence_dir = tmp_path / "evidence"
+    input_path = tmp_path / "inputs" / "portfolio.json"
+    output_path = tmp_path / "output" / "report.json"
+    input_path.parent.mkdir(parents=True)
+    output_path.parent.mkdir(parents=True)
+    input_path.write_text('{"cash": 100}', encoding="utf-8")
+    output_path.write_text('{"total": 100}', encoding="utf-8")
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "capture",
+            "--goal",
+            "generate finance portfolio artifacts",
+            "--context",
+            str(input_path),
+            "--final-artifact",
+            "output/report.json",
+            "--command-cwd",
+            str(tmp_path),
+            "--outcome",
+            "success",
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = CaptureOutput.model_validate_json(result.stdout)
+    evidence = load_evidence(output.evidence_id, evidence_dir)
+    assert evidence.artifact_snapshots[0].path == "output/report.json"
+    assert evidence.artifact_snapshots[0].kind == "json"
+    assert evidence.artifact_contracts[0].artifact_path == "output/report.json"
+    assert evidence.task_contract is not None
+    assert evidence.task_contract.expected_artifacts == ("output/report.json",)
+    assert evidence.record_quality is not None
+    assert evidence.record_quality.strict_ready

@@ -10,6 +10,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from pydantic import Field
 
+from oh_my_field.application.record_builder import harden_evidence_record
 from oh_my_field.execution import (
     CommandExecutionError,
     CommandExecutionRequest,
@@ -33,6 +34,7 @@ CAPTURE_NODES: Final = (
     "collect_files",
     "execute_commands",
     "build_evidence",
+    "harden_record",
     "validate_harness",
     "persist_evidence",
     "summarize",
@@ -148,13 +150,15 @@ def _build_capture_graph() -> CompiledStateGraph[
     builder.add_node("collect_files", _collect_files)
     builder.add_node("execute_commands", _execute_commands)
     builder.add_node("build_evidence", _build_evidence)
+    builder.add_node("harden_record", _harden_record)
     builder.add_node("validate_harness", _validate_harness)
     builder.add_node("persist_evidence", _persist_evidence)
     builder.add_node("summarize", _summarize)
     builder.add_edge(START, "collect_files")
     builder.add_edge("collect_files", "execute_commands")
     builder.add_edge("execute_commands", "build_evidence")
-    builder.add_edge("build_evidence", "validate_harness")
+    builder.add_edge("build_evidence", "harden_record")
+    builder.add_edge("harden_record", "validate_harness")
     builder.add_edge("validate_harness", "persist_evidence")
     builder.add_edge("persist_evidence", "summarize")
     builder.add_edge("summarize", END)
@@ -225,6 +229,15 @@ def _build_evidence(state: CaptureState) -> CaptureState:
         task_outcome=request.success_or_failure_label,
         success_or_failure_label=request.success_or_failure_label,
         improvement_notes=request.improvement_notes,
+    )
+    return CaptureState(evidence=evidence)
+
+
+def _harden_record(state: CaptureState) -> CaptureState:
+    request = _state_request(state)
+    evidence = harden_evidence_record(
+        _state_evidence(state),
+        project_root=request.command_cwd,
     )
     return CaptureState(evidence=evidence)
 
