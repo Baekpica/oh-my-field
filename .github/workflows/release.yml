@@ -63,13 +63,21 @@ jobs:
           bash scripts/smoke-default-flow.sh "${sdist_packages[0]}"
 
       - name: Create checksums
-        run: shasum -a 256 dist/* > dist/SHA256SUMS
+        run: shasum -a 256 dist/* > SHA256SUMS
 
       - name: Upload distributions
         uses: actions/upload-artifact@v6
         with:
           name: python-package-distributions
-          path: dist/
+          path: |
+            dist/*.whl
+            dist/*.tar.gz
+
+      - name: Upload checksums
+        uses: actions/upload-artifact@v6
+        with:
+          name: python-package-checksums
+          path: SHA256SUMS
 
   github-release:
     name: upload GitHub release artifacts
@@ -83,6 +91,12 @@ jobs:
         uses: actions/download-artifact@v6
         with:
           name: python-package-distributions
+          path: dist/
+
+      - name: Download checksums
+        uses: actions/download-artifact@v6
+        with:
+          name: python-package-checksums
           path: dist/
 
       - name: Upload release assets
