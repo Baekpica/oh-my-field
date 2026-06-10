@@ -3,6 +3,7 @@ import json
 from oh_my_field.adapters.runtime_export.base import (
     RuntimeExportRequest,
     RuntimeExportSummary,
+    write_contract_reference_files,
 )
 from oh_my_field.application.portability.rendering import (
     agent_skill_markdown,
@@ -44,6 +45,7 @@ class PiRuntimeExportAdapter:
             runtime_path / "package.json",
             _package_json(request.manifest.name),
         )
+        write_contract_reference_files(reference_path, request.manifest)
         return RuntimeExportSummary(
             runtime_path=str(runtime_path),
             target_runtime=self.target,

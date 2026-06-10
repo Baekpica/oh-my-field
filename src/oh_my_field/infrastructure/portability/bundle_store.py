@@ -11,6 +11,13 @@ from oh_my_field.application.portability.rendering import (
     model_notes_file,
     yaml_dump,
 )
+from oh_my_field.contract_rendering import (
+    artifact_contracts_yaml,
+    replay_plan_yaml,
+    task_contract_yaml,
+    validation_markdown,
+    validator_script,
+)
 from oh_my_field.domain.models import CapabilityManifest
 from oh_my_field.domain.portability.errors import (
     PortabilityBundleExistsError,
@@ -68,6 +75,7 @@ def write_export_bundle(
         bundle_path / "harness" / "harness.yaml",
         yaml_dump(manifest.harness),
     )
+    _write_contract_bundle(bundle_path, manifest)
     write_text_exclusive(
         bundle_path / "provenance" / "source_runtime.yaml",
         yaml_dump(portability.source),
@@ -78,6 +86,29 @@ def write_export_bundle(
             {"evidence_ids": list(portability.source.evidence_ids)},
             sort_keys=False,
         ),
+    )
+
+
+def _write_contract_bundle(bundle_path: Path, manifest: CapabilityManifest) -> None:
+    write_text_exclusive(
+        bundle_path / "contracts" / "task_contract.yaml",
+        task_contract_yaml(manifest),
+    )
+    write_text_exclusive(
+        bundle_path / "contracts" / "artifacts.yaml",
+        artifact_contracts_yaml(manifest),
+    )
+    write_text_exclusive(
+        bundle_path / "contracts" / "validation.md",
+        validation_markdown(manifest),
+    )
+    write_text_exclusive(
+        bundle_path / "contracts" / "replay_plan.yaml",
+        replay_plan_yaml(manifest),
+    )
+    write_text_exclusive(
+        bundle_path / "validators" / "validate_contract.py",
+        validator_script(manifest),
     )
 
 

@@ -177,6 +177,11 @@ def _assert_package_output(output: PromoteOutput, package_path: Path) -> None:
     assert (package_path / "instructions.md").exists()
     assert (package_path / "harness.yaml").exists()
     assert (package_path / "README.md").exists()
+    assert (package_path / "contracts" / "task_contract.yaml").exists()
+    assert (package_path / "contracts" / "artifacts.yaml").exists()
+    assert (package_path / "contracts" / "validation.md").exists()
+    assert (package_path / "contracts" / "replay_plan.yaml").exists()
+    assert (package_path / "validators" / "validate_contract.py").exists()
     card_text = (package_path / "README.md").read_text(encoding="utf-8")
     instructions_text = (package_path / "instructions.md").read_text(
         encoding="utf-8",
