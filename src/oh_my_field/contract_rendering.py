@@ -31,8 +31,7 @@ def artifact_contracts_yaml(manifest: CapabilityManifest) -> str:
         "schema_version": ARTIFACT_CONTRACT_SCHEMA_VERSION,
         "capability": manifest.name,
         "artifacts": [
-            contract.model_dump(mode="json")
-            for contract in manifest.artifact_contracts
+            contract.model_dump(mode="json") for contract in manifest.artifact_contracts
         ],
     }
     return yaml.safe_dump(payload, sort_keys=False, allow_unicode=True)

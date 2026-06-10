@@ -56,9 +56,7 @@ def harden_evidence_record(
     validation_results = _merge_validation_results(
         evidence.validation_results,
         tuple(
-            result
-            for snapshot in snapshots
-            for result in _validate_snapshot(snapshot)
+            result for snapshot in snapshots for result in _validate_snapshot(snapshot)
         ),
     )
     contracts = _artifact_contracts(snapshots)

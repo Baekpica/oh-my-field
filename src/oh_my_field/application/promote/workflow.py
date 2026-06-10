@@ -427,8 +427,7 @@ def _artifact_contracts(
         for contract in evidence.artifact_contracts
     ]
     by_key = {
-        f"{contract.name}:{contract.artifact_path}": contract
-        for contract in contracts
+        f"{contract.name}:{contract.artifact_path}": contract for contract in contracts
     }
     return tuple(by_key.values())
 
