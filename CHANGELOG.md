@@ -6,6 +6,15 @@ All notable changes to this project will be documented here.
 
 - Nothing yet.
 
+## 0.2.1 - 2026-06-10
+
+### Fixed
+
+- Constrained artifact snapshotting to project-root paths before reading
+  metadata or text previews, including absolute, relative, and symlink escapes.
+- Stopped pathless validation summaries from becoming expected artifacts while
+  preserving their commands and summaries as validation evidence.
+
 ## 0.2.0 - 2026-06-10
 
 ### Added
