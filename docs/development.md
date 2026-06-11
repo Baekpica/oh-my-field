@@ -122,9 +122,16 @@ product contract — preserve the defaults when extending command handling:
   intent and **not executed** without `--approve-command-risk`. Exports are
   gated by `--approve-export`.
 - Commands run with a minimal environment (`PATH`, `HOME`, `TMPDIR`);
-  secret-bearing variables are stripped and recorded.
+  secret-bearing variables (by name pattern, e.g. `*_API_KEY`, `*_SECRET`,
+  `*_TOKEN`) are stripped and recorded.
 - `import-run --artifact-root` skips dangerous paths, honors
-  `.omfignore`/`--exclude`, and caps traversal.
+  `.omfignore`/`--exclude`, and caps traversal. Captured text — including
+  artifact snapshot previews — is redacted by default
+  (`domain/evidence/redaction.py`); extend with `--redact-pattern`, opt out
+  with `--no-redact-secrets`.
+- `import-run` also parses the captured log for structured session events
+  (`adapters/session_log/`: dedicated parsers for `claude_code` and `codex`,
+  heuristic JSONL otherwise). Parsing is enrichment, never a gate.
 
 See [security.md](security.md) for the full boundary.
 

@@ -12,13 +12,14 @@ This project uses `uv` (Python `>=3.12`). All commands run through `uv run`.
 uv sync                      # install deps (including dev group)
 uv run omf --help            # run the CLI (entry point: oh_my_field.cli:app)
 
-uv run pytest                # full test suite (213 tests)
+uv run pytest                # full test suite (259 tests)
 uv run pytest tests/test_cli.py::test_help_lists_cli_name_when_invoked  # single test
 uv run pytest -k orchestrate # subset by keyword
 
 uv run ruff check .          # lint (also: ruff check --fix .)
 uv run ruff format .         # format
 uv run pyright               # type check (strict)
+uv build                     # packaging smoke
 ```
 
 These three checks gate the work and are unusually strict — expect to satisfy all of them:
@@ -88,11 +89,11 @@ Commands are classified into risk categories: `write`, `destructive`, `external_
 Two more defaults round out the boundary:
 
 - **Minimal command environment.** Executed commands get only the `DEFAULT_ENV_ALLOWLIST` (`PATH`, `HOME`, `TMPDIR`); secret-bearing vars (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `AWS_*`, `GITHUB_TOKEN`, …) are stripped and the blocked names are recorded. Opt a variable back in with `--allow-env NAME`.
-- **Artifact-import safety (`adapters/agent_import.py`).** `import-run --artifact-root` skips `.git/`, `.venv/`, `node_modules/`, `.env*`, private-key patterns, and symlinks; honors `.omfignore`/`--exclude`; caps traversal via `--max-artifact-count`/`--max-total-artifact-bytes`; stores binary/oversized files metadata-only; and **redacts secrets by default** (key/value secrets, bearer/GitHub/Slack tokens, AWS keys, JWTs, private-key blocks — opt out with `--no-redact-secrets`).
+- **Artifact-import safety (`adapters/agent_import.py`).** `import-run --artifact-root` skips `.git/`, `.venv/`, `node_modules/`, `.env*`, private-key patterns, and symlinks; honors `.omfignore`/`--exclude`; caps traversal via `--max-artifact-count`/`--max-total-artifact-bytes`; stores binary/oversized files metadata-only; and **redacts secrets by default** (key/value secrets — including env-var-style names like `OPENAI_API_KEY=` — bearer/GitHub/Slack tokens, AWS/`sk-*` keys, JWTs, private-key blocks; add custom regexes with `--redact-pattern`, opt out with `--no-redact-secrets`). Redaction also covers artifact snapshot text previews. The shared patterns live in `domain/evidence/redaction.py`.
 
 ### Runtime portability (`adapters/`, `domain/portability/`, `export.py`)
 
-- **Import** external runs via `adapters/agent_import.py` importers, keyed by `AgentImporterName` = `codex | claude_code | hermes | pi | odysseus`.
+- **Import** external runs via `adapters/agent_import.py` importers, keyed by `AgentImporterName` = `codex | claude_code | hermes | pi | odysseus`. The captured log is also parsed for structured session events (`adapters/session_log/`: dedicated JSONL parsers for `claude_code` and `codex`, heuristic JSONL parser otherwise) that fill `EvidenceRecord.tool_calls`/`generated_commands`/`cost_metrics`; parsing is enrichment, never a gate — unrecognized logs import as before.
 - **Export** a capability package to a runtime target via `omf capability export` (per-target renderers under `adapters/runtime_export/`: `codex`, `claude_code`, `hermes`, `pi`, `odysseus`, `generic` skill bundle). Generated per-capability skills are **launcher-style by default** (`omf_managed` frontmatter, no goal text — the agent is directed into the OMF lifecycle via `omf card`/`session`/`capability validate`); `--skill-style full` renders the instruction-style projection and marks `agent_view.direct_execution_allowed: true` in `portability.yaml`. A skill is an adapter surface, not the capability itself.
 - `omf runtime install <runtime>` installs the controller (meta) skill + MCP config; `omf runtime conformance <runtime>` statically verifies the adoption surface (`application/conformance/`) without invoking the agent.
 - The `capability` subcommands cover the rest of the lifecycle: `import` (materialize a bundle in a target project + write a validation report), `validate` (re-check an imported target, optionally folding a real `--run-command` exit code into the eval), `remap` (record a context remap plan), `adapt` (apply instruction/context/review overrides).
