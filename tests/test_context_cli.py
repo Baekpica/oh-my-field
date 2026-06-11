@@ -12,6 +12,8 @@ from oh_my_field.models import (
     ContextPolicy,
     ContextSource,
     EvidenceRecord,
+    FieldManifest,
+    FieldPolicy,
     HarnessResult,
     PromotionCriteria,
     RuntimeInfo,
@@ -193,3 +195,59 @@ def test_context_filters_optional_context_and_writes_compressed_copy(
     assert bundle.pack_plan is not None
     assert bundle.pack_plan.required[0].compressed
     assert bundle.pack_plan.optional[0].matched_query
+
+
+def test_context_excludes_paths_forbidden_by_field_policy(tmp_path: Path) -> None:
+    evidence_dir = tmp_path / "evidence"
+    capabilities_dir = tmp_path / "capabilities"
+    context_dir = tmp_path / "context"
+    evidence = make_evidence_record().model_copy(
+        update={
+            "files": (
+                *make_evidence_record().files,
+                CapturedTextFile(
+                    role="context",
+                    path="internal/notes.md",
+                    content="internal-only background",
+                    size_bytes=24,
+                    sha256="3" * 64,
+                ),
+            ),
+        },
+    )
+    manifest = make_manifest().model_copy(
+        update={
+            "field": FieldManifest(
+                name="local",
+                description="Field policy for the local field.",
+                policies=FieldPolicy(forbidden_context=("internal/",)),
+            ),
+        },
+    )
+    write_evidence(evidence, evidence_dir)
+    write_manifest(manifest, capabilities_dir)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "context",
+            manifest.name,
+            "--capabilities-dir",
+            str(capabilities_dir),
+            "--evidence-dir",
+            str(evidence_dir),
+            "--context-dir",
+            str(context_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = ContextOutput.model_validate_json(result.stdout)
+    bundle = ContextBundle.model_validate_json(
+        Path(output.context_path).read_text(encoding="utf-8"),
+    )
+    assert output.required_count == 1
+    assert [file.path for file in bundle.required_context] == ["repo.md"]
+    assert bundle.pack_plan is not None
+    excluded_by_path = {item.path: item.reason for item in bundle.pack_plan.excluded}
+    assert excluded_by_path["internal/notes.md"] == "forbidden by field policy"
