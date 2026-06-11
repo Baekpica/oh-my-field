@@ -4,6 +4,40 @@ All notable changes to this project will be documented here.
 
 ## Unreleased
 
+## 0.2.4 - 2026-06-11
+
+### Added
+
+- Added structured session-event extraction to `import-run`: dedicated JSONL
+  parsers for `claude_code` and `codex`, and a heuristic JSONL parser for the
+  other runtimes, fill `tool_calls`, `generated_commands`, `execution_outputs`,
+  and `cost_metrics` on the evidence record. Parsing is enrichment, never a
+  gate — logs with no recognizable events import exactly as before, and the
+  parser used is recorded as a run observation.
+- Added a repeatable `--redact-pattern` option to `import-run` so custom
+  secret formats are redacted from captured artifact text and snapshot
+  previews; invalid regexes fail the import with a clear error.
+- Context packing now enforces `FieldPolicy.forbidden_context` in addition to
+  `ContextPolicy.forbidden`; field-policy exclusions are reported with a
+  distinct reason in the pack plan.
+- Command execution records any stripped env var whose name looks
+  secret-bearing (`*_API_KEY`, `*_SECRET`, `*_TOKEN`, ...) in `blocked_env`
+  instead of only a fixed list. The environment stays allowlist-only.
+- Added tamper-detection coverage for the integrity `verify` surface
+  (tampered records, tampered manifests, deleted source evidence, forged
+  chain links).
+
+### Fixed
+
+- Secret redaction now matches env-var-style keys (`OPENAI_API_KEY=...`) and
+  JSON/YAML-quoted keys (`"api_key": ...`), adds an `sk-*` value pattern, and
+  covers artifact snapshot text previews, which previously re-read raw file
+  bytes and bypassed redaction. Shared patterns live in
+  `domain/evidence/redaction.py`.
+- `omf version` and `omf doctor` now derive the package version from installed
+  metadata instead of a hardcoded `__version__`, which had been stuck at
+  0.2.2 since the 0.2.3 release.
+
 ## 0.2.3 - 2026-06-11
 
 ### Added
