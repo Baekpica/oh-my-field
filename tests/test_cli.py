@@ -13,3 +13,13 @@ def test_help_lists_cli_name_when_invoked() -> None:
     assert "import-run" in result.stdout
     assert "verify" in result.stdout
     assert "Create or update a regression eval case" in result.stdout
+
+
+def test_root_version_option_prints_version_summary() -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(app, ["--version"])
+
+    assert result.exit_code == 0
+    assert "oh-my-field 0.2.2" in result.stdout
+    assert "Schemas capability=0.1" in result.stdout
