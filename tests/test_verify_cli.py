@@ -7,6 +7,7 @@ from oh_my_field.cli import app
 from oh_my_field.integrity import append_integrity_link
 from oh_my_field.models import (
     ArtifactContract,
+    ArtifactIntegrityLink,
     CapturedTextFile,
     EvidenceRecord,
     HarnessResult,
@@ -171,3 +172,189 @@ def test_verify_capability_detects_tampered_source_evidence(
         and check.message == "source evidence hash does not match capability link"
         for check in output.checks
     )
+
+
+def test_verify_evidence_detects_tampered_record(tmp_path: Path) -> None:
+    evidence_dir = tmp_path / "evidence"
+    evidence = make_evidence_record()
+    evidence_path = write_evidence(evidence, evidence_dir)
+    evidence_path.write_text(
+        evidence_path.read_text(encoding="utf-8").replace(
+            "triage repo issue",
+            "tampered repo issue",
+        ),
+        encoding="utf-8",
+    )
+
+    verify_result = CliRunner().invoke(
+        app,
+        [
+            "verify",
+            "evidence",
+            evidence.id,
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
+    )
+
+    assert verify_result.exit_code == 1
+    output = IntegrityVerificationResult.model_validate_json(verify_result.stdout)
+    assert output.status == "fail"
+    assert any(
+        check.message == "artifact hash does not match integrity link"
+        for check in output.checks
+    )
+
+
+def test_verify_capability_detects_tampered_manifest(tmp_path: Path) -> None:
+    evidence_dir = tmp_path / "evidence"
+    capabilities_dir = tmp_path / "capabilities"
+    evidence = make_evidence_record()
+    write_evidence(evidence, evidence_dir)
+    promote_result = CliRunner().invoke(
+        app,
+        [
+            "promote",
+            evidence.id,
+            "--name",
+            "repo_issue_triage",
+            "--description",
+            "GitHub issue triage capability",
+            "--evidence-dir",
+            str(evidence_dir),
+            "--capabilities-dir",
+            str(capabilities_dir),
+        ],
+    )
+    manifest_path = capabilities_dir / "repo_issue_triage" / "capability.yaml"
+    manifest_path.write_text(
+        manifest_path.read_text(encoding="utf-8").replace(
+            "GitHub issue triage capability",
+            "tampered capability description",
+        ),
+        encoding="utf-8",
+    )
+
+    assert promote_result.exit_code == 0
+    verify_result = CliRunner().invoke(
+        app,
+        [
+            "verify",
+            "capability",
+            "repo_issue_triage",
+            "--evidence-dir",
+            str(evidence_dir),
+            "--capabilities-dir",
+            str(capabilities_dir),
+        ],
+    )
+
+    assert verify_result.exit_code == 1
+    output = IntegrityVerificationResult.model_validate_json(verify_result.stdout)
+    assert output.status == "fail"
+    assert any(
+        check.artifact_type == "capability"
+        and check.message == "artifact hash does not match integrity link"
+        for check in output.checks
+    )
+
+
+def test_verify_capability_detects_deleted_source_evidence(tmp_path: Path) -> None:
+    evidence_dir = tmp_path / "evidence"
+    capabilities_dir = tmp_path / "capabilities"
+    evidence = make_evidence_record()
+    evidence_path = write_evidence(evidence, evidence_dir)
+    promote_result = CliRunner().invoke(
+        app,
+        [
+            "promote",
+            evidence.id,
+            "--name",
+            "repo_issue_triage",
+            "--description",
+            "GitHub issue triage capability",
+            "--evidence-dir",
+            str(evidence_dir),
+            "--capabilities-dir",
+            str(capabilities_dir),
+        ],
+    )
+    evidence_path.unlink()
+
+    assert promote_result.exit_code == 0
+    verify_result = CliRunner().invoke(
+        app,
+        [
+            "verify",
+            "capability",
+            "repo_issue_triage",
+            "--evidence-dir",
+            str(evidence_dir),
+            "--capabilities-dir",
+            str(capabilities_dir),
+        ],
+    )
+
+    assert verify_result.exit_code == 1
+    output = IntegrityVerificationResult.model_validate_json(verify_result.stdout)
+    assert output.status == "fail"
+    assert any(
+        check.artifact_type == "evidence" and check.status == "fail"
+        for check in output.checks
+    )
+
+
+def test_verify_evidence_detects_broken_previous_link(tmp_path: Path) -> None:
+    evidence_dir = tmp_path / "evidence"
+    evidence = make_evidence_record()
+    forged_link = ArtifactIntegrityLink(
+        artifact_type="evidence",
+        artifact_id=evidence.id,
+        sha256=evidence.integrity_chain[-1].sha256,
+        previous_sha256="f" * 64,
+    )
+    evidence = evidence.model_copy(
+        update={"integrity_chain": (*evidence.integrity_chain, forged_link)},
+    )
+    write_evidence(evidence, evidence_dir)
+
+    verify_result = CliRunner().invoke(
+        app,
+        [
+            "verify",
+            "evidence",
+            evidence.id,
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
+    )
+
+    assert verify_result.exit_code == 1
+    output = IntegrityVerificationResult.model_validate_json(verify_result.stdout)
+    assert output.status == "fail"
+    assert any(
+        check.message == "previous hash does not point to an earlier integrity link"
+        for check in output.checks
+    )
+
+
+def test_verify_evidence_fails_without_integrity_chain(tmp_path: Path) -> None:
+    evidence_dir = tmp_path / "evidence"
+    evidence = make_evidence_record().model_copy(update={"integrity_chain": ()})
+    write_evidence(evidence, evidence_dir)
+
+    verify_result = CliRunner().invoke(
+        app,
+        [
+            "verify",
+            "evidence",
+            evidence.id,
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
+    )
+
+    assert verify_result.exit_code == 1
+    output = IntegrityVerificationResult.model_validate_json(verify_result.stdout)
+    assert output.status == "fail"
+    assert output.checks[0].message == "artifact has no integrity chain"
