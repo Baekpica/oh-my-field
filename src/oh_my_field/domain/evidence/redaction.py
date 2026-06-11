@@ -5,13 +5,14 @@ from typing import Final
 
 REDACTED_PLACEHOLDER: Final = "[REDACTED]"
 
-# Key/value secrets. The key may be a bare keyword (api_key=, token:) or an
-# identifier ending in one (OPENAI_API_KEY=, AWS_SECRET_ACCESS_KEY:); a keyword
-# followed by more identifier characters (max_tokens=, tokenizer=) is not a key.
+# Key/value secrets. The key may be a bare keyword (api_key=, token:), an
+# identifier ending in one (OPENAI_API_KEY=, AWS_SECRET_ACCESS_KEY:), or a
+# JSON/YAML-quoted form ("api_key": ...); a keyword followed by more
+# identifier characters (max_tokens=, tokenizer=) is not a key.
 SECRET_KEY_VALUE_PATTERN: Final = re.compile(
     r"(?i)((?:\b[\w.-]*[_-])?"
     r"(?:api[_-]?key|access[_-]?key|secret|token|password|passwd|pwd|credentials?)"
-    r"\b\s*[:=]\s*)(\S+)",
+    r"\b[\"']?\s*[:=]\s*)(\S+)",
 )
 AWS_ACCESS_KEY_PATTERN: Final = re.compile(r"\bAKIA[0-9A-Z]{16}\b")
 BEARER_TOKEN_PATTERN: Final = re.compile(r"(?i)(bearer\s+)\S+")

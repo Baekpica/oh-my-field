@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -642,3 +643,226 @@ def test_import_agent_run_uses_injected_clock_and_token_factory(
     assert summary.evidence_id == "20260602T010203Z-deadbeef"
     evidence = load_evidence(summary.evidence_id, evidence_dir)
     assert evidence.created_at == datetime(2026, 6, 2, 1, 2, 3, tzinfo=UTC)
+
+
+def test_import_run_extracts_structured_events_from_claude_code_log(
+    tmp_path: Path,
+) -> None:
+    log_path = tmp_path / "session.jsonl"
+    evidence_dir = tmp_path / "evidence"
+    log_lines = [
+        json.dumps(
+            {
+                "type": "assistant",
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "toolu_1",
+                            "name": "Bash",
+                            "input": {"command": "pytest -q"},
+                        },
+                    ],
+                    "usage": {"input_tokens": 120, "output_tokens": 45},
+                },
+            },
+        ),
+        json.dumps(
+            {
+                "type": "user",
+                "message": {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": "toolu_1",
+                            "content": "2 passed",
+                        },
+                    ],
+                },
+            },
+        ),
+    ]
+    log_path.write_text("\n".join(log_lines) + "\n", encoding="utf-8")
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "import-run",
+            "claude_code",
+            "--log",
+            str(log_path),
+            "--goal",
+            "capture external agent run",
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = AgentImportOutput.model_validate_json(result.stdout)
+    evidence = load_evidence(output.evidence_id, evidence_dir)
+    assert evidence.tool_calls[0].tool == "agent_importer.import_run"
+    assert [call.tool for call in evidence.tool_calls[1:]] == ["Bash"]
+    assert evidence.tool_calls[1].output == "2 passed"
+    assert evidence.generated_commands == ("pytest -q",)
+    assert evidence.execution_outputs == ("2 passed",)
+    assert evidence.cost_metrics.input_tokens == 120
+    assert evidence.cost_metrics.output_tokens == 45
+    assert any(
+        "claude_code session parser" in observation.summary
+        for observation in evidence.run_observations
+    )
+
+
+def test_import_run_extracts_structured_events_from_codex_rollout(
+    tmp_path: Path,
+) -> None:
+    log_path = tmp_path / "rollout.jsonl"
+    evidence_dir = tmp_path / "evidence"
+    log_lines = [
+        json.dumps(
+            {
+                "type": "response_item",
+                "payload": {
+                    "type": "function_call",
+                    "name": "shell",
+                    "arguments": json.dumps({"command": ["pytest", "-q"]}),
+                    "call_id": "call_1",
+                },
+            },
+        ),
+        json.dumps(
+            {
+                "type": "response_item",
+                "payload": {
+                    "type": "function_call_output",
+                    "call_id": "call_1",
+                    "output": json.dumps({"output": "2 passed"}),
+                },
+            },
+        ),
+        json.dumps(
+            {
+                "type": "event_msg",
+                "payload": {
+                    "type": "token_count",
+                    "info": {
+                        "total_token_usage": {
+                            "input_tokens": 200,
+                            "output_tokens": 80,
+                        },
+                    },
+                },
+            },
+        ),
+    ]
+    log_path.write_text("\n".join(log_lines) + "\n", encoding="utf-8")
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "import-run",
+            "codex",
+            "--log",
+            str(log_path),
+            "--goal",
+            "capture external agent run",
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = AgentImportOutput.model_validate_json(result.stdout)
+    evidence = load_evidence(output.evidence_id, evidence_dir)
+    assert evidence.generated_commands == ("pytest -q",)
+    assert evidence.execution_outputs == ("2 passed",)
+    assert evidence.cost_metrics.input_tokens == 200
+    assert evidence.cost_metrics.output_tokens == 80
+
+
+def test_import_run_extracts_heuristic_events_for_other_runtimes(
+    tmp_path: Path,
+) -> None:
+    log_path = tmp_path / "hermes.jsonl"
+    evidence_dir = tmp_path / "evidence"
+    log_lines = [
+        json.dumps({"tool": "search", "input": {"query": "docs"}}),
+        json.dumps({"command": "make test"}),
+        json.dumps({"error": "flaky network"}),
+    ]
+    log_path.write_text("\n".join(log_lines) + "\n", encoding="utf-8")
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "import-run",
+            "hermes",
+            "--log",
+            str(log_path),
+            "--goal",
+            "capture external agent run",
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = AgentImportOutput.model_validate_json(result.stdout)
+    evidence = load_evidence(output.evidence_id, evidence_dir)
+    assert [call.tool for call in evidence.tool_calls[1:]] == ["search"]
+    assert evidence.generated_commands == ("make test",)
+    assert evidence.errors == ("flaky network",)
+    assert any(
+        "heuristic_jsonl session parser" in observation.summary
+        for observation in evidence.run_observations
+    )
+
+
+def test_import_run_redacts_secrets_inside_structured_tool_inputs(
+    tmp_path: Path,
+) -> None:
+    log_path = tmp_path / "session.jsonl"
+    evidence_dir = tmp_path / "evidence"
+    log_path.write_text(
+        json.dumps(
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "toolu_1",
+                            "name": "Bash",
+                            "input": {
+                                "command": "deploy --api_key=supersecret-value",
+                            },
+                        },
+                    ],
+                },
+            },
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "import-run",
+            "claude_code",
+            "--log",
+            str(log_path),
+            "--goal",
+            "capture external agent run",
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = AgentImportOutput.model_validate_json(result.stdout)
+    evidence = load_evidence(output.evidence_id, evidence_dir)
+    assert "supersecret-value" not in evidence.model_dump_json()

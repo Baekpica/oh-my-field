@@ -12,6 +12,7 @@ from typing import Final, Protocol, cast
 
 from pydantic import Field
 
+from oh_my_field.adapters.session_log import ParsedSessionEvents, parse_session_log
 from oh_my_field.application.record_builder import harden_evidence_record
 from oh_my_field.domain.evidence.redaction import (
     redact_secrets as redact_text_secrets,
@@ -22,9 +23,11 @@ from oh_my_field.domain.models import (
     AgentRunSource,
     CapturedFileRole,
     CapturedTextFile,
+    CostMetrics,
     EvidenceRecord,
     HarnessResult,
     LatencyMetrics,
+    RunObservation,
     RuntimeInfo,
     StrictModel,
     TaskOutcome,
@@ -42,14 +45,28 @@ IMPORTER_SPECS: tuple[AgentImporterSpec, ...] = (
     AgentImporterSpec(
         name="codex",
         display_name="Codex",
-        captures=("run log", "diff", "test result", "command output", "artifact"),
+        captures=(
+            "run log",
+            "structured session events",
+            "diff",
+            "test result",
+            "command output",
+            "artifact",
+        ),
         replays=("capability eval",),
         artifact_roles=("artifact", "diff", "test_result"),
     ),
     AgentImporterSpec(
         name="claude_code",
         display_name="Claude Code",
-        captures=("run log", "diff", "test result", "command output", "artifact"),
+        captures=(
+            "run log",
+            "structured session events",
+            "diff",
+            "test result",
+            "command output",
+            "artifact",
+        ),
         replays=("capability eval",),
         artifact_roles=("artifact", "diff", "test_result"),
     ),
@@ -182,10 +199,13 @@ class AgentImportSummary(StrictModel):
 
 
 class ImporterAdapter:
-    """Generic runtime adapter that imports a run without runtime-specific parsing.
+    """Generic runtime adapter shared by the built-in importers.
 
-    Every built-in runtime shares this importer today; a runtime that needs its
-    own log parsing implements the RuntimeAdapter protocol and registers itself.
+    Artifact capture is runtime-agnostic; structured session events are
+    extracted by the session_log parsers (dedicated parsers for claude_code
+    and codex, the heuristic JSONL parser otherwise). A runtime that needs
+    deeper integration implements the RuntimeAdapter protocol and registers
+    itself.
     """
 
     def __init__(self, spec: AgentImporterSpec) -> None:
@@ -352,6 +372,13 @@ def _run_agent_import(
             ),
         },
     )
+    # Parse the captured (already redacted) log text for structured events;
+    # a log with no recognizable events imports exactly as before.
+    evidence = _apply_session_events(
+        evidence,
+        parse_session_log(importer, files[0].content),
+        log_path=request.log_path,
+    )
     evidence = harden_evidence_record(
         evidence,
         project_root=request.log_path.parent,
@@ -370,6 +397,35 @@ def _run_agent_import(
         adapter=importer,
         artifact_count=len(files),
         warnings=_broad_artifact_import_warnings(request),
+    )
+
+
+def _apply_session_events(
+    evidence: EvidenceRecord,
+    events: ParsedSessionEvents,
+    *,
+    log_path: Path,
+) -> EvidenceRecord:
+    if not events.has_content():
+        return evidence
+    summary = (
+        f"parsed {len(events.tool_calls)} tool calls and "
+        f"{len(events.commands)} commands via {events.parser} session parser"
+    )
+    return evidence.model_copy(
+        update={
+            "tool_calls": (*evidence.tool_calls, *events.tool_calls),
+            "generated_commands": events.commands,
+            "execution_outputs": events.outputs,
+            "errors": events.errors,
+            "cost_metrics": CostMetrics(
+                input_tokens=events.input_tokens,
+                output_tokens=events.output_tokens,
+            ),
+            "run_observations": (
+                RunObservation(kind="input", summary=summary, path=str(log_path)),
+            ),
+        },
     )
 
 
