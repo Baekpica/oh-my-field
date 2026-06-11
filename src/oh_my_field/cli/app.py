@@ -1,3 +1,5 @@
+from typing import Annotated
+
 import typer
 
 from oh_my_field.cli.commands import (
@@ -45,11 +47,22 @@ mcp_app = typer.Typer(help="Run OMF MCP server surfaces.")
 app.add_typer(mcp_app, name="mcp")
 
 
-def _main() -> None:
-    pass
+def _main(
+    version: Annotated[
+        bool,
+        typer.Option(
+            "--version",
+            help="Print package and schema version information.",
+            is_eager=True,
+        ),
+    ] = False,
+) -> None:
+    if version:
+        diagnostics.version()
+        raise typer.Exit
 
 
-app.callback()(_main)
+app.callback(invoke_without_command=True)(_main)
 
 diagnostics.register(app)
 capture.register(app)
