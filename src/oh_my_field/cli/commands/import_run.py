@@ -55,6 +55,13 @@ def import_run(
         bool,
         typer.Option("--redact-secrets/--no-redact-secrets"),
     ] = True,
+    redact_pattern: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--redact-pattern",
+            help="Extra regex redacted from captured text (repeatable).",
+        ),
+    ] = None,
     evidence_dir: Annotated[Path, typer.Option("--evidence-dir")] = Path(
         ".omf/evidence",
     ),
@@ -79,6 +86,7 @@ def import_run(
             max_total_artifact_bytes=max_total_artifact_bytes,
             exclude_patterns=tuple(exclude or ()),
             redact_secrets=redact_secrets,
+            redact_patterns=tuple(redact_pattern or ()),
             task_outcome=outcome,
         )
         summary = import_agent_run(request)

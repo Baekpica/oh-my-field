@@ -157,6 +157,68 @@ def test_import_run_redacts_env_var_secrets_and_snapshot_previews(
     assert snapshot.metadata.get("preview_redacted") is True
 
 
+def test_import_run_applies_user_defined_redaction_patterns(
+    tmp_path: Path,
+) -> None:
+    log_path = tmp_path / "agent.log"
+    evidence_dir = tmp_path / "evidence"
+    log_path.write_text(
+        "customer record CUST-12345 processed\nrun ok\n",
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "import-run",
+            "claude_code",
+            "--log",
+            str(log_path),
+            "--goal",
+            "capture external agent run",
+            "--redact-pattern",
+            r"CUST-\d+",
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = AgentImportOutput.model_validate_json(result.stdout)
+    evidence = load_evidence(output.evidence_id, evidence_dir)
+    log_file = evidence.files[0]
+    assert log_file.redacted
+    assert "CUST-12345" not in log_file.content
+    assert "[REDACTED]" in log_file.content
+    snapshot = evidence.artifact_snapshots[0]
+    assert snapshot.text_preview is not None
+    assert "CUST-12345" not in snapshot.text_preview
+
+
+def test_import_run_rejects_invalid_redaction_pattern(tmp_path: Path) -> None:
+    log_path = tmp_path / "agent.log"
+    log_path.write_text("run ok\n", encoding="utf-8")
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "import-run",
+            "claude_code",
+            "--log",
+            str(log_path),
+            "--goal",
+            "capture external agent run",
+            "--redact-pattern",
+            "[unclosed",
+            "--evidence-dir",
+            str(tmp_path / "evidence"),
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "invalid redaction pattern" in result.output
+
+
 def test_import_run_keeps_raw_content_when_redaction_disabled(
     tmp_path: Path,
 ) -> None:

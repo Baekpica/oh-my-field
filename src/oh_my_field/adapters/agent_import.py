@@ -1,6 +1,7 @@
 import fnmatch
 import hashlib
 import mimetypes
+import re
 import secrets
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
@@ -134,6 +135,15 @@ class AgentArtifactLimitError(AdapterError):
         return self.reason
 
 
+@dataclass
+class InvalidRedactionPatternError(AdapterError):
+    pattern: str
+    reason: str
+
+    def __str__(self) -> str:
+        return f"invalid redaction pattern {self.pattern!r}: {self.reason}"
+
+
 @dataclass(frozen=True, slots=True)
 class AgentImportDependencies:
     clock: Clock
@@ -159,6 +169,7 @@ class AgentImportRequest(StrictModel):
     max_total_artifact_bytes: int | None = Field(default=None, ge=1)
     exclude_patterns: tuple[str, ...] = ()
     redact_secrets: bool = True
+    redact_patterns: tuple[str, ...] = ()
     task_outcome: TaskOutcome = "unknown"
 
 
@@ -292,11 +303,13 @@ def _run_agent_import(
             ),
         ),
     )
+    redact_patterns = _compiled_redact_patterns(request.redact_patterns)
     files = tuple(
         _read_artifact(
             artifact,
             max_bytes=request.max_artifact_bytes,
             redact_secrets=request.redact_secrets,
+            redact_patterns=redact_patterns,
         )
         for artifact in artifact_inputs
     )
@@ -343,6 +356,7 @@ def _run_agent_import(
         evidence,
         project_root=request.log_path.parent,
         redact_previews=request.redact_secrets,
+        redact_patterns=redact_patterns,
     )
     evidence = append_integrity_link(
         evidence,
@@ -388,11 +402,27 @@ def _token_suffix() -> str:
     return secrets.token_hex(4)
 
 
+def _compiled_redact_patterns(
+    patterns: tuple[str, ...],
+) -> tuple[re.Pattern[str], ...]:
+    compiled: list[re.Pattern[str]] = []
+    for pattern in patterns:
+        try:
+            compiled.append(re.compile(pattern))
+        except re.error as exc:
+            raise InvalidRedactionPatternError(
+                pattern=pattern,
+                reason=str(exc),
+            ) from exc
+    return tuple(compiled)
+
+
 def _read_artifact(
     artifact: AgentArtifactInput,
     *,
     max_bytes: int | None,
     redact_secrets: bool,
+    redact_patterns: tuple[re.Pattern[str], ...] = (),
 ) -> CapturedTextFile:
     try:
         raw = artifact.path.read_bytes()
@@ -416,7 +446,7 @@ def _read_artifact(
         )
     redacted = False
     if redact_secrets:
-        text, redacted = redact_text_secrets(text)
+        text, redacted = redact_text_secrets(text, extra_patterns=redact_patterns)
     return CapturedTextFile(
         role=artifact.role,
         path=str(artifact.path),

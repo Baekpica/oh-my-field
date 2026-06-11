@@ -126,7 +126,49 @@ def test_execute_shell_command_records_blocked_dangerous_environment(
 
     assert execution.exit_code == 0
     assert execution.stdout == "ok"
-    assert execution.blocked_env == ("OPENAI_API_KEY",)
+    assert "OPENAI_API_KEY" in execution.blocked_env
+
+
+def test_execute_shell_command_records_blocked_custom_secret_names(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("MY_SERVICE_API_KEY", "secret")
+    monkeypatch.setenv("CUSTOM_WEBHOOK_SECRET", "secret")
+    monkeypatch.setenv("OMF_PLAIN_SETTING", "visible")
+
+    execution = execute_shell_command(
+        CommandExecutionRequest(
+            command="printf ok",
+            cwd=tmp_path,
+            timeout_seconds=5,
+        ),
+    )
+
+    assert execution.exit_code == 0
+    assert "MY_SERVICE_API_KEY" in execution.blocked_env
+    assert "CUSTOM_WEBHOOK_SECRET" in execution.blocked_env
+    assert "OMF_PLAIN_SETTING" not in execution.blocked_env
+
+
+def test_execute_shell_command_does_not_record_allowed_secret_as_blocked(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("MY_SERVICE_API_KEY", "secret")
+
+    execution = execute_shell_command(
+        CommandExecutionRequest(
+            command="printf ok",
+            cwd=tmp_path,
+            timeout_seconds=5,
+            allow_env=("MY_SERVICE_API_KEY",),
+        ),
+    )
+
+    assert execution.exit_code == 0
+    assert "MY_SERVICE_API_KEY" not in execution.blocked_env
+    assert execution.allowed_env == ("MY_SERVICE_API_KEY",)
 
 
 def test_execute_shell_command_records_timeout(tmp_path: Path) -> None:

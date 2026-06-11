@@ -37,13 +37,17 @@ _VALUE_PATTERNS: Final = (
 )
 
 
-def redact_secrets(text: str) -> tuple[str, bool]:
+def redact_secrets(
+    text: str,
+    *,
+    extra_patterns: tuple[re.Pattern[str], ...] = (),
+) -> tuple[str, bool]:
     """Replace secret-bearing spans with a placeholder; report whether any matched."""
     redacted, total = SECRET_KEY_VALUE_PATTERN.subn(
         rf"\1{REDACTED_PLACEHOLDER}",
         text,
     )
-    for pattern in _VALUE_PATTERNS:
+    for pattern in (*_VALUE_PATTERNS, *extra_patterns):
         redacted, count = pattern.subn(REDACTED_PLACEHOLDER, redacted)
         total += count
     redacted, bearer = BEARER_TOKEN_PATTERN.subn(
