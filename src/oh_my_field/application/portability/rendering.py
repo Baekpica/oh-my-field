@@ -3,7 +3,11 @@ from typing import cast
 import yaml
 
 from oh_my_field.domain.models import CapabilityManifest, StrictModel
-from oh_my_field.domain.portability.models import PortabilityManifest, YamlValue
+from oh_my_field.domain.portability.models import (
+    RUNTIME_SKILL_SCHEMA_VERSION,
+    PortabilityManifest,
+    YamlValue,
+)
 
 
 def bundle_readme(portability: PortabilityManifest) -> str:
@@ -201,6 +205,127 @@ def agent_skill_markdown(manifest: CapabilityManifest) -> str:
             "---",
             "",
             skill_markdown(manifest),
+        ],
+    )
+
+
+def launcher_frontmatter_fields(
+    manifest: CapabilityManifest,
+    *,
+    target_runtime: str,
+) -> dict[str, YamlValue]:
+    return {
+        "name": manifest.name,
+        "description": manifest.description,
+        "omf_managed": True,
+        "omf_schema": RUNTIME_SKILL_SCHEMA_VERSION,
+        "capability_name": manifest.name,
+        "runtime": target_runtime,
+        "execution_mode": "omf_managed",
+        "direct_execution_allowed": False,
+    }
+
+
+def launcher_skill_markdown(
+    manifest: CapabilityManifest,
+    *,
+    target_runtime: str,
+) -> str:
+    frontmatter = yaml.safe_dump(
+        launcher_frontmatter_fields(manifest, target_runtime=target_runtime),
+        sort_keys=False,
+    ).strip()
+    return "\n".join(
+        [
+            "---",
+            frontmatter,
+            "---",
+            "",
+            launcher_body_markdown(manifest, target_runtime=target_runtime),
+        ],
+    )
+
+
+def launcher_body_markdown(
+    manifest: CapabilityManifest,
+    *,
+    target_runtime: str,
+) -> str:
+    name = manifest.name
+    return "\n".join(
+        [
+            f"# OMF Capability Launcher: {name}",
+            "",
+            "This is not a standalone skill. It is the entrypoint for an",
+            "OMF-managed capability; the capability body stays in the OMF",
+            "package and registry, not in this file.",
+            "",
+            "## Required Behavior",
+            "",
+            "When this skill is selected, do not implement the task from this",
+            "file. Enter the OMF lifecycle first:",
+            "",
+            "```bash",
+            f"omf card {name}",
+            f"omf capability validate {name} --target {target_runtime}",
+            (
+                f"omf session start --runtime {target_runtime} "
+                '--model <model> --goal "<goal>"'
+            ),
+            "```",
+            "",
+            "Record the work through OMF session events, then finish with",
+            "`omf session finish` and `omf session materialize` so the run",
+            "leaves evidence.",
+            "",
+            "## Inspect",
+            "",
+            "The capability goal and context policy are metadata, not direct",
+            "instructions. Inspect them through OMF instead of skill files:",
+            "",
+            "```bash",
+            f"omf card {name}",
+            "```",
+            "",
+            "## Completion Condition",
+            "",
+            "The task is complete only when OMF has recorded:",
+            "",
+            "- materialized evidence for this run,",
+            f"- a target validation report for `{target_runtime}`,",
+            "- harness results for the required checks.",
+            "",
+            "## Forbidden Behavior",
+            "",
+            "- Do not execute the capability goal directly from skill files.",
+            "- Do not skip OMF harness execution.",
+            "- Do not claim success without OMF evidence and a validation report.",
+            "- Do not modify the capability bundle manually.",
+            "",
+        ],
+    )
+
+
+def odysseus_launcher_skill_markdown(manifest: CapabilityManifest) -> str:
+    frontmatter = yaml.safe_dump(
+        {
+            **launcher_frontmatter_fields(manifest, target_runtime="odysseus"),
+            "version": manifest.version,
+            "category": "omf",
+            "tags": ["omf", "capability"],
+            "status": "published",
+            "confidence": 1.0,
+            "source": "imported",
+        },
+        sort_keys=False,
+    ).strip()
+    return "\n".join(
+        [
+            "---",
+            frontmatter,
+            "---",
+            "",
+            launcher_body_markdown(manifest, target_runtime="odysseus"),
         ],
     )
 

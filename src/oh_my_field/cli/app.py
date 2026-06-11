@@ -24,6 +24,7 @@ from oh_my_field.cli.commands import (
     registry,
     replay,
     review,
+    runtime,
     session,
     verify,
 )
@@ -43,6 +44,11 @@ session_app = typer.Typer(help="Track active agent work as OMF sessions.")
 app.add_typer(session_app, name="session")
 mcp_app = typer.Typer(help="Run OMF MCP server surfaces.")
 app.add_typer(mcp_app, name="mcp")
+runtime_app = typer.Typer(
+    help="Install and verify the OMF adoption surface for agent runtimes.",
+    no_args_is_help=True,
+)
+app.add_typer(runtime_app, name="runtime")
 
 
 def _main() -> None:
@@ -76,3 +82,4 @@ inspect_artifact.register(app)
 export.register(app)
 session.register(session_app)
 mcp.register(mcp_app)
+runtime.register(runtime_app)

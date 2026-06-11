@@ -83,6 +83,8 @@
 
 - 동일 capability를 다양한 모델과 실행 환경에서 재사용 가능하게 구성
 - 고성능 프론티어 모델에서 생성한 workflow를 저성능 로컬 모델 또는 제한된 사내 모델 환경에서도 활용 가능하도록 압축·보강
+- OMF에서 agent-native skill은 capability 자체가 아님. skill은 agent가 OMF lifecycle로 진입하기 위한 adapter surface일 뿐이며, capability의 본체(context 구성, runtime 적응, harness 실행, evidence 수집, report 생성)는 OMF registry와 bundle이 관리
+- export되는 capability skill은 기본적으로 launcher-only(`omf_managed`)로 생성되어 target agent가 goal을 직접 실행하지 못하게 하고, OMF report가 없는 실행은 성공이 아니라 unverified execution으로 취급
 
 ## 검증 가능한 업무 자동화
 

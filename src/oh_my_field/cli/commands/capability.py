@@ -49,6 +49,10 @@ def capability_export(
         Literal["none", "summary", "redacted", "full"],
         typer.Option("--include-evidence"),
     ] = "summary",
+    skill_style: Annotated[
+        Literal["launcher", "full"],
+        typer.Option("--skill-style"),
+    ] = "launcher",
     capabilities_dir: Annotated[
         Path, typer.Option("--capabilities-dir")
     ] = DEFAULT_CAPABILITIES_DIR,
@@ -67,6 +71,7 @@ def capability_export(
             source_context_tokens=source_context_tokens,
             target_context_tokens=target_context_tokens,
             include_evidence=include_evidence,
+            skill_style=skill_style,
             out=out,
             capabilities_dir=capabilities_dir,
             evidence_dir=evidence_dir,

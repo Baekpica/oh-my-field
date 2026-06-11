@@ -17,10 +17,12 @@ type ValidationStatus = Literal["needs_validation", "needs_adaptation", "validat
 type ToolCompatibilityStatus = Literal["pass", "partial", "unknown"]
 type EvidenceInclusionMode = Literal["none", "summary", "redacted", "full"]
 type ImportCollisionPolicy = Literal["fail", "merge", "version", "overwrite"]
+type SkillStyle = Literal["launcher", "full"]
 
 PORTABILITY_SCHEMA_VERSION = "omf.portability.v0.1"
 TARGET_VALIDATION_SCHEMA_VERSION = "omf.target_validation.v0.1"
 TARGET_OVERLAY_SCHEMA_VERSION = "omf.target_overlay.v0.1"
+RUNTIME_SKILL_SCHEMA_VERSION = "omf.runtime_skill.v0.1"
 type ModelClass = Literal["frontier", "standard", "local"]
 type CapabilityTier = Literal["high", "medium", "low"]
 type YamlValue = (
@@ -110,12 +112,26 @@ class PortabilityValidation(StrictModel):
     status: ValidationStatus = "needs_validation"
 
 
+class AgentView(StrictModel):
+    """How the target agent is allowed to see this capability.
+
+    A launcher view installs only an OMF entrypoint; the capability body stays
+    in the OMF package, so the agent cannot bypass the OMF lifecycle from the
+    skill surface alone.
+    """
+
+    skill_style: SkillStyle = "launcher"
+    direct_execution_allowed: bool = False
+
+
 class PortabilityManifest(StrictModel):
     schema_version: str = PORTABILITY_SCHEMA_VERSION
     capability: str = Field(pattern=CAPABILITY_NAME_PATTERN)
     version: str = Field(min_length=1)
+    lifecycle_owner: Literal["omf"] = "omf"
     source: PortabilitySource
     target: PortabilityTarget
+    agent_view: AgentView = Field(default_factory=AgentView)
     compatibility: PortabilityCompatibility = Field(
         default_factory=PortabilityCompatibility,
     )
@@ -214,6 +230,7 @@ class TargetOverlay(StrictModel):
     capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
     source: PortabilitySource
     target: PortabilityTarget
+    direct_execution_allowed: bool = False
     status: ValidationStatus
     tool_compatibility: ToolCompatibilityStatus
     portability_readiness_score: float = Field(ge=0.0, le=1.0)
@@ -239,6 +256,7 @@ class CapabilityPortabilityExportRequest(StrictModel):
     target_context_tokens: int | None = Field(default=None, ge=1)
     evidence_dir: Path = DEFAULT_EVIDENCE_DIR
     include_evidence: EvidenceInclusionMode = "summary"
+    skill_style: SkillStyle = "launcher"
 
 
 class CapabilityPortabilityExportSummary(StrictModel):

@@ -59,6 +59,9 @@ Initial tool surface:
 | `omf_promote_capability` | Promote evidence into a capability package; strict is true by default. |
 | `omf_export_capability` | Export a capability to Codex, Claude Code, Hermes, Pi, Odysseus, or generic assets. |
 | `omf_health` | Read capability health and next action. |
+| `omf_list_capabilities` | List capabilities in the local OMF registry. |
+| `omf_inspect_capability` | Inspect goal, context policy, harness checks, and runtime assumptions. |
+| `omf_validate_capability` | Re-validate an imported capability without running a target command. |
 
 Prefer `omf_record_input`, `omf_record_artifact`, `omf_record_validation`, and
 `omf_record_decision` over the generic event tool whenever the agent knows the
