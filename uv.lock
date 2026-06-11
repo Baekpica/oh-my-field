@@ -425,7 +425,7 @@ wheels = [
 
 [[package]]
 name = "oh-my-field"
-version = "0.2.2"
+version = "0.2.3"
 source = { editable = "." }
 dependencies = [
     { name = "langgraph" },

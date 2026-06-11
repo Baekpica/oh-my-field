@@ -4,6 +4,8 @@ All notable changes to this project will be documented here.
 
 ## Unreleased
 
+## 0.2.3 - 2026-06-11
+
 ### Added
 
 - Added launcher-style capability skill projections as the export default:
