@@ -158,10 +158,12 @@ def _select_context(state: ContextState) -> ContextState:
     required_paths = set(manifest.context.required)
     optional_paths = set(manifest.context.optional)
     forbidden = manifest.context.forbidden
+    field_forbidden = _field_forbidden(manifest)
+    all_forbidden = tuple(dict.fromkeys((*forbidden, *field_forbidden)))
     required_context = tuple(
         file
         for file in evidence.files
-        if not _is_forbidden(file.path, forbidden)
+        if not _is_forbidden(file.path, all_forbidden)
         and (file.path in required_paths or file.role == "context")
     )
     optional_context: tuple[CapturedTextFile, ...] = ()
@@ -172,7 +174,7 @@ def _select_context(state: ContextState) -> ContextState:
             if file.path in optional_paths
             and file not in required_context
             and _matches_query(file, request.query)
-            and not _is_forbidden(file.path, forbidden)
+            and not _is_forbidden(file.path, all_forbidden)
         )
     selected_context = (*required_context, *optional_context)
     max_chars = _max_chars(request, manifest)
@@ -276,6 +278,12 @@ def _is_forbidden(path: str, forbidden: tuple[str, ...]) -> bool:
     return any(rule in path for rule in forbidden)
 
 
+def _field_forbidden(manifest: CapabilityManifest) -> tuple[str, ...]:
+    if manifest.field is None:
+        return ()
+    return manifest.field.policies.forbidden_context
+
+
 def _context_item(
     file: CapturedTextFile,
     reason: str,
@@ -308,6 +316,8 @@ def _excluded_context_item(
     reason = "not selected by capability context policy"
     if _is_forbidden(file.path, forbidden):
         reason = "forbidden by capability context policy"
+    elif _is_forbidden(file.path, _field_forbidden(manifest)):
+        reason = "forbidden by field policy"
     elif file.path in manifest.context.optional and not include_optional:
         reason = "optional context was not requested"
     elif query is not None and not _matches_query(file, query):

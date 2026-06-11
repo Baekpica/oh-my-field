@@ -12,16 +12,22 @@ from typing import Final, Protocol, cast
 
 from pydantic import Field
 
+from oh_my_field.adapters.session_log import ParsedSessionEvents, parse_session_log
 from oh_my_field.application.record_builder import harden_evidence_record
+from oh_my_field.domain.evidence.redaction import (
+    redact_secrets as redact_text_secrets,
+)
 from oh_my_field.domain.models import (
     AgentImporterName,
     AgentImporterSpec,
     AgentRunSource,
     CapturedFileRole,
     CapturedTextFile,
+    CostMetrics,
     EvidenceRecord,
     HarnessResult,
     LatencyMetrics,
+    RunObservation,
     RuntimeInfo,
     StrictModel,
     TaskOutcome,
@@ -39,14 +45,28 @@ IMPORTER_SPECS: tuple[AgentImporterSpec, ...] = (
     AgentImporterSpec(
         name="codex",
         display_name="Codex",
-        captures=("run log", "diff", "test result", "command output", "artifact"),
+        captures=(
+            "run log",
+            "structured session events",
+            "diff",
+            "test result",
+            "command output",
+            "artifact",
+        ),
         replays=("capability eval",),
         artifact_roles=("artifact", "diff", "test_result"),
     ),
     AgentImporterSpec(
         name="claude_code",
         display_name="Claude Code",
-        captures=("run log", "diff", "test result", "command output", "artifact"),
+        captures=(
+            "run log",
+            "structured session events",
+            "diff",
+            "test result",
+            "command output",
+            "artifact",
+        ),
         replays=("capability eval",),
         artifact_roles=("artifact", "diff", "test_result"),
     ),
@@ -132,6 +152,15 @@ class AgentArtifactLimitError(AdapterError):
         return self.reason
 
 
+@dataclass
+class InvalidRedactionPatternError(AdapterError):
+    pattern: str
+    reason: str
+
+    def __str__(self) -> str:
+        return f"invalid redaction pattern {self.pattern!r}: {self.reason}"
+
+
 @dataclass(frozen=True, slots=True)
 class AgentImportDependencies:
     clock: Clock
@@ -157,6 +186,7 @@ class AgentImportRequest(StrictModel):
     max_total_artifact_bytes: int | None = Field(default=None, ge=1)
     exclude_patterns: tuple[str, ...] = ()
     redact_secrets: bool = True
+    redact_patterns: tuple[str, ...] = ()
     task_outcome: TaskOutcome = "unknown"
 
 
@@ -169,10 +199,13 @@ class AgentImportSummary(StrictModel):
 
 
 class ImporterAdapter:
-    """Generic runtime adapter that imports a run without runtime-specific parsing.
+    """Generic runtime adapter shared by the built-in importers.
 
-    Every built-in runtime shares this importer today; a runtime that needs its
-    own log parsing implements the RuntimeAdapter protocol and registers itself.
+    Artifact capture is runtime-agnostic; structured session events are
+    extracted by the session_log parsers (dedicated parsers for claude_code
+    and codex, the heuristic JSONL parser otherwise). A runtime that needs
+    deeper integration implements the RuntimeAdapter protocol and registers
+    itself.
     """
 
     def __init__(self, spec: AgentImporterSpec) -> None:
@@ -290,11 +323,13 @@ def _run_agent_import(
             ),
         ),
     )
+    redact_patterns = _compiled_redact_patterns(request.redact_patterns)
     files = tuple(
         _read_artifact(
             artifact,
             max_bytes=request.max_artifact_bytes,
             redact_secrets=request.redact_secrets,
+            redact_patterns=redact_patterns,
         )
         for artifact in artifact_inputs
     )
@@ -337,9 +372,18 @@ def _run_agent_import(
             ),
         },
     )
+    # Parse the captured (already redacted) log text for structured events;
+    # a log with no recognizable events imports exactly as before.
+    evidence = _apply_session_events(
+        evidence,
+        parse_session_log(importer, files[0].content),
+        log_path=request.log_path,
+    )
     evidence = harden_evidence_record(
         evidence,
         project_root=request.log_path.parent,
+        redact_previews=request.redact_secrets,
+        redact_patterns=redact_patterns,
     )
     evidence = append_integrity_link(
         evidence,
@@ -353,6 +397,35 @@ def _run_agent_import(
         adapter=importer,
         artifact_count=len(files),
         warnings=_broad_artifact_import_warnings(request),
+    )
+
+
+def _apply_session_events(
+    evidence: EvidenceRecord,
+    events: ParsedSessionEvents,
+    *,
+    log_path: Path,
+) -> EvidenceRecord:
+    if not events.has_content():
+        return evidence
+    summary = (
+        f"parsed {len(events.tool_calls)} tool calls and "
+        f"{len(events.commands)} commands via {events.parser} session parser"
+    )
+    return evidence.model_copy(
+        update={
+            "tool_calls": (*evidence.tool_calls, *events.tool_calls),
+            "generated_commands": events.commands,
+            "execution_outputs": events.outputs,
+            "errors": events.errors,
+            "cost_metrics": CostMetrics(
+                input_tokens=events.input_tokens,
+                output_tokens=events.output_tokens,
+            ),
+            "run_observations": (
+                RunObservation(kind="input", summary=summary, path=str(log_path)),
+            ),
+        },
     )
 
 
@@ -385,11 +458,27 @@ def _token_suffix() -> str:
     return secrets.token_hex(4)
 
 
+def _compiled_redact_patterns(
+    patterns: tuple[str, ...],
+) -> tuple[re.Pattern[str], ...]:
+    compiled: list[re.Pattern[str]] = []
+    for pattern in patterns:
+        try:
+            compiled.append(re.compile(pattern))
+        except re.error as exc:
+            raise InvalidRedactionPatternError(
+                pattern=pattern,
+                reason=str(exc),
+            ) from exc
+    return tuple(compiled)
+
+
 def _read_artifact(
     artifact: AgentArtifactInput,
     *,
     max_bytes: int | None,
     redact_secrets: bool,
+    redact_patterns: tuple[re.Pattern[str], ...] = (),
 ) -> CapturedTextFile:
     try:
         raw = artifact.path.read_bytes()
@@ -413,7 +502,7 @@ def _read_artifact(
         )
     redacted = False
     if redact_secrets:
-        text, redacted = _redact_secrets(text)
+        text, redacted = redact_text_secrets(text, extra_patterns=redact_patterns)
     return CapturedTextFile(
         role=artifact.role,
         path=str(artifact.path),
@@ -431,39 +520,6 @@ def _decode_utf8(raw: bytes) -> str | None:
         return raw.decode("utf-8")
     except UnicodeDecodeError:
         return None
-
-
-_SECRET_KEY_VALUE: Final = re.compile(
-    r"(?i)(\b(?:api[_-]?key|secret|token|password|passwd|pwd)\b\s*[:=]\s*)(\S+)",
-)
-_AWS_ACCESS_KEY: Final = re.compile(r"\bAKIA[0-9A-Z]{16}\b")
-_BEARER_TOKEN: Final = re.compile(r"(?i)(bearer\s+)\S+")
-_GITHUB_TOKEN: Final = re.compile(r"\b(?:gh[pousr]|github_pat)_[A-Za-z0-9_]{20,}\b")
-_SLACK_TOKEN: Final = re.compile(r"\bxox[abprs]-[A-Za-z0-9-]{10,}\b")
-_JWT_TOKEN: Final = re.compile(
-    r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b",
-)
-_PRIVATE_KEY_BLOCK: Final = re.compile(
-    r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----",
-    re.DOTALL,
-)
-_REDACTED: Final = "[REDACTED]"
-
-
-def _redact_secrets(text: str) -> tuple[str, bool]:
-    redacted, key_value = _SECRET_KEY_VALUE.subn(rf"\1{_REDACTED}", text)
-    total = key_value
-    for pattern in (
-        _AWS_ACCESS_KEY,
-        _GITHUB_TOKEN,
-        _SLACK_TOKEN,
-        _JWT_TOKEN,
-        _PRIVATE_KEY_BLOCK,
-    ):
-        redacted, count = pattern.subn(_REDACTED, redacted)
-        total += count
-    redacted, bearer = _BEARER_TOKEN.subn(rf"\1{_REDACTED}", redacted)
-    return redacted, bool(total + bearer)
 
 
 def _discover_artifacts(

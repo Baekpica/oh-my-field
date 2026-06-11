@@ -2,10 +2,12 @@ import csv
 import hashlib
 import json
 import mimetypes
+import re
 import zipfile
 from pathlib import Path
 from typing import Final
 
+from oh_my_field.domain.evidence.redaction import redact_secrets
 from oh_my_field.models import (
     ArtifactContract,
     ArtifactSnapshot,
@@ -49,10 +51,20 @@ def harden_evidence_record(
     evidence: EvidenceRecord,
     *,
     project_root: Path | None = None,
+    redact_previews: bool = True,
+    redact_patterns: tuple[re.Pattern[str], ...] = (),
 ) -> EvidenceRecord:
     root = project_root or Path()
     artifact_paths = _artifact_paths(evidence)
-    snapshots = tuple(_snapshot_artifact(path, root) for path in artifact_paths)
+    snapshots = tuple(
+        _snapshot_artifact(
+            path,
+            root,
+            redact_preview=redact_previews,
+            redact_patterns=redact_patterns,
+        )
+        for path in artifact_paths
+    )
     validation_results = _merge_validation_results(
         evidence.validation_results,
         tuple(
@@ -103,7 +115,13 @@ def _required_inputs(evidence: EvidenceRecord) -> tuple[str, ...]:
     return tuple(dict.fromkeys(value for value in values if value))
 
 
-def _snapshot_artifact(path_value: str, root: Path) -> ArtifactSnapshot:
+def _snapshot_artifact(
+    path_value: str,
+    root: Path,
+    *,
+    redact_preview: bool,
+    redact_patterns: tuple[re.Pattern[str], ...] = (),
+) -> ArtifactSnapshot:
     display_path = Path(path_value).as_posix()
     root_path = root.resolve(strict=False)
     absolute_path = _absolute_path(path_value, root_path)
@@ -129,7 +147,12 @@ def _snapshot_artifact(path_value: str, root: Path) -> ArtifactSnapshot:
         )
     if absolute_path.is_dir():
         return _snapshot_directory(display_path, absolute_path, root_path)
-    return _snapshot_file(display_path, absolute_path)
+    return _snapshot_file(
+        display_path,
+        absolute_path,
+        redact_preview=redact_preview,
+        redact_patterns=redact_patterns,
+    )
 
 
 def _absolute_path(path_value: str, root: Path) -> Path | None:
@@ -191,11 +214,24 @@ def _snapshot_directory(
     )
 
 
-def _snapshot_file(display_path: str, path: Path) -> ArtifactSnapshot:
+def _snapshot_file(
+    display_path: str,
+    path: Path,
+    *,
+    redact_preview: bool,
+    redact_patterns: tuple[re.Pattern[str], ...] = (),
+) -> ArtifactSnapshot:
     raw = path.read_bytes()
     kind = _kind_for_path(path)
     metadata = _metadata_for_file(path, raw, kind)
     text_preview = _text_preview(path, raw, kind)
+    if text_preview is not None and redact_preview:
+        text_preview, preview_redacted = redact_secrets(
+            text_preview,
+            extra_patterns=redact_patterns,
+        )
+        if preview_redacted:
+            metadata["preview_redacted"] = True
     return ArtifactSnapshot(
         path=display_path,
         role="final",

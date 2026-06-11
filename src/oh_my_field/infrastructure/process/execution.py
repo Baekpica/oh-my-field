@@ -1,4 +1,5 @@
 import os
+import re
 import shlex
 import subprocess
 import time
@@ -63,6 +64,12 @@ DANGEROUS_ENV_NAMES: Final = frozenset(
         "OPENAI_API_KEY",
         "SLACK_BOT_TOKEN",
     },
+)
+# Env vars are allowlist-only either way; this only widens the audit record of
+# stripped secret-bearing names beyond the fixed set above.
+DANGEROUS_ENV_NAME_PATTERN: Final = re.compile(
+    r"(?i)(?:api[_-]?key|access[_-]?key|[_-]key|secret|token|password|passwd|pwd"
+    r"|credentials?)$",
 )
 
 
@@ -273,11 +280,17 @@ def _command_environment(allow_env: tuple[str, ...]) -> CommandEnvironment:
     }
     blocked = tuple(
         name
-        for name in sorted(DANGEROUS_ENV_NAMES)
-        if name in os.environ and name not in requested
+        for name in sorted(os.environ)
+        if _is_dangerous_env_name(name) and name not in requested
     )
     allowed = tuple(name for name in requested if name in values)
     return CommandEnvironment(values=values, allowed=allowed, blocked=blocked)
+
+
+def _is_dangerous_env_name(name: str) -> bool:
+    return name in DANGEROUS_ENV_NAMES or bool(
+        DANGEROUS_ENV_NAME_PATTERN.search(name),
+    )
 
 
 def _normalize_env_names(names: tuple[str, ...]) -> tuple[str, ...]:
