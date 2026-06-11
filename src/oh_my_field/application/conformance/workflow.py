@@ -60,7 +60,7 @@ def run_runtime_conformance_workflow(
         _controller_skill_check(controller_path),
         _mcp_config_check(request),
         _cli_on_path_check(),
-        _launcher_skills_check(controller_path),
+        _launcher_skills_check(_capability_skill_roots(request, controller_path)),
         _imported_targets_check(request),
     )
     failed = tuple(check for check in checks if check.status == "fail")
@@ -148,19 +148,40 @@ def _cli_on_path_check() -> RuntimeConformanceCheck:
     )
 
 
-def _launcher_skills_check(controller_path: Path) -> RuntimeConformanceCheck:
-    skills_root = controller_path.parent.parent
+def _capability_skill_roots(
+    request: RuntimeConformanceRequest,
+    controller_path: Path,
+) -> tuple[Path, ...]:
+    """Resolve every skill root the runtime discovers capability skills from.
+
+    The controller skill root is not always where capability exports land:
+    Pi installs the controller under `.pi/agent/skills` while capability
+    projections install under `.pi/skills`.
+    """
+    roots = [controller_path.parent.parent]
+    if request.runtime == "pi":
+        home = (request.home or Path.home()).expanduser()
+        roots.append(home / ".pi" / "skills")
+        roots.append(request.project / ".pi" / "skills")
+    return tuple(dict.fromkeys(root.resolve() for root in roots))
+
+
+def _launcher_skills_check(
+    skill_roots: tuple[Path, ...],
+) -> RuntimeConformanceCheck:
     direct_skills = tuple(
         skill_path
+        for skills_root in skill_roots
         for skill_path in sorted(skills_root.glob("*/SKILL.md"))
         if skill_path.parent.name != "omf"
         and OMF_MANAGED_MARKER not in skill_path.read_text(encoding="utf-8")
     )
+    scanned = ", ".join(str(root) for root in skill_roots)
     if not direct_skills:
         return RuntimeConformanceCheck(
             name="capability_skills_are_launchers",
             status="pass",
-            detail=f"no direct-execution capability skills under {skills_root}",
+            detail=f"no direct-execution capability skills under {scanned}",
         )
     names = ", ".join(path.parent.name for path in direct_skills)
     return RuntimeConformanceCheck(

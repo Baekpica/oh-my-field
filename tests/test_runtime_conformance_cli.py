@@ -119,3 +119,47 @@ def test_runtime_conformance_flags_direct_execution_capability_skill(
 
 def _json(stdout: str) -> dict[str, Any]:
     return cast("dict[str, Any]", json.loads(stdout))
+
+
+def test_runtime_conformance_flags_direct_execution_skill_in_pi_skill_root(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    install_result = CliRunner().invoke(
+        app,
+        ["runtime", "install", "pi", "--home", str(home)],
+    )
+    assert install_result.exit_code == 0
+    # Pi capability exports install under .pi/skills, not the controller's
+    # .pi/agent/skills root.
+    rogue_skill = home / ".pi" / "skills" / "front_ui" / "SKILL.md"
+    rogue_skill.parent.mkdir(parents=True)
+    rogue_skill.write_text(
+        "# front_ui\n\n## Goal\nBuild the UI directly.\n",
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "runtime",
+            "conformance",
+            "pi",
+            "--home",
+            str(home),
+            "--capabilities-dir",
+            str(tmp_path / "capabilities"),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = _json(result.stdout)
+    assert output["status"] == "degraded"
+    launcher_check = next(
+        check
+        for check in output["checks"]
+        if check["name"] == "capability_skills_are_launchers"
+    )
+    assert launcher_check["status"] == "fail"
+    assert "front_ui" in launcher_check["detail"]
