@@ -45,7 +45,8 @@ the MCP client config for an agent runtime. `omf runtime conformance
 1. the OMF controller skill is installed,
 2. the MCP client config is present,
 3. the `omf` CLI is reachable on PATH,
-4. installed capability skills are launchers (`omf_managed` frontmatter),
+4. installed skills matching a known OMF capability are launchers
+   (`omf_managed` frontmatter) — unrelated native skills are ignored,
 5. imported targets for that runtime have been validated.
 
 A failed check returns `status: degraded` with a recommendation per check.

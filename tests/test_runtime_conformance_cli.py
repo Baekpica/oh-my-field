@@ -83,6 +83,8 @@ def test_runtime_conformance_flags_direct_execution_capability_skill(
 ) -> None:
     home = tmp_path / "home"
     home.mkdir()
+    capabilities_dir = tmp_path / "capabilities"
+    _create_capability(tmp_path, "front_ui", capabilities_dir)
     CliRunner().invoke(app, ["runtime", "install", "hermes", "--home", str(home)])
     rogue_skill = home / ".hermes" / "skills" / "front_ui" / "SKILL.md"
     rogue_skill.parent.mkdir(parents=True)
@@ -100,25 +102,51 @@ def test_runtime_conformance_flags_direct_execution_capability_skill(
             "--home",
             str(home),
             "--capabilities-dir",
-            str(tmp_path / "capabilities"),
+            str(capabilities_dir),
         ],
     )
 
     assert result.exit_code == 0
     output = _json(result.stdout)
     assert output["status"] == "degraded"
-    launcher_check = next(
-        check
-        for check in output["checks"]
-        if check["name"] == "capability_skills_are_launchers"
-    )
+    launcher_check = _launcher_check(output)
     assert launcher_check["status"] == "fail"
     assert "front_ui" in launcher_check["detail"]
     assert "--skill-style launcher" in launcher_check["recommendation"]
 
 
-def _json(stdout: str) -> dict[str, Any]:
-    return cast("dict[str, Any]", json.loads(stdout))
+def test_runtime_conformance_ignores_unrelated_native_skills(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    capabilities_dir = tmp_path / "capabilities"
+    _create_capability(tmp_path, "front_ui", capabilities_dir)
+    CliRunner().invoke(app, ["runtime", "install", "hermes", "--home", str(home)])
+    # A native skill the user installed themselves, unrelated to any OMF
+    # capability, must not degrade conformance.
+    native_skill = home / ".hermes" / "skills" / "weather_helper" / "SKILL.md"
+    native_skill.parent.mkdir(parents=True)
+    native_skill.write_text(
+        "# weather_helper\n\nFetch the weather and answer directly.\n",
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "runtime",
+            "conformance",
+            "hermes",
+            "--home",
+            str(home),
+            "--capabilities-dir",
+            str(capabilities_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = _json(result.stdout)
+    assert output["status"] == "pass"
+    assert _launcher_check(output)["status"] == "pass"
 
 
 def test_runtime_conformance_flags_direct_execution_skill_in_pi_skill_root(
@@ -126,6 +154,8 @@ def test_runtime_conformance_flags_direct_execution_skill_in_pi_skill_root(
 ) -> None:
     home = tmp_path / "home"
     home.mkdir()
+    capabilities_dir = tmp_path / "capabilities"
+    _create_capability(tmp_path, "front_ui", capabilities_dir)
     install_result = CliRunner().invoke(
         app,
         ["runtime", "install", "pi", "--home", str(home)],
@@ -149,17 +179,71 @@ def test_runtime_conformance_flags_direct_execution_skill_in_pi_skill_root(
             "--home",
             str(home),
             "--capabilities-dir",
-            str(tmp_path / "capabilities"),
+            str(capabilities_dir),
         ],
     )
 
     assert result.exit_code == 0
     output = _json(result.stdout)
     assert output["status"] == "degraded"
-    launcher_check = next(
+    launcher_check = _launcher_check(output)
+    assert launcher_check["status"] == "fail"
+    assert "front_ui" in launcher_check["detail"]
+
+
+def _create_capability(
+    tmp_path: Path,
+    name: str,
+    capabilities_dir: Path,
+) -> None:
+    log_path = tmp_path / f"{name}.log"
+    evidence_dir = tmp_path / "evidence"
+    log_path.write_text("Agent completed the task.\n", encoding="utf-8")
+    import_result = CliRunner().invoke(
+        app,
+        [
+            "import-run",
+            "codex",
+            "--log",
+            str(log_path),
+            "--goal",
+            "build the front ui",
+            "--outcome",
+            "success",
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
+    )
+    assert import_result.exit_code == 0, import_result.output
+    evidence_id = cast(
+        "str",
+        json.loads(import_result.stdout)["evidence_id"],
+    )
+    promote_result = CliRunner().invoke(
+        app,
+        [
+            "promote",
+            evidence_id,
+            "--name",
+            name,
+            "--description",
+            "Front UI capability",
+            "--evidence-dir",
+            str(evidence_dir),
+            "--capabilities-dir",
+            str(capabilities_dir),
+        ],
+    )
+    assert promote_result.exit_code == 0, promote_result.output
+
+
+def _launcher_check(output: dict[str, Any]) -> dict[str, Any]:
+    return next(
         check
         for check in output["checks"]
         if check["name"] == "capability_skills_are_launchers"
     )
-    assert launcher_check["status"] == "fail"
-    assert "front_ui" in launcher_check["detail"]
+
+
+def _json(stdout: str) -> dict[str, Any]:
+    return cast("dict[str, Any]", json.loads(stdout))

@@ -14,7 +14,7 @@ from pydantic import Field
 
 from oh_my_field.application.install import install_mcp_config, install_omf_skill
 from oh_my_field.domain.layout import DEFAULT_CAPABILITIES_DIR
-from oh_my_field.domain.models import StrictModel
+from oh_my_field.domain.models import CapabilityManifest, StrictModel
 from oh_my_field.domain.skill.models import SkillInstallRequest
 from oh_my_field.mcp.schemas import McpInstallRequest
 from oh_my_field.storage import list_manifests, read_portability_health
@@ -56,12 +56,16 @@ def run_runtime_conformance_workflow(
     request: RuntimeConformanceRequest,
 ) -> RuntimeConformanceSummary:
     controller_path = _controller_skill_path(request)
+    manifests = tuple(list_manifests(request.capabilities_dir))
     checks = (
         _controller_skill_check(controller_path),
         _mcp_config_check(request),
         _cli_on_path_check(),
-        _launcher_skills_check(_capability_skill_roots(request, controller_path)),
-        _imported_targets_check(request),
+        _launcher_skills_check(
+            _capability_skill_roots(request, controller_path),
+            capability_names=frozenset(manifest.name for _, manifest in manifests),
+        ),
+        _imported_targets_check(request, manifests),
     )
     failed = tuple(check for check in checks if check.status == "fail")
     return RuntimeConformanceSummary(
@@ -168,12 +172,16 @@ def _capability_skill_roots(
 
 def _launcher_skills_check(
     skill_roots: tuple[Path, ...],
+    *,
+    capability_names: frozenset[str],
 ) -> RuntimeConformanceCheck:
+    # Only skills matching a known OMF capability are judged; unrelated
+    # native skills installed by the user are none of OMF's business.
     direct_skills = tuple(
         skill_path
         for skills_root in skill_roots
         for skill_path in sorted(skills_root.glob("*/SKILL.md"))
-        if skill_path.parent.name != "omf"
+        if skill_path.parent.name in capability_names
         and OMF_MANAGED_MARKER not in skill_path.read_text(encoding="utf-8")
     )
     scanned = ", ".join(str(root) for root in skill_roots)
@@ -181,7 +189,7 @@ def _launcher_skills_check(
         return RuntimeConformanceCheck(
             name="capability_skills_are_launchers",
             status="pass",
-            detail=f"no direct-execution capability skills under {scanned}",
+            detail=f"no direct-execution OMF capability skills under {scanned}",
         )
     names = ", ".join(path.parent.name for path in direct_skills)
     return RuntimeConformanceCheck(
@@ -197,10 +205,11 @@ def _launcher_skills_check(
 
 def _imported_targets_check(
     request: RuntimeConformanceRequest,
+    manifests: tuple[tuple[Path, CapabilityManifest], ...],
 ) -> RuntimeConformanceCheck:
     statuses = [
         (manifest.name, entry.validation_status)
-        for manifest_path, manifest in list_manifests(request.capabilities_dir)
+        for manifest_path, manifest in manifests
         for entry in read_portability_health(manifest_path.parent).target_statuses
         if entry.target.split(":", 1)[0] == request.runtime
     ]
