@@ -1,7 +1,6 @@
 import fnmatch
 import hashlib
 import mimetypes
-import re
 import secrets
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
@@ -13,6 +12,9 @@ from typing import Final, Protocol, cast
 from pydantic import Field
 
 from oh_my_field.application.record_builder import harden_evidence_record
+from oh_my_field.domain.evidence.redaction import (
+    redact_secrets as redact_text_secrets,
+)
 from oh_my_field.domain.models import (
     AgentImporterName,
     AgentImporterSpec,
@@ -340,6 +342,7 @@ def _run_agent_import(
     evidence = harden_evidence_record(
         evidence,
         project_root=request.log_path.parent,
+        redact_previews=request.redact_secrets,
     )
     evidence = append_integrity_link(
         evidence,
@@ -413,7 +416,7 @@ def _read_artifact(
         )
     redacted = False
     if redact_secrets:
-        text, redacted = _redact_secrets(text)
+        text, redacted = redact_text_secrets(text)
     return CapturedTextFile(
         role=artifact.role,
         path=str(artifact.path),
@@ -431,39 +434,6 @@ def _decode_utf8(raw: bytes) -> str | None:
         return raw.decode("utf-8")
     except UnicodeDecodeError:
         return None
-
-
-_SECRET_KEY_VALUE: Final = re.compile(
-    r"(?i)(\b(?:api[_-]?key|secret|token|password|passwd|pwd)\b\s*[:=]\s*)(\S+)",
-)
-_AWS_ACCESS_KEY: Final = re.compile(r"\bAKIA[0-9A-Z]{16}\b")
-_BEARER_TOKEN: Final = re.compile(r"(?i)(bearer\s+)\S+")
-_GITHUB_TOKEN: Final = re.compile(r"\b(?:gh[pousr]|github_pat)_[A-Za-z0-9_]{20,}\b")
-_SLACK_TOKEN: Final = re.compile(r"\bxox[abprs]-[A-Za-z0-9-]{10,}\b")
-_JWT_TOKEN: Final = re.compile(
-    r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b",
-)
-_PRIVATE_KEY_BLOCK: Final = re.compile(
-    r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----",
-    re.DOTALL,
-)
-_REDACTED: Final = "[REDACTED]"
-
-
-def _redact_secrets(text: str) -> tuple[str, bool]:
-    redacted, key_value = _SECRET_KEY_VALUE.subn(rf"\1{_REDACTED}", text)
-    total = key_value
-    for pattern in (
-        _AWS_ACCESS_KEY,
-        _GITHUB_TOKEN,
-        _SLACK_TOKEN,
-        _JWT_TOKEN,
-        _PRIVATE_KEY_BLOCK,
-    ):
-        redacted, count = pattern.subn(_REDACTED, redacted)
-        total += count
-    redacted, bearer = _BEARER_TOKEN.subn(rf"\1{_REDACTED}", redacted)
-    return redacted, bool(total + bearer)
 
 
 def _discover_artifacts(

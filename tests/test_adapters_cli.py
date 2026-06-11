@@ -115,6 +115,48 @@ def test_import_run_redacts_secrets_by_default(tmp_path: Path) -> None:
     assert "run ok" in log_file.content
 
 
+def test_import_run_redacts_env_var_secrets_and_snapshot_previews(
+    tmp_path: Path,
+) -> None:
+    log_path = tmp_path / "agent.log"
+    evidence_dir = tmp_path / "evidence"
+    log_path.write_text(
+        "OPENAI_API_KEY=sk-test-1234567890abcdef\n"
+        "AWS_SECRET_ACCESS_KEY: aws-secret-value\n"
+        "max_tokens=4096\n"
+        "run ok\n",
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "import-run",
+            "claude_code",
+            "--log",
+            str(log_path),
+            "--goal",
+            "capture external agent run",
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = AgentImportOutput.model_validate_json(result.stdout)
+    evidence = load_evidence(output.evidence_id, evidence_dir)
+    log_file = evidence.files[0]
+    assert log_file.redacted
+    assert "sk-test" not in log_file.content
+    assert "aws-secret-value" not in log_file.content
+    assert "max_tokens=4096" in log_file.content
+    snapshot = evidence.artifact_snapshots[0]
+    assert snapshot.text_preview is not None
+    assert "sk-test" not in snapshot.text_preview
+    assert "aws-secret-value" not in snapshot.text_preview
+    assert snapshot.metadata.get("preview_redacted") is True
+
+
 def test_import_run_keeps_raw_content_when_redaction_disabled(
     tmp_path: Path,
 ) -> None:
