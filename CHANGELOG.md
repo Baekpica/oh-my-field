@@ -4,7 +4,19 @@ All notable changes to this project will be documented here.
 
 ## Unreleased
 
-- Nothing yet.
+### Added
+
+- Added launcher-style capability skill projections as the export default:
+  generated `SKILL.md` files carry `omf_managed` frontmatter, direct the
+  target agent into the OMF lifecycle, and no longer restate the capability
+  goal. `--skill-style full` keeps the previous instruction-style projection.
+- Added `lifecycle_owner` and `agent_view` (skill style, direct-execution
+  flag) to the portability manifest and target overlays; validation reports
+  warn when a full-style projection allows direct execution.
+- Added `omf runtime install <runtime>` (controller skill + MCP config) and
+  `omf runtime conformance <runtime>` static adoption-surface checks.
+- Added MCP adoption tools: `omf_list_capabilities`,
+  `omf_inspect_capability`, and `omf_validate_capability`.
 
 ## 0.2.2 - 2026-06-10
 

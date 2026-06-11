@@ -279,7 +279,6 @@ def test_capability_import_writes_validation_report(tmp_path: Path) -> None:
             "codex",
             (
                 ".agents/skills/repo_issue_triage/SKILL.md",
-                ".agents/skills/repo_issue_triage/references/capability.md",
                 ".agents/skills/repo_issue_triage/references/context.policy.md",
                 ".agents/skills/repo_issue_triage/references/harness.md",
                 ".agents/skills/repo_issue_triage/references/task_contract.yaml",
@@ -291,8 +290,6 @@ def test_capability_import_writes_validation_report(tmp_path: Path) -> None:
             "claude_code",
             (
                 ".claude/skills/repo_issue_triage/SKILL.md",
-                ".claude/skills/repo_issue_triage/references/capability.md",
-                ".claude/skills/repo_issue_triage/references/examples.md",
                 ".claude/skills/repo_issue_triage/references/checks.md",
                 ".claude/skills/repo_issue_triage/references/task_contract.yaml",
                 ".claude/skills/repo_issue_triage/references/artifacts.yaml",
@@ -303,7 +300,6 @@ def test_capability_import_writes_validation_report(tmp_path: Path) -> None:
             "hermes",
             (
                 "skills/repo_issue_triage/SKILL.md",
-                "skills/repo_issue_triage/references/capability.md",
                 "skills/repo_issue_triage/references/harness.md",
                 "skills/repo_issue_triage/references/context.policy.md",
                 "skills/repo_issue_triage/references/task_contract.yaml",
@@ -315,7 +311,6 @@ def test_capability_import_writes_validation_report(tmp_path: Path) -> None:
             "pi",
             (
                 ".pi/skills/repo_issue_triage/SKILL.md",
-                ".pi/skills/repo_issue_triage/references/capability.md",
                 ".pi/skills/repo_issue_triage/references/context.policy.md",
                 ".pi/skills/repo_issue_triage/references/harness.md",
                 ".pi/skills/repo_issue_triage/references/task_contract.yaml",
@@ -328,7 +323,6 @@ def test_capability_import_writes_validation_report(tmp_path: Path) -> None:
             "odysseus",
             (
                 "data/skills/omf/repo_issue_triage/SKILL.md",
-                "data/skills/omf/repo_issue_triage/references/capability.md",
                 "data/skills/omf/repo_issue_triage/references/harness.md",
                 "data/skills/omf/repo_issue_triage/references/task_contract.yaml",
                 "data/skills/omf/repo_issue_triage/references/artifacts.yaml",
@@ -944,6 +938,8 @@ def test_runtime_export_assets_have_native_sections(tmp_path: Path) -> None:
             "hermes",
             "--target-model",
             "qwen3.6-27b",
+            "--skill-style",
+            "full",
             "--out",
             str(hermes_dir),
             "--capabilities-dir",
@@ -959,6 +955,8 @@ def test_runtime_export_assets_have_native_sections(tmp_path: Path) -> None:
             "codex",
             "--target-model",
             "gpt-5.5",
+            "--skill-style",
+            "full",
             "--out",
             str(codex_dir),
             "--capabilities-dir",
@@ -974,6 +972,8 @@ def test_runtime_export_assets_have_native_sections(tmp_path: Path) -> None:
             "pi",
             "--target-model",
             "local",
+            "--skill-style",
+            "full",
             "--out",
             str(pi_dir),
             "--capabilities-dir",
@@ -989,6 +989,8 @@ def test_runtime_export_assets_have_native_sections(tmp_path: Path) -> None:
             "odysseus",
             "--target-model",
             "local",
+            "--skill-style",
+            "full",
             "--out",
             str(odysseus_dir),
             "--capabilities-dir",
@@ -1004,6 +1006,8 @@ def test_runtime_export_assets_have_native_sections(tmp_path: Path) -> None:
             "generic",
             "--target-model",
             "local",
+            "--skill-style",
+            "full",
             "--out",
             str(generic_dir),
             "--capabilities-dir",
@@ -1741,3 +1745,131 @@ def make_manifest() -> CapabilityManifest:
             required_harness_pass_rate=0.9,
         ),
     )
+
+
+def test_capability_export_launcher_skill_omits_goal_by_default(
+    tmp_path: Path,
+) -> None:
+    caps = tmp_path / "capabilities"
+    export_dir = tmp_path / "exports" / "hermes-launcher"
+    write_manifest(make_manifest(), caps)
+
+    _run_ok(
+        [
+            "capability",
+            "export",
+            "repo_issue_triage",
+            "--target",
+            "hermes",
+            "--target-model",
+            "qwen3.6-27b",
+            "--out",
+            str(export_dir),
+            "--capabilities-dir",
+            str(caps),
+        ],
+    )
+
+    portability = yaml.safe_load(
+        (export_dir / "portability.yaml").read_text(encoding="utf-8"),
+    )
+    assert portability["lifecycle_owner"] == "omf"
+    assert portability["agent_view"]["skill_style"] == "launcher"
+    assert not portability["agent_view"]["direct_execution_allowed"]
+    skill = (
+        export_dir / "runtime" / "hermes" / "skills" / "repo_issue_triage" / "SKILL.md"
+    ).read_text(encoding="utf-8")
+    assert "omf_managed: true" in skill
+    assert "omf_schema: omf.runtime_skill.v0.1" in skill
+    assert "execution_mode: omf_managed" in skill
+    assert "direct_execution_allowed: false" in skill
+    assert "# OMF Capability Launcher: repo_issue_triage" in skill
+    assert "omf card repo_issue_triage" in skill
+    assert "omf capability validate repo_issue_triage --target hermes" in skill
+    assert "Do not execute the capability goal directly" in skill
+    # The goal stays in the OMF package; the launcher must not restate it.
+    assert "triage repo issue" not in skill
+    assert "## Procedure" not in skill
+    references = (
+        export_dir / "runtime" / "hermes" / "skills" / "repo_issue_triage"
+    ) / "references"
+    assert not references.joinpath("capability.md").exists()
+    assert references.joinpath("harness.md").exists()
+
+
+def test_capability_export_full_skill_style_keeps_instruction_projection(
+    tmp_path: Path,
+) -> None:
+    caps = tmp_path / "capabilities"
+    export_dir = tmp_path / "exports" / "hermes-full"
+    write_manifest(make_manifest(), caps)
+
+    _run_ok(
+        [
+            "capability",
+            "export",
+            "repo_issue_triage",
+            "--target",
+            "hermes",
+            "--target-model",
+            "qwen3.6-27b",
+            "--skill-style",
+            "full",
+            "--out",
+            str(export_dir),
+            "--capabilities-dir",
+            str(caps),
+        ],
+    )
+
+    portability = yaml.safe_load(
+        (export_dir / "portability.yaml").read_text(encoding="utf-8"),
+    )
+    assert portability["agent_view"]["skill_style"] == "full"
+    assert portability["agent_view"]["direct_execution_allowed"]
+    skill_dir = export_dir / "runtime" / "hermes" / "skills" / "repo_issue_triage"
+    skill = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
+    assert "## Trigger" in skill
+    assert "triage repo issue" in skill
+    assert "omf_managed" not in skill
+    assert skill_dir.joinpath("references", "capability.md").exists()
+
+
+def test_capability_export_launcher_skill_for_odysseus_keeps_frontmatter(
+    tmp_path: Path,
+) -> None:
+    caps = tmp_path / "capabilities"
+    export_dir = tmp_path / "exports" / "odysseus-launcher"
+    write_manifest(make_manifest(), caps)
+
+    _run_ok(
+        [
+            "capability",
+            "export",
+            "repo_issue_triage",
+            "--target",
+            "odysseus",
+            "--target-model",
+            "local",
+            "--out",
+            str(export_dir),
+            "--capabilities-dir",
+            str(caps),
+        ],
+    )
+
+    skill = (
+        export_dir
+        / "runtime"
+        / "odysseus"
+        / "data"
+        / "skills"
+        / "omf"
+        / "repo_issue_triage"
+        / "SKILL.md"
+    ).read_text(encoding="utf-8")
+    assert "omf_managed: true" in skill
+    assert "category: omf" in skill
+    assert "status: published" in skill
+    assert "# OMF Capability Launcher: repo_issue_triage" in skill
+    assert "triage repo issue" not in skill

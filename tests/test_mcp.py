@@ -517,3 +517,153 @@ def test_install_mcp_dry_run_writes_nothing(tmp_path: Path) -> None:
     assert not output.installed
     assert output.actions[0]["action"] == "plan_only"
     assert not home.exists()
+
+
+def test_mcp_adoption_tools_list_inspect_and_validate(tmp_path: Path) -> None:
+    sessions_dir = tmp_path / ".omf" / "sessions"
+    evidence_dir = tmp_path / ".omf" / "evidence"
+    eval_dir = tmp_path / ".omf" / "evals"
+    capabilities_dir = tmp_path / "capabilities"
+    target_capabilities_dir = tmp_path / "target-capabilities"
+    export_dir = tmp_path / ".omf" / "exports" / "adoption"
+    artifact_path = tmp_path / "output" / "report.json"
+    artifact_path.parent.mkdir(parents=True)
+    artifact_path.write_text('{"ok": true}', encoding="utf-8")
+
+    start = dispatch_tool(
+        "omf_start_session",
+        {
+            "runtime": "codex",
+            "model": "gpt-5.5",
+            "project_root": str(tmp_path),
+            "goal": "adopt portability",
+            "sessions_dir": str(sessions_dir),
+        },
+    )
+    session_id = cast("str", start["session_id"])
+    dispatch_tool(
+        "omf_record_input",
+        {
+            "session_id": session_id,
+            "path": "AGENTS.md",
+            "summary": "required project instructions",
+            "sessions_dir": str(sessions_dir),
+        },
+    )
+    dispatch_tool(
+        "omf_record_artifact",
+        {
+            "session_id": session_id,
+            "path": "output/report.json",
+            "summary": "final generated report",
+            "sessions_dir": str(sessions_dir),
+        },
+    )
+    dispatch_tool(
+        "omf_record_validation",
+        {
+            "session_id": session_id,
+            "summary": "artifact contract validation passed",
+            "command": "python validators/validate_contract.py",
+            "exit_code": 0,
+            "artifact_path": "output/report.json",
+            "sessions_dir": str(sessions_dir),
+        },
+    )
+    dispatch_tool(
+        "omf_finish_session",
+        {
+            "session_id": session_id,
+            "outcome": "success",
+            "sessions_dir": str(sessions_dir),
+        },
+    )
+    materialized = dispatch_tool(
+        "omf_materialize_session",
+        {
+            "session_id": session_id,
+            "sessions_dir": str(sessions_dir),
+            "evidence_dir": str(evidence_dir),
+        },
+    )
+    dispatch_tool(
+        "omf_promote_capability",
+        {
+            "evidence_id": cast("str", materialized["evidence_id"]),
+            "name": "adopt_portability",
+            "description": "Adopt portability capability safely.",
+            "evidence_dir": str(evidence_dir),
+            "eval_dir": str(eval_dir),
+            "capabilities_dir": str(capabilities_dir),
+        },
+    )
+
+    listed = dispatch_tool(
+        "omf_list_capabilities",
+        {
+            "capabilities_dir": str(capabilities_dir),
+            "eval_dir": str(eval_dir),
+        },
+    )
+    assert listed["count"] == 1
+    registry = cast("dict[str, object]", listed["registry"])
+    entries = cast("list[dict[str, object]]", registry["entries"])
+    assert entries[0]["name"] == "adopt_portability"
+
+    inspected = dispatch_tool(
+        "omf_inspect_capability",
+        {
+            "capability_name": "adopt_portability",
+            "capabilities_dir": str(capabilities_dir),
+        },
+    )
+    assert inspected["capability_name"] == "adopt_portability"
+    assert inspected["normalized_goal"] == "adopt portability"
+    assert inspected["runtime_name"] == "codex"
+    assert inspected["required_checks"]
+
+    exported = dispatch_tool(
+        "omf_export_capability",
+        {
+            "capability_name": "adopt_portability",
+            "target": "codex",
+            "target_model": "gpt-5.5",
+            "out": str(export_dir),
+            "capabilities_dir": str(capabilities_dir),
+            "evidence_dir": str(evidence_dir),
+        },
+    )
+    import_result = CliRunner().invoke(
+        app,
+        [
+            "capability",
+            "import",
+            cast("str", exported["export_path"]),
+            "--runtime",
+            "codex",
+            "--model",
+            "gpt-5.5",
+            "--capabilities-dir",
+            str(target_capabilities_dir),
+            "--eval-dir",
+            str(eval_dir),
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
+    )
+    assert import_result.exit_code == 0
+
+    validated = dispatch_tool(
+        "omf_validate_capability",
+        {
+            "capability_name": "adopt_portability",
+            "target": "codex",
+            "model": "gpt-5.5",
+            "capabilities_dir": str(target_capabilities_dir),
+            "eval_dir": str(eval_dir),
+            "evidence_dir": str(evidence_dir),
+        },
+    )
+    assert validated["capability_name"] == "adopt_portability"
+    assert validated["status"] in {"needs_validation", "needs_adaptation", "validated"}
+    assert validated["manual_run_required"] is True

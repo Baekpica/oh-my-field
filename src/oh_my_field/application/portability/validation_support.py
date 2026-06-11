@@ -61,6 +61,7 @@ def build_overlay(
         capability_name=report.capability_name,
         source=report.source,
         target=report.target,
+        direct_execution_allowed=portability.agent_view.direct_execution_allowed,
         status=report.status,
         tool_compatibility=report.tool_compatibility,
         portability_readiness_score=report.readiness.score,
@@ -126,7 +127,20 @@ def validation_report(
             else None
         ),
         status=status,
-        next_action=next_validation_action(status),
+        next_action=_next_action_with_launcher_warning(status, portability),
+    )
+
+
+def _next_action_with_launcher_warning(
+    status: ValidationStatus,
+    portability: PortabilityManifest,
+) -> str:
+    action = next_validation_action(status)
+    if not portability.agent_view.direct_execution_allowed:
+        return action
+    return (
+        "re-export with `--skill-style launcher` so the target agent enters "
+        f"the OMF lifecycle instead of executing the skill directly; then {action}"
     )
 
 

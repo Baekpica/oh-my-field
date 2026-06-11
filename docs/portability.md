@@ -10,6 +10,51 @@ OMF keeps runtime conversion separate from target validation.
 Static import validation can show that files and metadata are present, but it
 does not prove the target runtime can perform the task.
 
+## Skill Portability Is Not Capability Portability
+
+- Skill portability: one agent can read another agent's instructions.
+- Capability portability: one agent can re-run a validated unit of work
+  inside the OMF lifecycle on another runtime.
+
+OMF does not treat agent-native skills as capabilities. A skill is only an
+adapter surface that lets an agent enter the OMF lifecycle. The capability
+itself remains managed by OMF, including context materialization, runtime
+adaptation, harness execution, evidence collection, and report generation.
+Without an OMF report, a runtime execution is considered unverified.
+
+## Launcher Skill Projections
+
+`omf capability export` renders the per-capability skill as a **launcher** by
+default: the generated `SKILL.md` carries `omf_managed: true` frontmatter,
+tells the agent to enter the OMF lifecycle (`omf card`, `omf capability
+validate`, `omf session start … materialize`), and does not restate the
+capability goal or procedure. The goal stays in the OMF package and is
+inspected through `omf card <name>` or the `omf_inspect_capability` MCP tool.
+
+Pass `--skill-style full` to render the previous instruction-style projection
+instead. Full-style exports set `agent_view.direct_execution_allowed: true` in
+`portability.yaml`, and import/validation reports warn that the target agent
+can bypass the OMF lifecycle from the skill surface.
+
+## Runtime Conformance
+
+`omf runtime install <runtime>` installs the OMF controller (meta) skill plus
+the MCP client config for an agent runtime. `omf runtime conformance
+<runtime>` then statically checks the adoption surface:
+
+1. the OMF controller skill is installed,
+2. the MCP client config is present,
+3. the `omf` CLI is reachable on PATH,
+4. installed skills matching a known OMF capability are launchers
+   (`omf_managed` frontmatter) — unrelated native skills are ignored,
+5. imported targets for that runtime have been validated.
+
+A failed check returns `status: degraded` with a recommendation per check.
+Conformance never invokes the agent runtime; folding a real target run into
+the eval stays on `omf capability validate --run-command/--run-argv`. That is
+also the current pattern for OMF-led execution: pass the target agent CLI as
+the validation run command and gate `validated` status on its exit code.
+
 ## Contract Bundle
 
 Promotion and export carry the hardened run contract forward. The canonical

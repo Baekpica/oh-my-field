@@ -140,6 +140,14 @@ omf install mcp --client generic --scope export --out .omf/mcp.json
 omf mcp serve
 ```
 
+`omf runtime install <runtime>` combines both steps (controller skill + MCP
+config), and `omf runtime conformance <runtime>` verifies the adoption
+surface afterwards: controller skill installed, MCP config present, `omf` on
+PATH, capability skills installed as launchers, and imported targets
+validated. Exported per-capability skills are launcher-style by default --
+they direct the agent into the OMF lifecycle instead of restating the task
+(see [docs/portability.md](docs/portability.md)).
+
 Once activated, a human can say `/omf` or "track this task with OMF" and the
 agent records its work as an OMF session, materializes that session into
 immutable evidence, and proposes a reusable capability package. The MCP surface

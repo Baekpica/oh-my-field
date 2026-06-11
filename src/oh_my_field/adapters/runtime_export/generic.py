@@ -5,7 +5,11 @@ from oh_my_field.adapters.runtime_export.base import (
     RuntimeExportSummary,
     write_contract_bundle_files,
 )
-from oh_my_field.application.portability.rendering import skill_markdown, yaml_dump
+from oh_my_field.application.portability.rendering import (
+    launcher_skill_markdown,
+    skill_markdown,
+    yaml_dump,
+)
 from oh_my_field.domain.portability.models import ExportTarget
 from oh_my_field.infrastructure.portability.bundle_store import write_text_exclusive
 
@@ -18,9 +22,12 @@ class GenericRuntimeExportAdapter:
         request: RuntimeExportRequest,
     ) -> RuntimeExportSummary:
         runtime_path = request.bundle_path / "runtime" / self.target
+        launcher = request.portability.agent_view.skill_style == "launcher"
         write_text_exclusive(
             runtime_path / "skill.md",
-            skill_markdown(request.manifest),
+            launcher_skill_markdown(request.manifest, target_runtime=self.target)
+            if launcher
+            else skill_markdown(request.manifest),
         )
         write_text_exclusive(
             runtime_path / "context.policy.yaml",

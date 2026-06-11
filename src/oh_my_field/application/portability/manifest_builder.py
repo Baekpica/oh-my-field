@@ -2,6 +2,7 @@ from pathlib import Path
 
 from oh_my_field.domain.models import CapabilityManifest
 from oh_my_field.domain.portability.models import (
+    AgentView,
     CapabilityPortabilityExportRequest,
     PortabilityAdaptation,
     PortabilityCompatibility,
@@ -30,6 +31,10 @@ def portability_from_overlay(
         version=manifest.version,
         source=overlay.source,
         target=target,
+        agent_view=AgentView(
+            skill_style="full" if overlay.direct_execution_allowed else "launcher",
+            direct_execution_allowed=overlay.direct_execution_allowed,
+        ),
         compatibility=PortabilityCompatibility(
             required_tools=required_tools,
             optional_tools=optional_tools,
@@ -77,6 +82,10 @@ def build_portability_manifest(
         version=manifest.version,
         source=source,
         target=target,
+        agent_view=AgentView(
+            skill_style=request.skill_style,
+            direct_execution_allowed=request.skill_style == "full",
+        ),
         compatibility=PortabilityCompatibility(
             required_tools=required_tools,
             optional_tools=optional_tools,

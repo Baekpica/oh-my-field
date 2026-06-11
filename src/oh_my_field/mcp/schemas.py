@@ -20,6 +20,7 @@ from oh_my_field.domain.models import (
 from oh_my_field.domain.portability.models import (
     EvidenceInclusionMode,
     ExportTarget,
+    SkillStyle,
 )
 from oh_my_field.domain.session.models import AgentSessionEventType
 
@@ -106,6 +107,7 @@ class ExportCapabilityToolRequest(StrictModel):
     source_context_tokens: int | None = Field(default=None, ge=1)
     target_context_tokens: int | None = Field(default=None, ge=1)
     include_evidence: EvidenceInclusionMode = "summary"
+    skill_style: SkillStyle = "launcher"
     capabilities_dir: Path = DEFAULT_CAPABILITIES_DIR
     evidence_dir: Path = DEFAULT_EVIDENCE_DIR
 
@@ -114,6 +116,43 @@ class HealthToolRequest(StrictModel):
     capability_name: str | None = Field(default=None, pattern=CAPABILITY_NAME_PATTERN)
     capabilities_dir: Path = DEFAULT_CAPABILITIES_DIR
     eval_dir: Path = DEFAULT_EVAL_DIR
+
+
+class ListCapabilitiesToolRequest(StrictModel):
+    capability_name: str | None = Field(default=None, pattern=CAPABILITY_NAME_PATTERN)
+    capabilities_dir: Path = DEFAULT_CAPABILITIES_DIR
+    eval_dir: Path = DEFAULT_EVAL_DIR
+
+
+class InspectCapabilityToolRequest(StrictModel):
+    capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
+    capabilities_dir: Path = DEFAULT_CAPABILITIES_DIR
+
+
+class CapabilityInspectToolSummary(StrictModel):
+    capability_name: str
+    version: str
+    description: str
+    status: str
+    normalized_goal: str
+    runtime_name: str
+    runtime_model: str | None = None
+    runtime_tools: tuple[str, ...] = ()
+    required_context: tuple[str, ...] = ()
+    forbidden_context: tuple[str, ...] = ()
+    required_checks: tuple[str, ...] = ()
+    source_evidence_ids: tuple[str, ...] = ()
+
+
+class ValidateCapabilityToolRequest(StrictModel):
+    capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
+    target: ExportTarget
+    model: str | None = None
+    project: str | None = None
+    available_tools: tuple[str, ...] = ()
+    capabilities_dir: Path = DEFAULT_CAPABILITIES_DIR
+    eval_dir: Path = DEFAULT_EVAL_DIR
+    evidence_dir: Path = DEFAULT_EVIDENCE_DIR
 
 
 class McpToolDefinition(StrictModel):
