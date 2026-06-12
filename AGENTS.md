@@ -76,3 +76,11 @@ gates and conventions.
 ---
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
+
+## Cursor Cloud specific instructions
+
+- This repo is a **CLI tool, not a long-running service**: there is nothing to "serve". The "application" is the `omf` command, run via `uv run omf ...`. Standard setup, gate, and run commands are already documented in `docs/development.md`, `CLAUDE.md`, and `CONTRIBUTING.md` — use those.
+- Dependencies are managed by `uv`; the startup update script runs `uv sync --all-extras --dev`. `uv` installs to `~/.local/bin`, which must be on `PATH` (already handled in the default shell profile).
+- `uv run pyright` downloads a pinned Node via `nodeenv` on its first invocation in a fresh environment, so the first type-check run is slower and needs network access.
+- Tests are strict: `filterwarnings = ["error"]` means any warning fails the suite. Don't introduce deprecation warnings.
+- Smoke the full product loop with `omf init` → `import-run` → `promote` → `health` → `export` in a scratch dir (see `scripts/smoke-default-flow.sh`). `export` and risky commands are intentionally gated behind `--approve-export` / `--approve-command-risk`.
