@@ -108,7 +108,6 @@ def portability_readiness(
     )
 
 
-
 def _model_transfer_delta(source: str | None, target: str | None) -> float:
     if source is None or target is None:
         delta = MODEL_UNKNOWN_DELTA
@@ -140,6 +139,7 @@ def _model_transfer_delta(source: str | None, target: str | None) -> float:
         else:
             delta = MODEL_GENERIC_TRANSFER_DELTA
     return delta
+
 
 def model_delta(portability: PortabilityManifest) -> PortabilityModelDelta:
     source_model = portability.source.model

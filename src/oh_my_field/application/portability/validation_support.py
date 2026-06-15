@@ -274,8 +274,7 @@ def write_target_eval(
             name="portability_readiness",
             status="pass",
             message=(
-                f"portability readiness {report.readiness.score:.2f}; "
-                "advisory only"
+                f"portability readiness {report.readiness.score:.2f}; advisory only"
             ),
         ),
         *extra_checks,
