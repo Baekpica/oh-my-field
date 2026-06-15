@@ -244,8 +244,5 @@ def _next_commands(
     return (
         f"omf inspect import {name} {flags}",
         f"omf capability remap {name} {flags} --map source=target",
-        (
-            f"omf capability validate {name} {flags} "
-            "--run-command '<target-agent-run>'"
-        ),
+        (f"omf capability validate {name} {flags} --run-command '<target-agent-run>'"),
     )

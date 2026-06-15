@@ -493,12 +493,7 @@ def test_capability_export_writes_runtime_specific_skill_assets(
         runtime_dir / ".claude" / "skills" / "repo_issue_triage" / "SKILL.md",
         runtime_dir / "skills" / "repo_issue_triage" / "SKILL.md",
         runtime_dir / ".pi" / "skills" / "repo_issue_triage" / "SKILL.md",
-        runtime_dir
-        / "data"
-        / "skills"
-        / "omf"
-        / "repo_issue_triage"
-        / "SKILL.md",
+        runtime_dir / "data" / "skills" / "omf" / "repo_issue_triage" / "SKILL.md",
         runtime_dir / "skill.md",
     )
     skill_path = next(path for path in skill_candidates if path.exists())
