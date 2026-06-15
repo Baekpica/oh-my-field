@@ -4,6 +4,7 @@ import json
 import tarfile
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
 import pytest
 import yaml
@@ -12,6 +13,7 @@ from typer.testing import CliRunner
 
 from oh_my_field.cli import app
 from oh_my_field.integrity import append_integrity_link
+from oh_my_field.mcp.tools import dispatch_tool, mcp_tool_definitions
 from oh_my_field.models import (
     ArtifactContract,
     CapabilityManifest,
@@ -44,6 +46,7 @@ class CapabilityExportOutput(BaseModel):
     bundle_format: str
     evidence_mode: str
     evidence_proof_count: int
+    next_action: str
 
 
 class CapabilityImportOutput(BaseModel):
@@ -84,6 +87,7 @@ class CapabilityValidateOutput(BaseModel):
     target_run_executed: bool
     target_run_exit_code: int | None
     manual_run_required: bool
+    manual_run_reason: str | None
     next_commands: list[str]
 
 
@@ -102,6 +106,7 @@ class CapabilityRemapOutput(BaseModel):
     binding_count: int
     unresolved: list[str]
     complete: bool
+    next_action: str
 
 
 class CapabilityAdaptOutput(BaseModel):
@@ -112,6 +117,7 @@ class CapabilityAdaptOutput(BaseModel):
     instruction_variant: str
     context_variant: str
     required_human_review: bool
+    next_action: str
 
 
 def test_capability_export_writes_portability_bundle(tmp_path: Path) -> None:
@@ -888,6 +894,144 @@ def test_capability_validate_static_only_needs_real_run(tmp_path: Path) -> None:
     assert output.status == "needs_validation"
     assert not output.target_run_executed
     assert output.manual_run_required
+    # Pending must carry a real reason and a runnable suggestion, never the old
+    # unfillable placeholder, so an agent does not chase a phantom failure.
+    assert output.manual_run_reason is not None
+    assert all("<target-agent-run>" not in command for command in output.next_commands)
+    assert any(
+        "codex exec --full-auto < task.md" in command and "--run-command" in command
+        for command in output.next_commands
+    )
+
+
+def test_capability_import_next_commands_suggest_runnable_validate(
+    tmp_path: Path,
+) -> None:
+    source_caps = tmp_path / "source-capabilities"
+    target_caps = tmp_path / "target-capabilities"
+    export_dir = tmp_path / "exports" / "codex"
+    eval_dir = tmp_path / "evals"
+    evidence_dir = tmp_path / "evidence"
+    write_manifest(make_manifest(), source_caps)
+    _run_ok(
+        [
+            "capability",
+            "export",
+            "repo_issue_triage",
+            "--target",
+            "codex",
+            "--target-model",
+            "gpt-5.5",
+            "--out",
+            str(export_dir),
+            "--capabilities-dir",
+            str(source_caps),
+        ],
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "capability",
+            "import",
+            str(export_dir),
+            "--runtime",
+            "codex",
+            "--model",
+            "gpt-5.5",
+            "--capabilities-dir",
+            str(target_caps),
+            "--eval-dir",
+            str(eval_dir),
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = CapabilityImportOutput.model_validate_json(result.stdout)
+    # The final suggested command must be able to reach `validated`: it carries a
+    # real --run-command suggestion, not the bare validate that dead-ends at
+    # needs_validation, and never the old unfillable placeholder.
+    assert all("<target-agent-run>" not in command for command in output.next_commands)
+    assert any(
+        "--run-command" in command and "codex exec --full-auto < task.md" in command
+        for command in output.next_commands
+    )
+
+
+def test_mcp_tools_cover_full_port_lifecycle(tmp_path: Path) -> None:
+    names = {tool["name"] for tool in mcp_tool_definitions()}
+    assert {
+        "omf_import_capability",
+        "omf_remap_capability",
+        "omf_adapt_capability",
+        "omf_explain",
+        "omf_card",
+    } <= names
+
+    source_caps = tmp_path / "source-capabilities"
+    target_caps = tmp_path / "target-capabilities"
+    export_dir = tmp_path / "exports" / "codex"
+    eval_dir = tmp_path / "evals"
+    evidence_dir = tmp_path / "evidence"
+    write_manifest(make_manifest(), source_caps)
+
+    exported = dispatch_tool(
+        "omf_export_capability",
+        {
+            "capability_name": "repo_issue_triage",
+            "target": "codex",
+            "target_model": "gpt-5.5",
+            "out": str(export_dir),
+            "capabilities_dir": str(source_caps),
+            "evidence_dir": str(evidence_dir),
+        },
+    )
+
+    imported = dispatch_tool(
+        "omf_import_capability",
+        {
+            "bundle_path": str(exported["export_path"]),
+            "runtime": "codex",
+            "model": "gpt-5.5",
+            "available_tools": ["shell"],
+            "capabilities_dir": str(target_caps),
+            "eval_dir": str(eval_dir),
+            "evidence_dir": str(evidence_dir),
+            "import_dir": str(tmp_path / "imports"),
+        },
+    )
+    assert imported["capability_name"] == "repo_issue_triage"
+
+    validated = dispatch_tool(
+        "omf_validate_capability",
+        {
+            "capability_name": "repo_issue_triage",
+            "target": "codex",
+            "model": "gpt-5.5",
+            "available_tools": ["shell"],
+            "capabilities_dir": str(target_caps),
+            "eval_dir": str(eval_dir),
+            "evidence_dir": str(evidence_dir),
+        },
+    )
+    # MCP validation is record-only: it never executes a target run, so it stays
+    # pending and routes the agent to the risk-gated CLI run-command path.
+    assert validated["status"] == "needs_validation"
+    assert validated["manual_run_required"] is True
+    next_commands = cast("tuple[str, ...]", validated["next_commands"])
+    assert any("--run-command" in command for command in next_commands)
+
+    card = dispatch_tool(
+        "omf_card",
+        {
+            "capability_name": "repo_issue_triage",
+            "capabilities_dir": str(target_caps),
+        },
+    )
+    assert card["capability_name"] == "repo_issue_triage"
+    assert card["content"]
 
 
 def test_capability_validate_missing_expected_artifact_needs_adaptation(

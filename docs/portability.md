@@ -28,6 +28,15 @@ Target validation reports use v0.2 schemas and separate status from risk:
 `needs_adaptation` now means at least one hard blocker must be resolved.
 A low portability risk score by itself does not block `validated`.
 
+`needs_validation` is the neutral "no target run has been observed yet" state —
+it is pending, not a failure. Reach `validated` by passing a real target run via
+`omf capability validate --run-command "..."`. The `import` and `validate`
+`next_commands` suggest a conventional run command for the target runtime (and an
+honest `<your runtime run command>` placeholder for runtimes without a documented
+convention), and the report's `target_run.manual_run_reason` states why a run is
+still required — so an agent never has to guess why a target is not yet
+`validated`.
+
 ## Skill Portability Is Not Capability Portability
 
 - Skill portability: one agent can read another agent's instructions.

@@ -80,6 +80,10 @@ def export_capability_package(
         bundle_format=request.bundle_format,
         evidence_mode=request.include_evidence,
         evidence_proof_count=len(pack.proofs),
+        next_action=(
+            f"import on the target: omf capability import {package_path} "
+            f"--runtime {request.target} --validate"
+        ),
     )
 
 

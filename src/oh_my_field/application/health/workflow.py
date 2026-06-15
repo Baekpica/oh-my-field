@@ -204,7 +204,10 @@ def next_action_for_capability(
     elif portability.import_count and validation == "needs_adaptation":
         action = "adapt target import before marking portable"
     elif portability.import_count and validation == "needs_validation":
-        action = f"run `omf capability validate {manifest.name}` on the target"
+        action = (
+            f"run `omf capability validate {manifest.name} --run-command ...` "
+            "to observe a target run (pending, not a failure)"
+        )
     elif portability.export_status == "not_exported" and portability.import_count == 0:
         action = "export to a target runtime and validate portability"
     elif manifest.status == "candidate":

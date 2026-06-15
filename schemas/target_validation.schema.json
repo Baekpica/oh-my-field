@@ -419,6 +419,18 @@
           "title": "Expected Artifacts",
           "type": "array"
         },
+        "manual_run_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Manual Run Reason"
+        },
         "manual_run_required": {
           "default": true,
           "title": "Manual Run Required",

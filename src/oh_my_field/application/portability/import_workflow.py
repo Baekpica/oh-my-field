@@ -10,6 +10,7 @@ from oh_my_field.application.portability.validation_support import (
 )
 from oh_my_field.domain.models import CapabilityManifest
 from oh_my_field.domain.portability.errors import PortabilityImportExistsError
+from oh_my_field.domain.portability.lifecycle import validate_command_hint
 from oh_my_field.domain.portability.models import (
     CapabilityPortabilityImportRequest,
     CapabilityPortabilityImportSummary,
@@ -173,5 +174,5 @@ def _next_commands(name: str, report: TargetValidationReport) -> tuple[str, ...]
     ]
     if report.context_remap_required:
         commands.append(f"omf capability remap {name} {flags} --map source=target")
-    commands.append(f"omf capability validate {name} {flags}")
+    commands.append(validate_command_hint(name, report.target, flags))
     return tuple(commands)

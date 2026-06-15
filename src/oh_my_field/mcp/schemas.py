@@ -7,6 +7,7 @@ from oh_my_field.domain.layout import (
     DEFAULT_CAPABILITIES_DIR,
     DEFAULT_EVAL_DIR,
     DEFAULT_EVIDENCE_DIR,
+    DEFAULT_LEARNING_PATCH_DIR,
     DEFAULT_MCP_CONFIG_PATH,
     DEFAULT_SESSIONS_DIR,
 )
@@ -21,6 +22,7 @@ from oh_my_field.domain.portability.models import (
     EvidenceInclusionMode,
     ExportBundleFormat,
     ExportTarget,
+    ImportCollisionPolicy,
     SkillStyle,
 )
 from oh_my_field.domain.session.models import AgentSessionEventType
@@ -155,6 +157,66 @@ class ValidateCapabilityToolRequest(StrictModel):
     capabilities_dir: Path = DEFAULT_CAPABILITIES_DIR
     eval_dir: Path = DEFAULT_EVAL_DIR
     evidence_dir: Path = DEFAULT_EVIDENCE_DIR
+    # MCP validation is RECORD-ONLY. It deliberately exposes no executable
+    # target-run arguments (run_command/run_argv) and no risk/secret-loosening
+    # flags (approve_command_risk/allow_env). MCP tool arguments are
+    # prompt-controlled, so accepting a command would let a client make the
+    # server spawn arbitrary local processes — even uncategorized interpreters
+    # like `python -c ...` or `bash -c ...` slip past the risk heuristic. A real
+    # target run that reaches `validated` must go through the risk-gated,
+    # out-of-band CLI path (`omf capability validate --run-command`); the
+    # validate result's next_commands carry that exact command to run.
+
+
+class ImportCapabilityToolRequest(StrictModel):
+    bundle_path: Path
+    runtime: ExportTarget | None = None
+    model: str | None = None
+    project: str | None = None
+    validate_import: bool = False
+    available_tools: tuple[str, ...] = ()
+    as_name: str | None = Field(default=None, pattern=CAPABILITY_NAME_PATTERN)
+    namespace: str | None = Field(default=None, pattern=CAPABILITY_NAME_PATTERN)
+    if_exists: ImportCollisionPolicy = "fail"
+    import_dir: Path = Path(".omf/imports")
+    capabilities_dir: Path = DEFAULT_CAPABILITIES_DIR
+    eval_dir: Path = DEFAULT_EVAL_DIR
+    evidence_dir: Path = DEFAULT_EVIDENCE_DIR
+
+
+class RemapCapabilityToolRequest(StrictModel):
+    capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
+    target: ExportTarget
+    model: str | None = None
+    target_project: str | None = None
+    mappings: dict[str, str] = Field(default_factory=dict)
+    unresolved: tuple[str, ...] = ()
+    capabilities_dir: Path = DEFAULT_CAPABILITIES_DIR
+
+
+class AdaptCapabilityToolRequest(StrictModel):
+    capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
+    target: ExportTarget
+    model: str | None = None
+    instruction_variant: Literal["base", "compact"] | None = None
+    context_variant: Literal["full", "compressed"] | None = None
+    require_human_review: bool | None = None
+    capabilities_dir: Path = DEFAULT_CAPABILITIES_DIR
+
+
+class ExplainToolRequest(StrictModel):
+    target_type: Literal["capability", "harness", "learning-patch"]
+    target_id: str = Field(min_length=1)
+    rule: str | None = None
+    check: str | None = None
+    capabilities_dir: Path = DEFAULT_CAPABILITIES_DIR
+    learning_patch_dir: Path = DEFAULT_LEARNING_PATCH_DIR
+
+
+class CardToolRequest(StrictModel):
+    capability_name: str = Field(pattern=CAPABILITY_NAME_PATTERN)
+    capabilities_dir: Path = DEFAULT_CAPABILITIES_DIR
+    write: bool = False
 
 
 class McpToolDefinition(StrictModel):
