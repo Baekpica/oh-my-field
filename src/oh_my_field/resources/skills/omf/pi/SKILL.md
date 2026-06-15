@@ -39,7 +39,9 @@ Activate this skill when the user says any of the following:
 - Before using an OMF CLI command from memory, run `omf --help` and the
   relevant subcommand help, such as `omf session --help`,
   `omf session event --help`, `omf promote --help`, and
-  `omf capability export --help`.
+  `omf capability export --help`. For portability work, also check
+  `omf capability import --help`, `omf capability unpack --help`,
+  `omf capability validate --help`, and `omf verify package --help`.
 - Prefer structured MCP tools for portable records: `omf_record_input`,
   `omf_record_artifact`, `omf_record_validation`, and `omf_record_decision`.
 - If MCP is unavailable, record equivalent CLI events: `context` for inputs,
@@ -57,3 +59,6 @@ Activate this skill when the user says any of the following:
 4. `omf session materialize <session_id>`
 5. `omf promote <evidence_id> --name <capability_name> --description "..."`
 6. `omf capability export <capability_name> --target <runtime> --out <path>`
+7. `omf verify package <path>.omfcap.tar.gz`
+8. `omf capability import <path>.omfcap.tar.gz --runtime <runtime> --project <target_project> --validate`
+9. `omf capability validate <capability_name> --target <runtime> --run-command "..."`

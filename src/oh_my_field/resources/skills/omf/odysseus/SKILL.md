@@ -28,13 +28,18 @@ capability, make a workflow reusable, or export a capability.
 4. Finish the session with success, failure, or unknown.
 5. Materialize evidence and promote only workflows that are meaningfully
    reusable.
+6. For cross-runtime use, export the canonical `.omfcap.tar.gz` package, verify
+   it, import it into the target project, then validate with target evidence or
+   a target run.
 
 ## CLI And MCP Discovery
 
 - Before using an OMF CLI command from memory, run `omf --help` and the
   relevant subcommand help, such as `omf session --help`,
   `omf session event --help`, `omf promote --help`, and
-  `omf capability export --help`.
+  `omf capability export --help`. For portability work, also check
+  `omf capability import --help`, `omf capability unpack --help`,
+  `omf capability validate --help`, and `omf verify package --help`.
 - Prefer structured MCP tools for portable records: `omf_record_input`,
   `omf_record_artifact`, `omf_record_validation`, and `omf_record_decision`.
 - If MCP is unavailable, record equivalent CLI events: `context` for inputs,
@@ -48,6 +53,8 @@ capability, make a workflow reusable, or export a capability.
 
 - Do not treat OMF as the Odysseus runtime.
 - Do not run risky commands through OMF unless the user explicitly approves.
+- Do not treat copying `data/skills/omf/<capability>/` as an OMF import; it
+  only installs the native launcher projection.
 
 ## Verification
 

@@ -137,13 +137,16 @@ are distinct: exported ≠ imported ≠ validated (see
 [portability.md](portability.md)).
 
 ```bash
-# Convert the canonical package into a target runtime bundle.
+# Export the canonical capability package and target runtime projection.
 omf capability export repo_issue_triage \
   --target hermes \
   --out .omf/exports/repo_issue_triage-hermes
 
-# Materialize the bundle in a target project (static --validate check).
-omf capability import .omf/exports/repo_issue_triage-hermes \
+# Verify the archive manifest before handing it to another runtime.
+omf verify package .omf/exports/repo_issue_triage-hermes.omfcap.tar.gz
+
+# Import the package into a target project (static --validate check).
+omf capability import .omf/exports/repo_issue_triage-hermes.omfcap.tar.gz \
   --runtime hermes \
   --validate
 

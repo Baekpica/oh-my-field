@@ -57,7 +57,7 @@ Initial tool surface:
 | `omf_finish_session` | Mark the session outcome. |
 | `omf_materialize_session` | Convert a session into immutable evidence. |
 | `omf_promote_capability` | Promote evidence into a capability package; strict is true by default. |
-| `omf_export_capability` | Export a capability to Codex, Claude Code, Hermes, Pi, Odysseus, or generic assets. |
+| `omf_export_capability` | Export a canonical `.omfcap.tar.gz` package plus Codex, Claude Code, Hermes, Pi, Odysseus, or generic projection assets. |
 | `omf_health` | Read capability health and next action. |
 | `omf_list_capabilities` | List capabilities in the local OMF registry. |
 | `omf_inspect_capability` | Inspect goal, context policy, harness checks, and runtime assumptions. |
@@ -68,6 +68,11 @@ Prefer `omf_record_input`, `omf_record_artifact`, `omf_record_validation`, and
 role of the data. Those structured calls give `session materialize`, `promote`,
 and `export` enough information to infer task, artifact, validation, and replay
 contracts.
+
+Portability MCP responses include package fields and `next_commands`. Agents
+should follow those commands instead of treating copied projection files as an
+import; target projects still need `omf capability import <package> --runtime
+<runtime> --validate`.
 
 OMF keeps its safety boundary explicit: the MCP server records and packages
 agent work, but it does not sniff terminal output or run arbitrary risky

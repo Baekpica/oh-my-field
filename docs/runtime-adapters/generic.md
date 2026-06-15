@@ -19,6 +19,9 @@ registered through `oh_my_field.adapters.runtime_export`.
 
 Use the generic export when the target runtime does not have a dedicated OMF
 adapter. Place the files in the target project's capability or runbook folder.
+These files are only a runbook projection. The target project still needs
+`omf capability import` against the canonical package before a run can be
+validated.
 
 ## Manual Import
 
@@ -27,7 +30,9 @@ omf capability export repo_issue_triage \
   --target generic \
   --out .omf/exports/repo_issue_triage-generic
 
-omf capability import .omf/exports/repo_issue_triage-generic \
+omf verify package .omf/exports/repo_issue_triage-generic.omfcap.tar.gz
+
+omf capability import .omf/exports/repo_issue_triage-generic.omfcap.tar.gz \
   --runtime generic \
   --project target-repo \
   --validate
@@ -44,8 +49,8 @@ omf capability validate repo_issue_triage \
 
 ## Known Limitations
 
-Generic bundles do not encode runtime-specific memory or profile behavior. The
-target owner must map the files into the local agent workflow.
+Generic projections do not encode runtime-specific memory or profile behavior.
+The target owner must map the files into the local agent workflow.
 
 ## Target Run Example
 

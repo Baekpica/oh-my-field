@@ -30,7 +30,7 @@ omf session finish <session_id> --outcome success|failure|unknown
 omf session materialize <session_id>
 omf promote <evidence_id> --name <capability_name> --description "..."
 omf capability export <capability_name> --target <runtime> --out <path>
-omf capability import <bundle_path> --runtime <runtime> --validate
+omf capability import <package.omfcap.tar.gz> --runtime <runtime> --validate
 omf capability validate <capability_name> --target <runtime> --run-command "..."
 ```
 
@@ -97,7 +97,8 @@ Runtime-specific files are projections:
 ```text
 canonical capability package
   -> capability export
-  -> runtime bundle
+  -> canonical .omfcap.tar.gz archive
+  -> optional runtime projection
   -> capability import
   -> target overlay
   -> capability validate
@@ -106,6 +107,8 @@ canonical capability package
 
 Exported and imported are not the same as validated. A capability becomes
 portable only after at least one target import passes a real target run.
+Copying a runtime projection only installs a launcher; every runtime should
+enter the target project through `omf capability import`.
 
 ## Safety Boundary
 

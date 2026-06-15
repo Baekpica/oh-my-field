@@ -15,6 +15,7 @@ from oh_my_field.domain.layout import (
     DEFAULT_REPLAYS_DIR,
     DEFAULT_REVIEW_DIR,
 )
+from oh_my_field.infrastructure.portability.bundle_store import verify_package_manifest
 from oh_my_field.integrity import model_sha256
 from oh_my_field.models import (
     ArtifactIntegrityLink,
@@ -48,6 +49,7 @@ type VerifyTargetType = Literal[
     "reflection",
     "review",
     "export",
+    "package",
 ]
 
 
@@ -71,6 +73,8 @@ class VerifyRequest(StrictModel):
 
 
 def verify_artifact(request: VerifyRequest) -> IntegrityVerificationResult:
+    if request.target_type == "package":
+        return _verify_package(request.target_id)
     artifact_type, artifact = _load_target(request)
     checks = (
         *_self_checks(artifact_type, request.target_id, artifact),
@@ -122,6 +126,28 @@ def _load_target(request: VerifyRequest) -> tuple[str, BaseModel]:
         artifact_type = "export"
         artifact = load_export_bundle(request.target_id, request.export_dir)
     return artifact_type, artifact
+
+
+def _verify_package(target_id: str) -> IntegrityVerificationResult:
+    ok, errors = verify_package_manifest(Path(target_id))
+    checks = (
+        IntegrityVerificationCheck(
+            artifact_type="package",
+            artifact_id=target_id,
+            status="pass" if ok else "fail",
+            message=(
+                "package manifest hashes match"
+                if ok
+                else "; ".join(errors) or "package manifest verification failed"
+            ),
+        ),
+    )
+    return IntegrityVerificationResult(
+        target_type="package",
+        target_id=target_id,
+        status="pass" if ok else "fail",
+        checks=checks,
+    )
 
 
 def _self_checks(

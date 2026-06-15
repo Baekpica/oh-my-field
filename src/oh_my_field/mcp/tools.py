@@ -203,6 +203,7 @@ def _export_capability(arguments: object) -> StrictModel:
             target_context_tokens=request.target_context_tokens,
             include_evidence=request.include_evidence,
             skill_style=request.skill_style,
+            bundle_format=request.bundle_format,
             out=request.out,
             capabilities_dir=request.capabilities_dir,
             evidence_dir=request.evidence_dir,

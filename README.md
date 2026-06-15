@@ -72,10 +72,11 @@ capability package
         ├── health / verify / eval / review
         ├── learn / reflect / harden
         ▼
-runtime export bundle
+canonical .omfcap.tar.gz archive
         │
+        ├── optional runtime projection
         ▼
-target project import
+OMF target project import
         │
         ▼
 target validation
@@ -145,8 +146,9 @@ config), and `omf runtime conformance <runtime>` verifies the adoption
 surface afterwards: controller skill installed, MCP config present, `omf` on
 PATH, capability skills installed as launchers, and imported targets
 validated. Exported per-capability skills are launcher-style by default --
-they direct the agent into the OMF lifecycle instead of restating the task
-(see [docs/portability.md](docs/portability.md)).
+they direct the agent into the OMF lifecycle, starting with
+`omf capability import` for the canonical `.omfcap.tar.gz` package, instead of
+restating the task (see [docs/portability.md](docs/portability.md)).
 
 Once activated, a human can say `/omf` or "track this task with OMF" and the
 agent records its work as an OMF session, materializes that session into
@@ -274,9 +276,9 @@ capabilities/<name>/
     validate_contract.py
 ```
 
-The contract bundle is generated from hardened evidence and is copied into
-runtime exports so target agents can see the task, artifact, validation, and
-replay contract without reconstructing it from prose.
+The contract files are generated from hardened evidence and are copied into
+runtime projections so target agents can see the task, artifact, validation,
+and replay contract without reconstructing it from prose.
 
 That per-capability `README.md` is the capability *card* — purpose, source
 evidence, harness summary, portability and review status — and is distinct from
@@ -297,7 +299,7 @@ capabilities/
 ```
 
 Runtime-specific files (Codex instructions, Claude Code memory,
-Hermes/Pi/Odysseus skill projections, and generic skill bundles) are
+Hermes/Pi/Odysseus skill projections, and generic runbook projections) are
 **projections** of the package, not the source of truth.
 
 `.omf/config.yaml` records local field defaults and `.omf/registry.yaml` is local
@@ -329,10 +331,10 @@ omf dataset-export <capability_name> --dataset-type all
 | Session tracking | `session start`, `session event`, `session finish`, `session materialize`, `session suggest-capability` | Record active agent work as structured evidence |
 | Evidence ingestion | `import-run`, `capture` | Import existing logs, artifacts, diffs, and test results |
 | Capability build | `promote`, `health`, `harden`, `card`, `registry` | Create and inspect reusable capability packages |
-| Verification | `replay`, `eval`, `verify`, `regression-case` | Check whether a capability still satisfies its harness |
+| Verification | `replay`, `eval`, `verify`, `verify package`, `regression-case` | Check whether a capability still satisfies its harness or package manifest |
 | Review and learning | `review`, `approve`, `reject`, `revise`, `learn`, `learn-patch`, `reflect` | Turn feedback and failures into accepted patches |
 | Pipeline | `run`, `resume`, `rollback`, `status` | Drive and resume the full checkpointed pipeline |
-| Portability | `capability export`, `capability import`, `capability validate`, `capability remap`, `capability adapt`, `export` | Move capabilities across runtimes and projects |
+| Portability | `capability export`, `capability unpack`, `capability import`, `capability validate`, `capability remap`, `capability adapt`, `export` | Move capabilities across runtimes and projects |
 | Operations | `dashboard`, `inspect`, `diff`, `explain` (`why`), `context`, `dataset-export` | Inspect, explain, compare, and export accumulated evidence |
 
 ## Portability Lifecycle
@@ -340,8 +342,10 @@ omf dataset-export <capability_name> --dataset-type all
 A capability moves across runtimes through four **distinct** states — keep them
 separate, because "can be exported" is not "works on the target":
 
-- **Exported**: converted into a target runtime bundle (`omf capability export`).
-- **Imported**: bundle materialized in a target project (`omf capability import`).
+- **Exported**: packaged as a canonical `.omfcap.tar.gz` archive with optional
+  target runtime projections (`omf capability export`).
+- **Imported**: the archive or directory package has been materialized into a
+  target project's OMF registry (`omf capability import`).
 - **Validated**: an actual target run passed under the recorded target
   runtime/model/project (`omf capability validate --run-command ...`). Static
   `import --validate` alone leaves the import at `needs_validation`.
@@ -353,12 +357,18 @@ separately, and lists each imported target with its own status.
 ```bash
 omf capability export repo_issue_triage --target hermes \
   --out .omf/exports/repo_issue_triage-hermes
-omf capability import .omf/exports/repo_issue_triage-hermes \
+omf verify package .omf/exports/repo_issue_triage-hermes.omfcap.tar.gz
+omf capability import .omf/exports/repo_issue_triage-hermes.omfcap.tar.gz \
   --runtime hermes --validate
 omf capability validate repo_issue_triage --target hermes \
   --run-command "hermes-code --profile target --skill repo_issue_triage" \
   --approve-command-risk
 ```
+
+Copying a generated Codex, Claude Code, Hermes, Pi, Odysseus, or generic
+projection into a runtime only makes that runtime discover a launcher. It is
+not an import; every target run should enter through `omf capability import`
+so OMF can create registry state, import reports, and follow-up commands.
 
 The full cross-runtime walkthrough (Codex/gpt-5.5 → Hermes/qwen3.6-27B, redacted
 evidence transfer, overlays) is in [docs/portability.md](docs/portability.md)

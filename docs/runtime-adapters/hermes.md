@@ -34,6 +34,11 @@ omf runtime conformance hermes    # verify the adoption surface
 Copy `skills/<capability>/` into the target Hermes skill directory. Keep the OMF
 export directory as provenance until the target run has been validated.
 
+Hermes profile layouts can vary, so the generated skill is only the native
+launcher projection. It does not import the capability into the target project.
+Run `omf capability import` against the canonical package before using the
+launcher for a target run.
+
 ## Manual Import
 
 ```bash
@@ -41,7 +46,9 @@ omf capability export repo_issue_triage \
   --target hermes \
   --out .omf/exports/repo_issue_triage-hermes
 
-omf capability import .omf/exports/repo_issue_triage-hermes \
+omf verify package .omf/exports/repo_issue_triage-hermes.omfcap.tar.gz
+
+omf capability import .omf/exports/repo_issue_triage-hermes.omfcap.tar.gz \
   --runtime hermes \
   --project target-repo \
   --validate

@@ -19,6 +19,7 @@ from oh_my_field.domain.models import (
 )
 from oh_my_field.domain.portability.models import (
     EvidenceInclusionMode,
+    ExportBundleFormat,
     ExportTarget,
     SkillStyle,
 )
@@ -108,6 +109,7 @@ class ExportCapabilityToolRequest(StrictModel):
     target_context_tokens: int | None = Field(default=None, ge=1)
     include_evidence: EvidenceInclusionMode = "summary"
     skill_style: SkillStyle = "launcher"
+    bundle_format: ExportBundleFormat = "archive"
     capabilities_dir: Path = DEFAULT_CAPABILITIES_DIR
     evidence_dir: Path = DEFAULT_EVIDENCE_DIR
 

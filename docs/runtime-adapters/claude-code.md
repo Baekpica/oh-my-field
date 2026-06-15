@@ -20,6 +20,11 @@ Copy the generated `.claude/skills/<capability>/` directory into the target
 Claude Code project root, or into the user-level skill directory if the
 capability is intended to be global.
 
+Skill installation only makes Claude Code discover the launcher. It does not
+import the capability into the target project. Run `omf capability import`
+against the canonical package first, then review project memory conflicts before
+the target run.
+
 ## Manual Import
 
 ```bash
@@ -27,7 +32,9 @@ omf capability export repo_issue_triage \
   --target claude_code \
   --out .omf/exports/repo_issue_triage-claude
 
-omf capability import .omf/exports/repo_issue_triage-claude \
+omf verify package .omf/exports/repo_issue_triage-claude.omfcap.tar.gz
+
+omf capability import .omf/exports/repo_issue_triage-claude.omfcap.tar.gz \
   --runtime claude_code \
   --project target-repo \
   --validate

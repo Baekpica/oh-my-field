@@ -17,6 +17,7 @@ type ValidationStatus = Literal["needs_validation", "needs_adaptation", "validat
 type ToolCompatibilityStatus = Literal["pass", "partial", "unknown"]
 type EvidenceInclusionMode = Literal["none", "summary", "redacted", "full"]
 type ImportCollisionPolicy = Literal["fail", "merge", "version", "overwrite"]
+type ExportBundleFormat = Literal["archive", "dir"]
 type SkillStyle = Literal["launcher", "full"]
 
 PORTABILITY_SCHEMA_VERSION = "omf.portability.v0.1"
@@ -257,15 +258,19 @@ class CapabilityPortabilityExportRequest(StrictModel):
     evidence_dir: Path = DEFAULT_EVIDENCE_DIR
     include_evidence: EvidenceInclusionMode = "summary"
     skill_style: SkillStyle = "launcher"
+    bundle_format: ExportBundleFormat = "archive"
 
 
 class CapabilityPortabilityExportSummary(StrictModel):
     capability_name: str
     export_path: str
+    package_path: str
+    unpacked_path: str | None = None
     portability_path: str
     runtime_export_path: str
     target_runtime: ExportTarget
     target_model: str | None = None
+    bundle_format: ExportBundleFormat = "archive"
     evidence_mode: EvidenceInclusionMode = "summary"
     evidence_proof_count: int = Field(default=0, ge=0)
 
@@ -281,6 +286,7 @@ class CapabilityExportRecord(StrictModel):
 
 class CapabilityPortabilityImportRequest(StrictModel):
     bundle_path: Path
+    import_dir: Path = Path(".omf/imports")
     capabilities_dir: Path
     eval_dir: Path
     evidence_dir: Path
@@ -296,6 +302,8 @@ class CapabilityPortabilityImportRequest(StrictModel):
 
 class CapabilityPortabilityImportSummary(StrictModel):
     capability_name: str
+    package_path: str
+    unpacked_path: str | None = None
     imported_package_path: str
     validation_report_path: str
     overlay_path: str
@@ -306,6 +314,7 @@ class CapabilityPortabilityImportSummary(StrictModel):
     eval_path: str | None = None
     failure_evidence_id: str | None = None
     failure_evidence_path: str | None = None
+    next_commands: tuple[str, ...] = ()
 
 
 class CapabilityValidationRequest(StrictModel):
@@ -336,6 +345,9 @@ class CapabilityValidationRequest(StrictModel):
 
 class CapabilityValidationSummary(StrictModel):
     capability_name: str
+    package_path: str | None = None
+    unpacked_path: str | None = None
+    imported_package_path: str
     overlay_path: str
     validation_report_path: str
     status: ValidationStatus
@@ -348,6 +360,7 @@ class CapabilityValidationSummary(StrictModel):
     target_run_executed: bool = False
     target_run_exit_code: int | None = None
     manual_run_required: bool = True
+    next_commands: tuple[str, ...] = ()
 
 
 class RemapBinding(StrictModel):

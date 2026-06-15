@@ -21,6 +21,10 @@ Codex project root, or into the user-level skill directory if the capability is
 intended to be global. Keep the OMF export directory as provenance until the
 target run has been validated.
 
+Skill installation only makes Codex discover the launcher. It does not import
+the capability into the target project. Run `omf capability import` against the
+canonical package before using the launcher for a target run.
+
 ## Manual Import
 
 ```bash
@@ -28,7 +32,9 @@ omf capability export repo_issue_triage \
   --target codex \
   --out .omf/exports/repo_issue_triage-codex
 
-omf capability import .omf/exports/repo_issue_triage-codex \
+omf verify package .omf/exports/repo_issue_triage-codex.omfcap.tar.gz
+
+omf capability import .omf/exports/repo_issue_triage-codex.omfcap.tar.gz \
   --runtime codex \
   --project target-repo \
   --validate

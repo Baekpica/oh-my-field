@@ -54,18 +54,33 @@ omf install mcp --client pi
 omf install mcp --client pi --scope project --project /target/project
 ```
 
+Pi skill copy or `pi install` only installs the native launcher projection. It
+does not import the capability into OMF's target registry. Run
+`omf capability import` against the canonical package before validating a Pi
+target run.
+
 ## Manual Import
 
 ```bash
-omf capability export repo_issue_triage   --target pi   --out .omf/exports/repo_issue_triage-pi
+omf capability export repo_issue_triage \
+  --target pi \
+  --out .omf/exports/repo_issue_triage-pi
 
-omf capability import .omf/exports/repo_issue_triage-pi   --runtime pi   --project target-repo   --validate
+omf verify package .omf/exports/repo_issue_triage-pi.omfcap.tar.gz
+
+omf capability import .omf/exports/repo_issue_triage-pi.omfcap.tar.gz \
+  --runtime pi \
+  --project target-repo \
+  --validate
 ```
 
 ## Validation Command
 
 ```bash
-omf capability validate repo_issue_triage   --target pi   --run-command "pi -p 'Run the repo_issue_triage capability against this repo'"   --approve-command-risk
+omf capability validate repo_issue_triage \
+  --target pi \
+  --run-command "pi -p 'Run the repo_issue_triage capability against this repo'" \
+  --approve-command-risk
 ```
 
 ## Known Limitations

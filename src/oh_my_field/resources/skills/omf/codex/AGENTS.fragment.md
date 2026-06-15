@@ -12,6 +12,9 @@ reusable process:
 - Before using OMF CLI from memory, check `omf --help` and the relevant
   subcommand help such as `omf session --help`, `omf promote --help`, or
   `omf capability export --help`.
+- For portability work, check `omf capability import --help`,
+  `omf capability validate --help`, and `omf verify package --help`; copying a
+  runtime skill projection is only launcher installation, not OMF import.
 - Prefer structured MCP tools when available: `omf_record_input`,
   `omf_record_artifact`, `omf_record_validation`, and `omf_record_decision`.
 - `omf promote` is strict by default; do not use `--no-strict` unless the user

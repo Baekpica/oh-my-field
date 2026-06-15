@@ -34,16 +34,21 @@ Activate this skill when the user says any of the following:
 5. Do not run risky commands through OMF unless the user explicitly approves.
 6. At task completion, decide whether the process is reusable.
 7. If reusable, suggest or run capability promotion.
-8. If the user asks to use the process in another runtime, export the capability.
+8. If the user asks to use the process in another runtime, export the
+   canonical archive package and runtime projection.
 9. Keep canonical capability source in OMF; runtime-specific skill files are
    projections.
+10. Treat copying a runtime projection as launcher installation only; the
+    target project must still run `omf capability import`.
 
 ## CLI And MCP Discovery
 
 - Before using an OMF CLI command from memory, run `omf --help` and the
   relevant subcommand help, such as `omf session --help`,
   `omf session event --help`, `omf promote --help`, and
-  `omf capability export --help`.
+  `omf capability export --help`. For portability work, also check
+  `omf capability import --help`, `omf capability unpack --help`,
+  `omf capability validate --help`, and `omf verify package --help`.
 - Prefer structured MCP tools for portable records: `omf_record_input`,
   `omf_record_artifact`, `omf_record_validation`, and `omf_record_decision`.
 - If MCP is unavailable, record equivalent CLI events: `context` for inputs,
@@ -67,3 +72,9 @@ Activate this skill when the user says any of the following:
    `omf promote <evidence_id> --name <capability_name> --description "..."`
 6. Export capability if requested:
    `omf capability export <capability_name> --target <runtime> --out <path>`
+7. Verify the package:
+   `omf verify package <path>.omfcap.tar.gz`
+8. Import into the target project before any target run:
+   `omf capability import <path>.omfcap.tar.gz --runtime <runtime> --project <target_project> --validate`
+9. Validate with target evidence or a target run:
+   `omf capability validate <capability_name> --target <runtime> --run-command "..."`

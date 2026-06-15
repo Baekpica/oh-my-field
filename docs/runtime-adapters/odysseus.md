@@ -33,6 +33,10 @@ Copy the generated `data/skills/omf/<capability>/` directory into the target
 Odysseus checkout's `data/skills/omf/` directory, then restart or reload
 Odysseus so its skill scanner sees the new file.
 
+This only installs the native launcher projection. It does not import the
+capability into the target project's OMF registry. Run `omf capability import`
+against the canonical package before validating a web workspace run.
+
 For the OMF meta-skill itself:
 
 ```bash
@@ -52,9 +56,16 @@ add the same stdio server in Settings > MCP.
 ## Manual Import
 
 ```bash
-omf capability export repo_issue_triage   --target odysseus   --out .omf/exports/repo_issue_triage-odysseus
+omf capability export repo_issue_triage \
+  --target odysseus \
+  --out .omf/exports/repo_issue_triage-odysseus
 
-omf capability import .omf/exports/repo_issue_triage-odysseus   --runtime odysseus   --project target-repo   --validate
+omf verify package .omf/exports/repo_issue_triage-odysseus.omfcap.tar.gz
+
+omf capability import .omf/exports/repo_issue_triage-odysseus.omfcap.tar.gz \
+  --runtime odysseus \
+  --project target-repo \
+  --validate
 ```
 
 ## Validation Command
@@ -64,7 +75,10 @@ the task in Odysseus with the generated skill available, export or capture the
 resulting log/artifacts, then import that evidence:
 
 ```bash
-omf import-run odysseus   --log /path/to/odysseus-run.log   --goal "Validate repo_issue_triage in Odysseus"   --outcome success
+omf import-run odysseus \
+  --log /path/to/odysseus-run.log \
+  --goal "Validate repo_issue_triage in Odysseus" \
+  --outcome success
 ```
 
 ## Known Limitations

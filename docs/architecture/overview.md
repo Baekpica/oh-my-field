@@ -68,8 +68,9 @@ external agent run
   -> import-run evidence
   -> promote capability package
   -> health and review
-  -> export runtime bundle
-  -> import target overlay
+  -> export canonical .omfcap.tar.gz package
+  -> optional runtime projection
+  -> import target package and overlay
   -> validate target run
 ```
 
@@ -93,11 +94,11 @@ capabilities/<name>/
 Runtime-specific assets are projections of that package, not the source of
 truth.
 
-`omf capability export` builds the canonical portability bundle through the
+`omf capability export` builds the canonical archive package through the
 application workflow, then asks the runtime export registry for the matching
-Codex, Claude Code, Hermes, Pi, Odysseus, or generic adapter. Import and validation workflows
-read bundle and overlay state through infrastructure stores rather than writing
-target files from the CLI layer.
+Codex, Claude Code, Hermes, Pi, Odysseus, or generic projection adapter. Import
+and validation workflows read package and overlay state through infrastructure
+stores rather than writing target files from the CLI layer.
 
 ## Portability Rules
 
@@ -105,8 +106,9 @@ Portability lifecycle rules live in
 `src/oh_my_field/domain/portability/lifecycle.py`. The important distinction is
 that exported, imported, validated, and portable are separate states:
 
-- `exported`: a runtime bundle exists.
-- `imported`: a target overlay/package exists.
+- `exported`: a canonical archive package exists, optionally with runtime
+  projection files.
+- `imported`: a target overlay and imported package record exist.
 - `validated`: a real target run passed.
 - `portable`: at least one imported target is validated.
 

@@ -33,6 +33,6 @@ under Apache-2.0.
 
 ## Portability
 
-OMF separates export, import, target validation, and portable status. A bundle
-is portable only after a target runtime has been validated by an actual target
-run.
+OMF separates export, import, target validation, and portable status. A
+capability archive is portable only after a target runtime has been validated by
+an actual target run.
