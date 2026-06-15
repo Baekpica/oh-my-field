@@ -286,10 +286,12 @@ def _validate_capability(arguments: object) -> StrictModel:
             expected_artifacts=request.expected_artifacts,
             command_cwd=request.command_cwd,
             command_timeout_seconds=request.command_timeout_seconds,
-            approve_command_risk=request.approve_command_risk,
             run_contract_validator=request.run_contract_validator,
             require_cwd_inside_project=request.require_cwd_inside_project,
-            allow_env=request.allow_env,
+            # approve_command_risk / allow_env deliberately omitted: the MCP
+            # surface must not let a prompt-controlled client self-approve risky
+            # commands or restore stripped secret env vars. These default to the
+            # safe record-don't-execute behavior in CapabilityValidationRequest.
         ),
     )
 

@@ -159,13 +159,16 @@ class ValidateCapabilityToolRequest(StrictModel):
     expected_artifacts: tuple[str, ...] = ()
     command_cwd: Path = Path()
     command_timeout_seconds: int = Field(default=600, ge=1)
-    approve_command_risk: bool = False
     run_contract_validator: bool = False
     require_cwd_inside_project: bool = False
-    allow_env: tuple[str, ...] = ()
     capabilities_dir: Path = DEFAULT_CAPABILITIES_DIR
     eval_dir: Path = DEFAULT_EVAL_DIR
     evidence_dir: Path = DEFAULT_EVIDENCE_DIR
+    # NOTE: approve_command_risk and allow_env are intentionally NOT exposed over
+    # MCP. MCP tool arguments are chosen by the connected agent/client, so letting
+    # them self-approve risky commands or opt secret env vars back in would bypass
+    # the record-don't-execute boundary. Risky run commands over MCP are recorded
+    # as intent (manual_run_required) and require out-of-band CLI approval.
 
 
 class ImportCapabilityToolRequest(StrictModel):

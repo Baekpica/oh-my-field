@@ -180,6 +180,16 @@ def test_mcp_tools_list_uses_json_schema() -> None:
     assert schema["type"] == "object"
 
 
+def test_mcp_validate_does_not_expose_command_risk_self_approval() -> None:
+    # MCP arguments are prompt-controlled, so the validate surface must not let a
+    # client self-approve risky commands or restore stripped secret env vars.
+    tools = {cast("str", tool["name"]): tool for tool in mcp_tool_definitions()}
+    schema = cast("dict[str, object]", tools["omf_validate_capability"]["inputSchema"])
+    properties = cast("dict[str, object]", schema["properties"])
+    assert "approve_command_risk" not in properties
+    assert "allow_env" not in properties
+
+
 def test_mcp_default_layout_matches_canonical_capabilities_dir() -> None:
     assert (
         PromoteCapabilityToolRequest.model_fields["capabilities_dir"].default
