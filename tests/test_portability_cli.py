@@ -4,6 +4,7 @@ import json
 import tarfile
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
 import pytest
 import yaml
@@ -974,8 +975,6 @@ def test_mcp_tools_cover_full_port_lifecycle(tmp_path: Path) -> None:
     export_dir = tmp_path / "exports" / "codex"
     eval_dir = tmp_path / "evals"
     evidence_dir = tmp_path / "evidence"
-    command_cwd = tmp_path / "target-run"
-    _write_expected_artifact(command_cwd)
     write_manifest(make_manifest(), source_caps)
 
     exported = dispatch_tool(
@@ -1012,17 +1011,17 @@ def test_mcp_tools_cover_full_port_lifecycle(tmp_path: Path) -> None:
             "target": "codex",
             "model": "gpt-5.5",
             "available_tools": ["shell"],
-            "run_command": "true",
-            "command_cwd": str(command_cwd),
             "capabilities_dir": str(target_caps),
             "eval_dir": str(eval_dir),
             "evidence_dir": str(evidence_dir),
         },
     )
-    # MCP-only agents must be able to reach the terminal validated state.
-    assert validated["status"] == "validated"
-    assert validated["target_run_executed"] is True
-    assert validated["manual_run_required"] is False
+    # MCP validation is record-only: it never executes a target run, so it stays
+    # pending and routes the agent to the risk-gated CLI run-command path.
+    assert validated["status"] == "needs_validation"
+    assert validated["manual_run_required"] is True
+    next_commands = cast("tuple[str, ...]", validated["next_commands"])
+    assert any("--run-command" in command for command in next_commands)
 
     card = dispatch_tool(
         "omf_card",

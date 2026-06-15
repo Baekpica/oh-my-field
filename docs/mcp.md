@@ -61,7 +61,7 @@ Initial tool surface:
 | `omf_health` | Read capability health and next action. |
 | `omf_list_capabilities` | List capabilities in the local OMF registry. |
 | `omf_inspect_capability` | Inspect goal, context policy, harness checks, and runtime assumptions. |
-| `omf_validate_capability` | Re-validate an imported capability; pass `run_command` to observe a real target run and reach `validated` (otherwise it stays `needs_validation`, which is pending, not a failure). |
+| `omf_validate_capability` | Statically re-validate an imported capability (tool compatibility, context remap, advisory readiness). Record-only — it never executes a target run, so it reports `needs_validation` (pending, not a failure). Reach `validated` via the risk-gated CLI `omf capability validate --run-command`. |
 | `omf_import_capability` | Import a portable capability bundle into the local registry and write a target validation report. |
 | `omf_remap_capability` | Record a context remap plan binding source context keys to target values. |
 | `omf_adapt_capability` | Apply instruction/context/review overrides to resolve a `needs_adaptation` target. |

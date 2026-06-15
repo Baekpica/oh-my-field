@@ -281,17 +281,10 @@ def _validate_capability(arguments: object) -> StrictModel:
             model=request.model,
             project=request.project,
             available_tools=request.available_tools,
-            run_command=request.run_command,
-            run_argv=request.run_argv,
-            expected_artifacts=request.expected_artifacts,
-            command_cwd=request.command_cwd,
-            command_timeout_seconds=request.command_timeout_seconds,
-            run_contract_validator=request.run_contract_validator,
-            require_cwd_inside_project=request.require_cwd_inside_project,
-            # approve_command_risk / allow_env deliberately omitted: the MCP
-            # surface must not let a prompt-controlled client self-approve risky
-            # commands or restore stripped secret env vars. These default to the
-            # safe record-don't-execute behavior in CapabilityValidationRequest.
+            # Record-only over MCP: no run_command/run_argv (or risk/env flags)
+            # are forwarded, so the server never spawns a client-chosen process.
+            # CapabilityValidationRequest keeps its safe defaults; an actual
+            # target run goes through the risk-gated CLI path.
         ),
     )
 
@@ -463,10 +456,12 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
     ToolSpec(
         name="omf_validate_capability",
         description=(
-            "Re-validate an imported capability against a target runtime. "
-            "Pass run_command (your runtime's run invocation) to observe a real "
-            "target run and reach the terminal `validated` status; without it "
-            "the target stays `needs_validation` (pending, not a failure)."
+            "Statically re-validate an imported capability against a target "
+            "runtime (tool compatibility, context remap, advisory readiness). "
+            "Record-only: it never executes a target run, so it reports "
+            "`needs_validation` (pending, not a failure). To reach `validated`, "
+            "run the suggested `omf capability validate --run-command` from the "
+            "CLI, where command execution is risk-gated and out-of-band approved."
         ),
         request_model=ValidateCapabilityToolRequest,
         handler=_validate_capability,

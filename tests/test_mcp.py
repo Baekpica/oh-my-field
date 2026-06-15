@@ -180,14 +180,25 @@ def test_mcp_tools_list_uses_json_schema() -> None:
     assert schema["type"] == "object"
 
 
-def test_mcp_validate_does_not_expose_command_risk_self_approval() -> None:
-    # MCP arguments are prompt-controlled, so the validate surface must not let a
-    # client self-approve risky commands or restore stripped secret env vars.
+def test_mcp_validate_is_record_only() -> None:
+    # MCP arguments are prompt-controlled, so the validate surface must stay
+    # record-only: no executable target-run arguments and no risk/secret flags
+    # that would make the server spawn local processes.
     tools = {cast("str", tool["name"]): tool for tool in mcp_tool_definitions()}
     schema = cast("dict[str, object]", tools["omf_validate_capability"]["inputSchema"])
     properties = cast("dict[str, object]", schema["properties"])
-    assert "approve_command_risk" not in properties
-    assert "allow_env" not in properties
+    forbidden = {
+        "run_command",
+        "run_argv",
+        "expected_artifacts",
+        "command_cwd",
+        "command_timeout_seconds",
+        "run_contract_validator",
+        "require_cwd_inside_project",
+        "approve_command_risk",
+        "allow_env",
+    }
+    assert forbidden.isdisjoint(properties)
 
 
 def test_mcp_default_layout_matches_canonical_capabilities_dir() -> None:

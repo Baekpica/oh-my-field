@@ -154,21 +154,18 @@ class ValidateCapabilityToolRequest(StrictModel):
     model: str | None = None
     project: str | None = None
     available_tools: tuple[str, ...] = ()
-    run_command: str | None = None
-    run_argv: tuple[str, ...] = ()
-    expected_artifacts: tuple[str, ...] = ()
-    command_cwd: Path = Path()
-    command_timeout_seconds: int = Field(default=600, ge=1)
-    run_contract_validator: bool = False
-    require_cwd_inside_project: bool = False
     capabilities_dir: Path = DEFAULT_CAPABILITIES_DIR
     eval_dir: Path = DEFAULT_EVAL_DIR
     evidence_dir: Path = DEFAULT_EVIDENCE_DIR
-    # NOTE: approve_command_risk and allow_env are intentionally NOT exposed over
-    # MCP. MCP tool arguments are chosen by the connected agent/client, so letting
-    # them self-approve risky commands or opt secret env vars back in would bypass
-    # the record-don't-execute boundary. Risky run commands over MCP are recorded
-    # as intent (manual_run_required) and require out-of-band CLI approval.
+    # MCP validation is RECORD-ONLY. It deliberately exposes no executable
+    # target-run arguments (run_command/run_argv) and no risk/secret-loosening
+    # flags (approve_command_risk/allow_env). MCP tool arguments are
+    # prompt-controlled, so accepting a command would let a client make the
+    # server spawn arbitrary local processes — even uncategorized interpreters
+    # like `python -c ...` or `bash -c ...` slip past the risk heuristic. A real
+    # target run that reaches `validated` must go through the risk-gated,
+    # out-of-band CLI path (`omf capability validate --run-command`); the
+    # validate result's next_commands carry that exact command to run.
 
 
 class ImportCapabilityToolRequest(StrictModel):
