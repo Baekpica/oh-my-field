@@ -153,7 +153,7 @@ track this task with OMF
 
 ```bash
 omf --help
-omf version --json
+omf --version --json
 omf doctor --json
 omf import-run --help
 omf capability export --help

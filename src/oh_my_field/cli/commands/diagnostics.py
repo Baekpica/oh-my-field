@@ -25,9 +25,6 @@ def doctor(json_output: Annotated[bool, typer.Option("--json")] = False) -> None
 
 
 def register(app: typer.Typer) -> None:
-    app.command("version", help="Print package and schema version information.")(
-        version
-    )
     app.command(
         "doctor",
         help="Inspect local OMF installation and runtime availability.",

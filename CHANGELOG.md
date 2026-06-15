@@ -18,6 +18,8 @@ All notable changes to this project will be documented here.
   `validated`; actionable blockers such as missing tools, unresolved remaps,
   failed target runs, missing expected artifacts, and contract validator
   failures now drive `needs_adaptation`.
+- Moved version reporting from the `version` subcommand to the root
+  `--version` option; use `omf --version --json` for machine-readable output.
 
 
 ## 0.2.5 - 2026-06-15
@@ -75,7 +77,7 @@ All notable changes to this project will be documented here.
   covers artifact snapshot text previews, which previously re-read raw file
   bytes and bypassed redaction. Shared patterns live in
   `domain/evidence/redaction.py`.
-- `omf version` and `omf doctor` now derive the package version from installed
+- Version reporting and `omf doctor` now derive the package version from installed
   metadata instead of a hardcoded `__version__`, which had been stuck at
   0.2.2 since the 0.2.3 release.
 

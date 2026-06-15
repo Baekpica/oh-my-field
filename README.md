@@ -324,9 +324,9 @@ omf dataset-export <capability_name> --dataset-type all
 
 ## Command Map
 
-| Area | Commands | Purpose |
+| Area | Commands / options | Purpose |
 | --- | --- | --- |
-| Setup | `init`, `doctor`, `version` | Create and inspect a repo-local OMF field |
+| Setup | `init`, `doctor`, `--version` | Create and inspect a repo-local OMF field |
 | Agent activation | `install skill`, `install mcp`, `mcp serve` | Give agents a lower-friction OMF surface |
 | Session tracking | `session start`, `session event`, `session finish`, `session materialize`, `session suggest-capability` | Record active agent work as structured evidence |
 | Evidence ingestion | `import-run`, `capture` | Import existing logs, artifacts, diffs, and test results |

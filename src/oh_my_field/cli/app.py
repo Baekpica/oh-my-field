@@ -1,3 +1,5 @@
+from typing import Annotated
+
 import typer
 
 from oh_my_field.cli.commands import (
@@ -51,11 +53,31 @@ runtime_app = typer.Typer(
 app.add_typer(runtime_app, name="runtime")
 
 
-def _main() -> None:
-    pass
+def _main(
+    version: Annotated[
+        bool,
+        typer.Option(
+            "--version",
+            help="Print package and schema version information.",
+        ),
+    ] = False,
+    version_json: Annotated[
+        bool,
+        typer.Option(
+            "--json",
+            help="Emit --version output as JSON.",
+        ),
+    ] = False,
+) -> None:
+    if version:
+        diagnostics.version(json_output=version_json)
+        raise typer.Exit
+    if version_json:
+        message = "--json is only valid with --version"
+        raise typer.BadParameter(message)
 
 
-app.callback()(_main)
+app.callback(invoke_without_command=True)(_main)
 
 diagnostics.register(app)
 capture.register(app)
