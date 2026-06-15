@@ -3,12 +3,6 @@ from pathlib import Path
 import yaml
 from pydantic import ValidationError
 
-from oh_my_field.application.portability.rendering import (
-    base_instructions,
-    compact_instructions,
-    compressed_context_pack,
-    yaml_dump,
-)
 from oh_my_field.domain.models import CapabilityManifest
 from oh_my_field.domain.portability.errors import (
     PortabilityAmbiguousTargetError,
@@ -70,6 +64,12 @@ def write_target_overlay(
     manifest: CapabilityManifest,
     overwrite: bool = False,
 ) -> Path:
+    from oh_my_field.application.portability.rendering import (  # noqa: PLC0415
+        base_instructions,
+        compact_instructions,
+        yaml_dump,
+    )
+
     overlay_path = target_dir / "target.overlay.yaml"
     write_text(overlay_path, yaml_dump(overlay), overwrite=overwrite)
     write_text(target_dir / "README.md", target_readme(overlay), overwrite=overwrite)
@@ -125,6 +125,10 @@ def target_context_pack(
     compressed: bool,
 ) -> str:
     if compressed:
+        from oh_my_field.application.portability.rendering import (  # noqa: PLC0415
+            compressed_context_pack,
+        )
+
         return compressed_context_pack(manifest, portability)
     required = "\n".join(f"- {item}" for item in manifest.context.required)
     optional = "\n".join(f"- {item}" for item in manifest.context.optional)

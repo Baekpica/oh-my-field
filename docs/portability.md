@@ -2,8 +2,10 @@
 
 OMF keeps runtime conversion separate from target validation.
 
-- `exported`: a capability has been converted into a target runtime bundle.
-- `imported`: the bundle has been materialized in a target project.
+- `exported`: a capability has been packaged as a canonical `.omfcap.tar.gz`
+  archive, with optional target runtime projections.
+- `imported`: the archive or directory package has been materialized in a
+  target project's OMF registry.
 - `validated`: an actual target run passed under the target runtime/model.
 - `portable`: at least one target import has been validated.
 
@@ -22,14 +24,49 @@ itself remains managed by OMF, including context materialization, runtime
 adaptation, harness execution, evidence collection, and report generation.
 Without an OMF report, a runtime execution is considered unverified.
 
+## Canonical Capability Packages
+
+`omf capability export` produces an archive package by default:
+
+```bash
+omf capability export repo_issue_triage \
+  --target hermes \
+  --out .omf/exports/repo_issue_triage-hermes
+```
+
+The canonical transferable artifact is the resulting `.omfcap.tar.gz` package.
+It includes the runtime-neutral capability, runtime projection files,
+`package.yaml`, and `MANIFEST.sha256`. Directory exports remain available for
+review and legacy workflows with `--format dir`, but copying runtime projection
+files is not an import. Every target runtime must import the package into the
+target project before treating the capability as available:
+
+```bash
+omf capability import repo_issue_triage-hermes.omfcap.tar.gz \
+  --runtime hermes \
+  --project target-repo \
+  --validate
+```
+
+Archive packages include `package.yaml` and `MANIFEST.sha256`. Use
+`omf verify package <package.omfcap.tar.gz>` before importing untrusted
+packages, or `omf capability unpack <package.omfcap.tar.gz>` to inspect one
+without installing it.
+
+Export/import/validate summaries include package path fields such as
+`package_path`, `unpacked_path`, and `imported_package_path`, plus
+`next_commands` so an agent does not have to infer the follow-up lifecycle
+from prose.
+
 ## Launcher Skill Projections
 
 `omf capability export` renders the per-capability skill as a **launcher** by
 default: the generated `SKILL.md` carries `omf_managed: true` frontmatter,
-tells the agent to enter the OMF lifecycle (`omf card`, `omf capability
-validate`, `omf session start … materialize`), and does not restate the
-capability goal or procedure. The goal stays in the OMF package and is
-inspected through `omf card <name>` or the `omf_inspect_capability` MCP tool.
+tells the agent to import the canonical package and enter the OMF lifecycle
+(`omf capability import`, `omf card`, `omf capability validate`, `omf session
+start … materialize`), and does not restate the capability goal or procedure.
+The goal stays in the OMF package and is inspected through `omf card <name>` or
+the `omf_inspect_capability` MCP tool.
 
 Pass `--skill-style full` to render the previous instruction-style projection
 instead. Full-style exports set `agent_view.direct_execution_allowed: true` in
@@ -55,7 +92,7 @@ the eval stays on `omf capability validate --run-command/--run-argv`. That is
 also the current pattern for OMF-led execution: pass the target agent CLI as
 the validation run command and gate `validated` status on its exit code.
 
-## Contract Bundle
+## Contract Files
 
 Promotion and export carry the hardened run contract forward. The canonical
 capability package includes:
@@ -79,8 +116,9 @@ compatibility shim. New code should import the layered modules directly:
 - `oh_my_field.domain.portability.models` for portability artifacts.
 - `oh_my_field.domain.portability.readiness` for transfer and readiness rules.
 - `oh_my_field.application.portability.*_workflow` for use-case execution.
-- `oh_my_field.adapters.runtime_export` for target runtime bundle rendering.
-- `oh_my_field.infrastructure.portability` for bundle and overlay file I/O.
+- `oh_my_field.adapters.runtime_export` for target runtime projection rendering.
+- `oh_my_field.infrastructure.portability` for package, projection, and overlay
+  file I/O.
 
 Runtime export adapters only render target-specific files. They do not own the
 canonical capability package, evidence provenance, import overlay, or target
@@ -91,7 +129,7 @@ omf capability export repo_issue_triage \
   --target hermes \
   --out .omf/exports/repo_issue_triage-hermes
 
-omf capability import .omf/exports/repo_issue_triage-hermes \
+omf capability import .omf/exports/repo_issue_triage-hermes.omfcap.tar.gz \
   --runtime hermes \
   --validate
 
@@ -115,9 +153,10 @@ import into a running Odysseus checkout, copy the generated `data/skills/omf/`
 subtree into the Odysseus project data directory and reload/restart Odysseus so
 its skill scanner sees the file.
 
-For cross-agent portability, keep the OMF export bundle as the canonical source.
-The native Pi/Odysseus skill files are projections. After copying or installing a
-projection, run `omf capability import ... --runtime pi|odysseus --validate` in
-the target project, then run an actual target-agent task and record the result
-with `omf import-run pi|odysseus` or OMF session evidence before marking the
+For cross-agent portability, keep the OMF `.omfcap.tar.gz` archive as the
+canonical source. The native Pi/Odysseus skill files are projections. After
+copying or installing a projection, run
+`omf capability import ... --runtime pi|odysseus --validate` in the target
+project, then run an actual target-agent task and record the result with
+`omf import-run pi|odysseus` or OMF session evidence before marking the
 capability portable.

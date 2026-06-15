@@ -1,5 +1,7 @@
 import hashlib
+import io
 import json
+import tarfile
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -33,10 +35,13 @@ class CapabilityExportOutput(BaseModel):
 
     capability_name: str
     export_path: str
+    package_path: str
+    unpacked_path: str | None
     portability_path: str
     runtime_export_path: str
     target_runtime: str
     target_model: str | None
+    bundle_format: str
     evidence_mode: str
     evidence_proof_count: int
 
@@ -45,6 +50,8 @@ class CapabilityImportOutput(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     capability_name: str
+    package_path: str
+    unpacked_path: str | None
     imported_package_path: str
     validation_report_path: str
     overlay_path: str
@@ -55,12 +62,16 @@ class CapabilityImportOutput(BaseModel):
     eval_path: str | None
     failure_evidence_id: str | None
     failure_evidence_path: str | None
+    next_commands: list[str]
 
 
 class CapabilityValidateOutput(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     capability_name: str
+    package_path: str | None
+    unpacked_path: str | None
+    imported_package_path: str
     overlay_path: str
     validation_report_path: str
     status: str
@@ -73,6 +84,7 @@ class CapabilityValidateOutput(BaseModel):
     target_run_executed: bool
     target_run_exit_code: int | None
     manual_run_required: bool
+    next_commands: list[str]
 
 
 class HardenOutput(BaseModel):
@@ -270,6 +282,109 @@ def test_capability_import_writes_validation_report(tmp_path: Path) -> None:
     assert target_dir.joinpath("README.md").exists()
     assert target_dir.joinpath("instructions.md").exists()
     assert target_dir.joinpath("context.pack.md").exists()
+    assert "omf card repo_issue_triage" in output.next_commands
+
+
+def test_capability_archive_export_import_and_verify_package(tmp_path: Path) -> None:
+    source_capabilities_dir = tmp_path / "source-capabilities"
+    export_out = tmp_path / "exports" / "repo_issue_triage-hermes"
+    target_capabilities_dir = tmp_path / "target-capabilities"
+    write_manifest(make_manifest(), source_capabilities_dir)
+
+    export_result = CliRunner().invoke(
+        app,
+        [
+            "capability",
+            "export",
+            "repo_issue_triage",
+            "--target",
+            "hermes",
+            "--target-model",
+            "qwen3.6-27b",
+            "--out",
+            str(export_out),
+            "--capabilities-dir",
+            str(source_capabilities_dir),
+        ],
+    )
+
+    assert export_result.exit_code == 0
+    exported = CapabilityExportOutput.model_validate_json(export_result.stdout)
+    archive_path = Path(exported.package_path)
+    assert exported.bundle_format == "archive"
+    assert archive_path.name == "repo_issue_triage-hermes.omfcap.tar.gz"
+    assert archive_path.exists()
+    assert Path(exported.unpacked_path or "").joinpath("package.yaml").exists()
+    assert Path(exported.unpacked_path or "").joinpath("MANIFEST.sha256").exists()
+
+    verify_result = CliRunner().invoke(app, ["verify", "package", str(archive_path)])
+    assert verify_result.exit_code == 0
+
+    import_result = CliRunner().invoke(
+        app,
+        [
+            "capability",
+            "import",
+            str(archive_path),
+            "--runtime",
+            "hermes",
+            "--model",
+            "qwen3.6-27b",
+            "--available-tool",
+            "shell",
+            "--validate",
+            "--capabilities-dir",
+            str(target_capabilities_dir),
+            "--eval-dir",
+            str(tmp_path / "evals"),
+            "--evidence-dir",
+            str(tmp_path / "evidence"),
+            "--import-dir",
+            str(tmp_path / "imports"),
+        ],
+    )
+
+    assert import_result.exit_code == 0
+    imported = CapabilityImportOutput.model_validate_json(import_result.stdout)
+    assert imported.package_path == str(archive_path)
+    assert imported.unpacked_path is not None
+    assert Path(imported.unpacked_path).joinpath("capability.yaml").exists()
+    assert Path(imported.imported_package_path).joinpath("capability.yaml").exists()
+    assert any(
+        "omf inspect import repo_issue_triage" in command
+        for command in imported.next_commands
+    )
+
+
+def test_capability_import_rejects_unsafe_archive_member(tmp_path: Path) -> None:
+    archive_path = tmp_path / "unsafe.omfcap.tar.gz"
+    payload = b"bad"
+    with tarfile.open(archive_path, "w:gz") as archive:
+        info = tarfile.TarInfo("../capability.yaml")
+        info.size = len(payload)
+        archive.addfile(info, io.BytesIO(payload))
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "capability",
+            "import",
+            str(archive_path),
+            "--runtime",
+            "generic",
+            "--capabilities-dir",
+            str(tmp_path / "capabilities"),
+            "--eval-dir",
+            str(tmp_path / "evals"),
+            "--evidence-dir",
+            str(tmp_path / "evidence"),
+            "--import-dir",
+            str(tmp_path / "imports"),
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "unsafe archive member path" in result.stderr
 
 
 @pytest.mark.parametrize(
@@ -373,6 +488,22 @@ def test_capability_export_writes_runtime_specific_skill_assets(
     runtime_dir = export_dir / "runtime" / target
     for expected_file in expected_files:
         assert runtime_dir.joinpath(expected_file).exists()
+    skill_candidates = (
+        runtime_dir / ".agents" / "skills" / "repo_issue_triage" / "SKILL.md",
+        runtime_dir / ".claude" / "skills" / "repo_issue_triage" / "SKILL.md",
+        runtime_dir / "skills" / "repo_issue_triage" / "SKILL.md",
+        runtime_dir / ".pi" / "skills" / "repo_issue_triage" / "SKILL.md",
+        runtime_dir
+        / "data"
+        / "skills"
+        / "omf"
+        / "repo_issue_triage"
+        / "SKILL.md",
+        runtime_dir / "skill.md",
+    )
+    skill_path = next(path for path in skill_candidates if path.exists())
+    skill_text = skill_path.read_text(encoding="utf-8")
+    assert "omf capability import <package.omfcap.tar.gz>" in skill_text
 
 
 def test_capability_export_includes_evidence_proof_pack(tmp_path: Path) -> None:
@@ -1784,6 +1915,7 @@ def test_capability_export_launcher_skill_omits_goal_by_default(
     assert "execution_mode: omf_managed" in skill
     assert "direct_execution_allowed: false" in skill
     assert "# OMF Capability Launcher: repo_issue_triage" in skill
+    assert "omf capability import <package.omfcap.tar.gz> --runtime hermes" in skill
     assert "omf card repo_issue_triage" in skill
     assert "omf capability validate repo_issue_triage --target hermes" in skill
     assert "Do not execute the capability goal directly" in skill
@@ -1872,4 +2004,5 @@ def test_capability_export_launcher_skill_for_odysseus_keeps_frontmatter(
     assert "category: omf" in skill
     assert "status: published" in skill
     assert "# OMF Capability Launcher: repo_issue_triage" in skill
+    assert "omf capability import <package.omfcap.tar.gz> --runtime odysseus" in skill
     assert "triage repo issue" not in skill

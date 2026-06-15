@@ -4,6 +4,31 @@ All notable changes to this project will be documented here.
 
 ## Unreleased
 
+## 0.2.5 - 2026-06-15
+
+### Added
+
+- Added archive-first portability packaging: `omf capability export` now emits
+  a canonical `.omfcap.tar.gz` package by default, with `package.yaml` and
+  `MANIFEST.sha256` integrity metadata. Directory exports remain available with
+  `--format dir`.
+- Added `omf capability unpack <archive>` and `omf verify package <archive>` so
+  target agents and humans can inspect or verify a package before importing it.
+- Added archive and directory import support to `omf capability import`, plus
+  package path fields and `next_commands` in export/import/validation summaries.
+- Added security coverage for unsafe archive members, including path traversal,
+  absolute paths, and symlink or hardlink escapes.
+
+### Changed
+
+- Updated launcher skill and runtime adapter guidance so every runtime enters a
+  target project through `omf capability import`; copying a Codex, Claude Code,
+  Hermes, Pi, Odysseus, or generic projection is documented as launcher
+  installation only.
+- Updated portability documentation, quickstart, runtime adapter docs, and OMF
+  meta-skill resources around the `export -> verify package -> import ->
+  validate` lifecycle.
+
 ## 0.2.4 - 2026-06-11
 
 ### Added

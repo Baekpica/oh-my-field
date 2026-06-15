@@ -33,6 +33,7 @@ def verify(
             "reflection",
             "review",
             "export",
+            "package",
         ],
         typer.Argument(),
     ],

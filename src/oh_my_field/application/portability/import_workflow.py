@@ -14,6 +14,7 @@ from oh_my_field.domain.portability.models import (
     CapabilityPortabilityImportRequest,
     CapabilityPortabilityImportSummary,
     ImportCollisionPolicy,
+    TargetValidationReport,
 )
 from oh_my_field.infrastructure.fs.storage import (
     capability_package_paths,
@@ -21,7 +22,11 @@ from oh_my_field.infrastructure.fs.storage import (
     update_manifest,
     write_capability_package,
 )
-from oh_my_field.infrastructure.portability.bundle_store import load_bundle, write_text
+from oh_my_field.infrastructure.portability.bundle_store import (
+    load_bundle,
+    prepare_bundle_for_import,
+    write_text,
+)
 from oh_my_field.infrastructure.portability.overlay_store import write_target_overlay
 from oh_my_field.infrastructure.portability.paths import target_slug
 
@@ -29,7 +34,11 @@ from oh_my_field.infrastructure.portability.paths import target_slug
 def import_capability_package(
     request: CapabilityPortabilityImportRequest,
 ) -> CapabilityPortabilityImportSummary:
-    manifest, portability = load_bundle(request.bundle_path)
+    bundle_path, unpacked_path = prepare_bundle_for_import(
+        request.bundle_path,
+        request.import_dir,
+    )
+    manifest, portability = load_bundle(bundle_path)
     target = portability.target.model_copy(
         update={
             "runtime": request.runtime or portability.target.runtime,
@@ -92,6 +101,8 @@ def import_capability_package(
     write_text(report_path, yaml_dump(report), overwrite=overwrite_target)
     return CapabilityPortabilityImportSummary(
         capability_name=manifest.name,
+        package_path=str(request.bundle_path),
+        unpacked_path=None if unpacked_path is None else str(unpacked_path),
         imported_package_path=str(imported_path),
         validation_report_path=str(report_path),
         overlay_path=str(overlay_path),
@@ -102,6 +113,7 @@ def import_capability_package(
         eval_path=report.eval_path,
         failure_evidence_id=report.failure_evidence_id,
         failure_evidence_path=report.failure_evidence_path,
+        next_commands=_next_commands(manifest.name, report),
     )
 
 
@@ -143,3 +155,23 @@ def _next_versioned_name(name: str, capabilities_dir: Path) -> str:
         if manifest_path_for_capability(candidate, capabilities_dir) is None:
             return candidate
         index += 1
+
+
+def _target_flags(report: TargetValidationReport) -> str:
+    target = report.target
+    flags = f"--target {target.runtime}"
+    if target.model is not None:
+        flags += f" --model {target.model}"
+    return flags
+
+
+def _next_commands(name: str, report: TargetValidationReport) -> tuple[str, ...]:
+    flags = _target_flags(report)
+    commands = [
+        f"omf card {name}",
+        f"omf inspect import {name} {flags}",
+    ]
+    if report.context_remap_required:
+        commands.append(f"omf capability remap {name} {flags} --map source=target")
+    commands.append(f"omf capability validate {name} {flags}")
+    return tuple(commands)

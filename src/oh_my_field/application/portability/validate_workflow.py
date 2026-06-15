@@ -16,13 +16,15 @@ from oh_my_field.application.portability.validation_support import (
     write_failure_evidence,
     write_target_eval,
 )
-from oh_my_field.domain.models import EvalCheck
+from oh_my_field.domain.models import CapabilityManifest, EvalCheck
 from oh_my_field.domain.portability.lifecycle import next_validation_action
 from oh_my_field.domain.portability.models import (
     CapabilityValidationRequest,
     CapabilityValidationSummary,
     ContextRemapPlan,
+    PortabilityTarget,
     TargetRunPlan,
+    ValidationStatus,
 )
 from oh_my_field.infrastructure.fs.storage import (
     capability_package_paths,
@@ -66,7 +68,8 @@ def validate_capability_package(
         available_tools=request.available_tools,
         context_remapped=context_remapped,
     )
-    run_plan, run_check = _run_target_hook(request)
+    expected_artifacts = _expected_artifacts(request, manifest)
+    run_plan, run_check = _run_target_hook(request, expected_artifacts)
     eval_result, eval_path = write_target_eval(
         report=report,
         manifest=manifest,
@@ -111,6 +114,7 @@ def validate_capability_package(
     )
     return CapabilityValidationSummary(
         capability_name=manifest.name,
+        imported_package_path=str(package_dir),
         overlay_path=str(overlay_path),
         validation_report_path=str(report_path),
         status=report.status,
@@ -123,6 +127,7 @@ def validate_capability_package(
         target_run_executed=run_plan.executed,
         target_run_exit_code=run_plan.exit_code,
         manual_run_required=run_plan.manual_run_required,
+        next_commands=_next_commands(manifest.name, target, final_status),
     )
 
 
@@ -146,13 +151,14 @@ def _validation_run_command(request: CapabilityValidationRequest) -> str | None:
 
 def _run_target_hook(
     request: CapabilityValidationRequest,
+    expected_artifacts: tuple[str, ...],
 ) -> tuple[TargetRunPlan, EvalCheck | None]:
     command = _validation_run_command(request)
     if command is None:
         return (
             TargetRunPlan(
                 manual_run_required=True,
-                expected_artifacts=request.expected_artifacts,
+                expected_artifacts=expected_artifacts,
             ),
             None,
         )
@@ -162,7 +168,7 @@ def _run_target_hook(
             TargetRunPlan(
                 target_run_command=command,
                 manual_run_required=True,
-                expected_artifacts=request.expected_artifacts,
+                expected_artifacts=expected_artifacts,
                 executed=False,
                 approved=False,
                 risk_categories=risk.categories,
@@ -183,7 +189,7 @@ def _run_target_hook(
     plan = TargetRunPlan(
         target_run_command=command,
         manual_run_required=False,
-        expected_artifacts=request.expected_artifacts,
+        expected_artifacts=expected_artifacts,
         executed=True,
         approved=execution.approved,
         exit_code=execution.exit_code,
@@ -195,3 +201,51 @@ def _run_target_hook(
         message=f"target run exit code {execution.exit_code}",
     )
     return plan, check
+
+
+def _expected_artifacts(
+    request: CapabilityValidationRequest,
+    manifest: CapabilityManifest,
+) -> tuple[str, ...]:
+    if request.expected_artifacts:
+        return request.expected_artifacts
+    task_contract = manifest.task_contract
+    if task_contract is not None and task_contract.expected_artifacts:
+        return task_contract.expected_artifacts
+    return tuple(
+        contract.artifact_path
+        for contract in manifest.artifact_contracts
+        if contract.required
+    )
+
+
+def _target_flags(target: PortabilityTarget) -> str:
+    flags = f"--target {target.runtime}"
+    if target.model is not None:
+        flags += f" --model {target.model}"
+    return flags
+
+
+def _next_commands(
+    name: str,
+    target: PortabilityTarget,
+    status: ValidationStatus,
+) -> tuple[str, ...]:
+    flags = _target_flags(target)
+    if status == "validated":
+        return (f"omf registry {name}",)
+    if status == "needs_validation":
+        return (
+            (
+                f"omf capability validate {name} {flags} "
+                "--run-command '<target-agent-run>'"
+            ),
+        )
+    return (
+        f"omf inspect import {name} {flags}",
+        f"omf capability remap {name} {flags} --map source=target",
+        (
+            f"omf capability validate {name} {flags} "
+            "--run-command '<target-agent-run>'"
+        ),
+    )

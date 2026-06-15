@@ -15,7 +15,9 @@ projections, and validate target runtime imports.
 - Before using an OMF CLI command from memory, run `omf --help` and the
   relevant subcommand help, such as `omf session --help`,
   `omf session event --help`, `omf promote --help`, and
-  `omf capability export --help`.
+  `omf capability export --help`. For portability work, also check
+  `omf capability import --help`, `omf capability unpack --help`,
+  `omf capability validate --help`, and `omf verify package --help`.
 - Prefer structured MCP tools for portable records: `omf_record_input`,
   `omf_record_artifact`, `omf_record_validation`, and `omf_record_decision`.
 - If MCP is unavailable, record equivalent CLI events: `context` for inputs,
@@ -25,3 +27,13 @@ projections, and validate target runtime imports.
   `--no-strict` unless the user explicitly asks to promote legacy or incomplete
   evidence.
 
+## Portability Flow
+
+1. Export the canonical package and projection:
+   `omf capability export <capability_name> --target <runtime> --out <path>`
+2. Verify the archive:
+   `omf verify package <path>.omfcap.tar.gz`
+3. Import into the target project:
+   `omf capability import <path>.omfcap.tar.gz --runtime <runtime> --project <target_project> --validate`
+4. Validate with target evidence or a target run:
+   `omf capability validate <capability_name> --target <runtime> --run-command "..."`

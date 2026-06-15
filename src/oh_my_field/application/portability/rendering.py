@@ -20,6 +20,23 @@ def bundle_readme(portability: PortabilityManifest) -> str:
             f"- Target: {portability.target.runtime}/{portability.target.model}",
             f"- Transfer: {', '.join(portability.adaptation.transfer_type)}",
             "",
+            "## OMF Import Required",
+            "Runtime skill files are projections for agent discovery. The",
+            "canonical capability is this OMF package, and target runtimes must",
+            "import it before attempting a target run.",
+            "",
+            "```bash",
+            _import_command(
+                portability.target.runtime,
+                portability.target.model,
+            ),
+            f"omf card {portability.capability}",
+            (
+                f"omf capability validate {portability.capability} "
+                f"--target {portability.target.runtime}"
+            ),
+            "```",
+            "",
         ],
     )
 
@@ -166,6 +183,18 @@ def skill_markdown(manifest: CapabilityManifest) -> str:
             "## Trigger",
             f"Use this skill when the task matches: {manifest.normalized_goal}.",
             "",
+            "## OMF Import Required",
+            "Before treating this projection as an executable capability, import",
+            "the canonical OMF package into the target project:",
+            "",
+            "```bash",
+            (
+                "omf capability import <package.omfcap.tar.gz> "
+                "--runtime <runtime> --project <project> --validate"
+            ),
+            f"omf card {manifest.name}",
+            "```",
+            "",
             "## Inputs",
             _bullets(manifest.inputs, "No specific inputs recorded."),
             "",
@@ -263,10 +292,17 @@ def launcher_body_markdown(
             "## Required Behavior",
             "",
             "When this skill is selected, do not implement the task from this",
-            "file. Enter the OMF lifecycle first:",
+            "file. Import the canonical OMF package into this target project",
+            "and enter the OMF lifecycle first:",
             "",
             "```bash",
+            _import_command(target_runtime, "<model>"),
             f"omf card {name}",
+            f"omf inspect import {name} --target {target_runtime} --model <model>",
+            (
+                f"omf capability remap {name} --target {target_runtime} "
+                "--model <model> --map source=target"
+            ),
             f"omf capability validate {name} --target {target_runtime}",
             (
                 f"omf session start --runtime {target_runtime} "
@@ -292,12 +328,14 @@ def launcher_body_markdown(
             "The task is complete only when OMF has recorded:",
             "",
             "- materialized evidence for this run,",
+            "- an OMF import record for the canonical package,",
             f"- a target validation report for `{target_runtime}`,",
             "- harness results for the required checks.",
             "",
             "## Forbidden Behavior",
             "",
             "- Do not execute the capability goal directly from skill files.",
+            "- Do not treat copying runtime projection files as an OMF import.",
             "- Do not skip OMF harness execution.",
             "- Do not claim success without OMF evidence and a validation report.",
             "- Do not modify the capability bundle manually.",
@@ -358,11 +396,12 @@ def odysseus_skill_markdown(manifest: CapabilityManifest) -> str:
             "",
             "## Procedure",
             "",
-            "1. Load the required context before acting.",
-            "2. Identify the smallest relevant surface for the goal.",
-            "3. Make the minimal change or output that satisfies the goal.",
-            "4. Run the harness checks before accepting the result.",
-            "5. Record unresolved failures as OMF evidence.",
+            "1. Import the canonical OMF package with `omf capability import`.",
+            "2. Load the required context before acting.",
+            "3. Identify the smallest relevant surface for the goal.",
+            "4. Make the minimal change or output that satisfies the goal.",
+            "5. Run the harness checks before accepting the result.",
+            "6. Record unresolved failures as OMF evidence.",
             "",
             "## Pitfalls",
             "",
@@ -421,6 +460,14 @@ def _bullets(values: tuple[str, ...], empty: str) -> str:
     if not values:
         return f"- {empty}"
     return "\n".join(f"- {value}" for value in values)
+
+
+def _import_command(target_runtime: str, target_model: str | None) -> str:
+    model = target_model or "<model>"
+    return (
+        "omf capability import <package.omfcap.tar.gz> "
+        f"--runtime {target_runtime} --model {model} --project <project> --validate"
+    )
 
 
 def _join_or(values: tuple[str, ...], empty: str) -> str:

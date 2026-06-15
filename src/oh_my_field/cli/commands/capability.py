@@ -9,6 +9,11 @@ from oh_my_field.domain.layout import (
     DEFAULT_CAPABILITIES_DIR,
     DEFAULT_EVAL_DIR,
 )
+from oh_my_field.domain.models import StrictModel
+from oh_my_field.infrastructure.portability.bundle_store import (
+    prepare_bundle_for_import,
+    verify_package_manifest,
+)
 from oh_my_field.portability import (
     CapabilityAdaptRequest,
     CapabilityPortabilityExportRequest,
@@ -24,6 +29,13 @@ from oh_my_field.portability import (
 )
 
 TargetRuntime = Literal["codex", "claude_code", "hermes", "pi", "odysseus", "generic"]
+
+
+class CapabilityUnpackOutput(StrictModel):
+    package_path: str
+    unpacked_path: str | None = None
+    status: Literal["pass", "fail"]
+    errors: tuple[str, ...] = ()
 
 
 def capability_export(
@@ -53,6 +65,10 @@ def capability_export(
         Literal["launcher", "full"],
         typer.Option("--skill-style"),
     ] = "launcher",
+    bundle_format: Annotated[
+        Literal["archive", "dir"],
+        typer.Option("--format"),
+    ] = "archive",
     capabilities_dir: Annotated[
         Path, typer.Option("--capabilities-dir")
     ] = DEFAULT_CAPABILITIES_DIR,
@@ -72,6 +88,7 @@ def capability_export(
             target_context_tokens=target_context_tokens,
             include_evidence=include_evidence,
             skill_style=skill_style,
+            bundle_format=bundle_format,
             out=out,
             capabilities_dir=capabilities_dir,
             evidence_dir=evidence_dir,
@@ -96,6 +113,7 @@ def capability_import(
         Literal["fail", "merge", "version", "overwrite"],
         typer.Option("--if-exists"),
     ] = "fail",
+    import_dir: Annotated[Path, typer.Option("--import-dir")] = Path(".omf/imports"),
     capabilities_dir: Annotated[
         Path, typer.Option("--capabilities-dir")
     ] = DEFAULT_CAPABILITIES_DIR,
@@ -107,6 +125,7 @@ def capability_import(
     with cli_errors(PortabilityError):
         request = CapabilityPortabilityImportRequest(
             bundle_path=bundle_path,
+            import_dir=import_dir,
             capabilities_dir=capabilities_dir,
             eval_dir=eval_dir,
             evidence_dir=evidence_dir,
@@ -121,6 +140,26 @@ def capability_import(
         )
         summary = import_capability_package(request)
         emit_json(summary)
+
+
+def capability_unpack(
+    package_path: Annotated[Path, typer.Argument()],
+    out: Annotated[Path, typer.Option("--out")] = Path(".omf/imports"),
+) -> None:
+    with cli_errors(PortabilityError):
+        _, unpacked = prepare_bundle_for_import(package_path, out)
+        target = unpacked or package_path
+        ok, errors = verify_package_manifest(target)
+        emit_json(
+            CapabilityUnpackOutput(
+                package_path=str(package_path),
+                unpacked_path=None if unpacked is None else str(unpacked),
+                status="pass" if ok else "fail",
+                errors=errors,
+            ),
+        )
+        if not ok:
+            raise typer.Exit(code=1)
 
 
 def capability_validate(
@@ -264,6 +303,10 @@ def register(capability_app: typer.Typer) -> None:
             "Import a portable capability package and write a target validation report."
         ),
     )(capability_import)
+    capability_app.command(
+        "unpack",
+        help="Safely unpack an OMF capability archive without importing it.",
+    )(capability_unpack)
     capability_app.command(
         "validate",
         help="Re-validate an imported capability against its target runtime.",
