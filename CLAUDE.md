@@ -12,7 +12,7 @@ This project uses `uv` (Python `>=3.12`). All commands run through `uv run`.
 uv sync                      # install deps (including dev group)
 uv run omf --help            # run the CLI (entry point: oh_my_field.cli:app)
 
-uv run pytest                # full test suite (259 tests)
+uv run pytest                # full test suite (266 tests)
 uv run pytest tests/test_cli.py::test_help_lists_cli_name_when_invoked  # single test
 uv run pytest -k orchestrate # subset by keyword
 
@@ -48,7 +48,7 @@ The codebase is **mid-migration from a flat module layout to a layered one**, an
 
 The **flat top-level modules still exist** (`models.py`, `storage.py`, `promote.py`, …). Migrated ones are now **re-export shims** (e.g. `models.py` → `domain.models`, `storage.py` → `infrastructure.fs.storage`, `promote.py` → `application.promote`). **Internal code still imports through these shim paths on purpose** — `from oh_my_field.models import ...` and `from oh_my_field.storage import ...` are everywhere and are *not* legacy to be "fixed."
 
-So when locating a stage's real implementation: open the flat module; if it's a shim, follow its re-export (or look for `application/<stage>/workflow.py`). Stages **not yet migrated** are still implemented as real top-level modules — currently `orchestrate.py`, `export.py`, `context.py`, `learn.py`, `reflect.py`, `review.py`, `learning_patch.py`, `rollback.py`, `verify.py`, `eval_set.py`, `eval_support.py`, `registry.py`, `inspection.py`, `diagnostics.py`.
+So when locating a stage's real implementation: open the flat module; if it's a shim, follow its re-export (or look for `application/<stage>/workflow.py`). The migration is now nearly complete — almost every flat stage module is a shim. The real top-level modules that are **not** shims are `orchestrate.py` (the resumable chain), `rollback.py` (its companion), `diagnostics.py` (the `--version`/`doctor` summary), and the `contract_rendering.py` helper.
 
 ### Data model is the foundation (`domain/models.py`)
 
@@ -56,7 +56,7 @@ Every model inherits `StrictModel` = `BaseModel(extra="forbid", frozen=True)`. S
 
 ### Per-stage workflows are LangGraph graphs (`application/<stage>/workflow.py`)
 
-Each migrated pipeline stage (`capture`, `promote`, `replay`, `eval`, `health`) is an `application/<stage>/` package; the not-yet-migrated stages above keep the same shape as a flat module. The shape is:
+Nearly every pipeline stage is now an `application/<stage>/` package (`capture`, `promote`, `replay`, `eval`, `eval_set`, `eval_support`, `health`, `context`, `export`, `learn`, `learning_patch`, `reflect`, `review`, `verify`, `registry`, `inspection`, `import_run`, `conformance`, `dataset_export`, …); the few real flat modules above (`orchestrate`, `rollback`) keep the same shape inline. The shape is:
 
 - an `XxxRequest(StrictModel)` input,
 - a `run_xxx_workflow(request, dependencies=None)` entry point,
@@ -96,9 +96,11 @@ Two more defaults round out the boundary:
 - **Import** external runs via `adapters/agent_import.py` importers, keyed by `AgentImporterName` = `codex | claude_code | hermes | pi | odysseus`. The captured log is also parsed for structured session events (`adapters/session_log/`: dedicated JSONL parsers for `claude_code` and `codex`, heuristic JSONL parser otherwise) that fill `EvidenceRecord.tool_calls`/`generated_commands`/`cost_metrics`; parsing is enrichment, never a gate — unrecognized logs import as before.
 - **Export** a capability package to a runtime target via `omf capability export` (per-target renderers under `adapters/runtime_export/`: `codex`, `claude_code`, `hermes`, `pi`, `odysseus`, `generic` skill bundle). Generated per-capability skills are **launcher-style by default** (`omf_managed` frontmatter, no goal text — the agent is directed into the OMF lifecycle via `omf card`/`session`/`capability validate`); `--skill-style full` renders the instruction-style projection and marks `agent_view.direct_execution_allowed: true` in `portability.yaml`. A skill is an adapter surface, not the capability itself.
 - `omf runtime install <runtime>` installs the controller (meta) skill + MCP config; `omf runtime conformance <runtime>` statically verifies the adoption surface (`application/conformance/`) without invoking the agent.
-- The `capability` subcommands cover the rest of the lifecycle: `import` (materialize a bundle in a target project + write a validation report), `validate` (re-check an imported target, optionally folding a real `--run-command` exit code into the eval), `remap` (record a context remap plan), `adapt` (apply instruction/context/review overrides).
+- The `capability` subcommands cover the rest of the lifecycle: `import` (materialize a bundle in a target project + write a validation report), `validate` (re-check an imported target; folds a real `--run-command` exit code, expected-artifact presence, and an opt-in `--run-contract-validator` into the eval), `remap` (record a context remap plan), `adapt` (apply instruction/context/review overrides).
 
 **Portability is three independent status axes, never one flag** — keep them distinct when touching this code. `ExportStatus` (`not_exported|exported`), `ImportStatus` (`not_imported|imported`), and `TargetValidationStatus` (`not_run|needs_validation|needs_adaptation|validated`) are separate fields, and `omf health` reports each per imported target. "Can be exported" ≠ "imported" ≠ "actually validated on the target."
+
+Within validation, **only `hard_blockers` (unavailable required tools, unresolved context remap, target-run failure, missing expected artifacts, contract-validator failure) or a failing eval set `needs_adaptation`** (`validation_support.validated_status`). The portability readiness score is **advisory only** — surfaced as `warnings` + `portability_risk`, never a gate. `needs_validation` is the neutral "no target run observed yet" state, not a failure; an agent reaches `validated` by passing `--run-command` (the suggested-command helpers in `domain/portability/lifecycle.py` keep `import`/`validate` guidance from ever dead-ending). Keep that separation when extending validation, and don't reintroduce a readiness threshold as a blocker.
 
 ### Agent activation assets (`resources/`, `adapters/skill_install/`, `mcp/`)
 
@@ -106,9 +108,9 @@ OMF ships activation assets so an agent runtime can use OMF itself: the meta-ski
 
 ## CLI surface (`cli/`)
 
-Thin Typer layer, now a package rather than a single file. `cli/app.py` builds the `app` and the `capability` / `install` / `session` / `mcp` sub-Typers, then calls each command module's `register(app)`. Each command lives in `cli/commands/<name>.py`, builds a `*Request` model, calls the matching `run_*_workflow`, and prints the result via `emit_json` (`cli/output.py`, one JSON line). Errors are mapped to `typer.Exit(code=1)` by the `cli_errors(...)` context manager (`cli/errors.py`), which always handles `StorageError`/`ValidationError` plus any stage `*Error` you pass in. Shared option definitions live in `cli/options.py`.
+Thin Typer layer, now a package rather than a single file. `cli/app.py` builds the `app` and the `capability` / `install` / `session` / `mcp` / `runtime` sub-Typers, then calls each command module's `register(app)`. Each command lives in `cli/commands/<name>.py`, builds a `*Request` model, calls the matching `run_*_workflow`, and prints the result via `emit_json` (`cli/output.py`, one JSON line). Errors are mapped to `typer.Exit(code=1)` by the `cli_errors(...)` context manager (`cli/errors.py`), which always handles `StorageError`/`ValidationError` plus any stage `*Error` you pass in. Shared option definitions live in `cli/options.py`.
 
-Commands group into: ingest (`import-run`, `capture`, `init`), build (`promote`, `run`, `resume`, `rollback`, `status`), verify (`replay`, `eval`, `regression-case`, `verify`), review (`approve`, `reject`, `revise`, `review`, `learn-patch`), learning (`learn`, `reflect`, `dataset-export`), operate (`health`, `harden`, `card`, `registry`, `dashboard`, `inspect`, `context`, `diff`), explain (`explain`/`why`), portability (`export`, `capability export|import|validate|remap|adapt`), activation (`install skill|mcp`, `runtime install|conformance`, `session start|event|finish`, `mcp serve`), and diagnose (`version`, `doctor` — these print a `diagnostics.py` summary rather than a workflow result).
+Commands group into: ingest (`import-run`, `capture`, `init`), build (`promote`, `run`, `resume`, `rollback`, `status`), verify (`replay`, `eval`, `regression-case`, `verify`), review (`approve`, `reject`, `revise`, `review`, `learn-patch`), learning (`learn`, `reflect`, `dataset-export`), operate (`health`, `harden`, `card`, `registry`, `dashboard`, `inspect`, `context`, `diff`), explain (`explain`/`why`), portability (`export`, `capability export|import|validate|remap|adapt`), activation (`install skill|mcp`, `runtime install|conformance`, `session start|event|finish`, `mcp serve`), and diagnose (`--version` root option, `doctor` — these print a `diagnostics.py` summary rather than a workflow result).
 
 ## Conventions
 

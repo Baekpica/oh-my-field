@@ -218,6 +218,7 @@ class EvalPassRateComparison(StrictModel):
 class TargetRunPlan(StrictModel):
     target_run_command: str | None = None
     manual_run_required: bool = True
+    manual_run_reason: str | None = None
     expected_artifacts: tuple[str, ...] = ()
     executed: bool = False
     approved: bool = False
@@ -309,6 +310,7 @@ class CapabilityPortabilityExportSummary(StrictModel):
     bundle_format: ExportBundleFormat = "archive"
     evidence_mode: EvidenceInclusionMode = "summary"
     evidence_proof_count: int = Field(default=0, ge=0)
+    next_action: str = Field(min_length=1)
 
 
 class CapabilityExportRecord(StrictModel):
@@ -397,6 +399,7 @@ class CapabilityValidationSummary(StrictModel):
     target_run_executed: bool = False
     target_run_exit_code: int | None = None
     manual_run_required: bool = True
+    manual_run_reason: str | None = None
     next_commands: tuple[str, ...] = ()
 
 
@@ -428,6 +431,7 @@ class CapabilityRemapSummary(StrictModel):
     binding_count: int = Field(ge=0)
     unresolved: tuple[str, ...] = ()
     complete: bool
+    next_action: str = Field(min_length=1)
 
 
 class CapabilityAdaptRequest(StrictModel):
@@ -446,3 +450,4 @@ class CapabilityAdaptSummary(StrictModel):
     instruction_variant: str
     context_variant: str
     required_human_review: bool
+    next_action: str = Field(min_length=1)

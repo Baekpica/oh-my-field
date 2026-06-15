@@ -1,6 +1,10 @@
 from oh_my_field.application.portability.manifest_builder import (
     portability_from_overlay,
 )
+from oh_my_field.domain.portability.lifecycle import (
+    target_flags,
+    validate_command_hint,
+)
 from oh_my_field.domain.portability.models import (
     CapabilityAdaptRequest,
     CapabilityAdaptSummary,
@@ -54,4 +58,12 @@ def adapt_capability_package(
         instruction_variant=overrides.instruction_variant,
         context_variant=overrides.context_variant,
         required_human_review=overrides.required_human_review,
+        next_action=(
+            "re-validate the adapted target: "
+            + validate_command_hint(
+                manifest.name,
+                overlay.target,
+                target_flags(overlay.target),
+            )
+        ),
     )

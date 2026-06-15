@@ -2,9 +2,17 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import cast
 
-from oh_my_field.application.health import CapabilityHealthRequest, run_health_workflow
+from oh_my_field.application.explain_artifacts import ExplainRequest, explain_artifact
+from oh_my_field.application.health import (
+    CapabilityHealthRequest,
+    run_card_workflow,
+    run_health_workflow,
+)
 from oh_my_field.application.portability import (
+    adapt_capability_package,
     export_capability_package,
+    import_capability_package,
+    remap_capability_package,
     validate_capability_package,
 )
 from oh_my_field.application.promote import PromoteRequest, run_promote_workflow
@@ -17,14 +25,21 @@ from oh_my_field.application.session import (
 )
 from oh_my_field.domain.models import StrictModel
 from oh_my_field.domain.portability.models import (
+    CapabilityAdaptRequest,
     CapabilityPortabilityExportRequest,
+    CapabilityPortabilityImportRequest,
+    CapabilityRemapRequest,
     CapabilityValidationRequest,
 )
 from oh_my_field.mcp.schemas import (
+    AdaptCapabilityToolRequest,
     CapabilityInspectToolSummary,
+    CardToolRequest,
+    ExplainToolRequest,
     ExportCapabilityToolRequest,
     FinishSessionToolRequest,
     HealthToolRequest,
+    ImportCapabilityToolRequest,
     InspectCapabilityToolRequest,
     ListCapabilitiesToolRequest,
     MaterializeSessionToolRequest,
@@ -35,6 +50,7 @@ from oh_my_field.mcp.schemas import (
     RecordEventToolRequest,
     RecordInputToolRequest,
     RecordValidationToolRequest,
+    RemapCapabilityToolRequest,
     StartSessionToolRequest,
     ValidateCapabilityToolRequest,
 )
@@ -265,7 +281,90 @@ def _validate_capability(arguments: object) -> StrictModel:
             model=request.model,
             project=request.project,
             available_tools=request.available_tools,
+            run_command=request.run_command,
+            run_argv=request.run_argv,
+            expected_artifacts=request.expected_artifacts,
+            command_cwd=request.command_cwd,
+            command_timeout_seconds=request.command_timeout_seconds,
+            approve_command_risk=request.approve_command_risk,
+            run_contract_validator=request.run_contract_validator,
+            require_cwd_inside_project=request.require_cwd_inside_project,
+            allow_env=request.allow_env,
         ),
+    )
+
+
+def _import_capability(arguments: object) -> StrictModel:
+    request = ImportCapabilityToolRequest.model_validate(arguments)
+    return import_capability_package(
+        CapabilityPortabilityImportRequest(
+            bundle_path=request.bundle_path,
+            import_dir=request.import_dir,
+            capabilities_dir=request.capabilities_dir,
+            eval_dir=request.eval_dir,
+            evidence_dir=request.evidence_dir,
+            runtime=request.runtime,
+            model=request.model,
+            project=request.project,
+            validate_import=request.validate_import,
+            available_tools=request.available_tools,
+            as_name=request.as_name,
+            namespace=request.namespace,
+            if_exists=request.if_exists,
+        ),
+    )
+
+
+def _remap_capability(arguments: object) -> StrictModel:
+    request = RemapCapabilityToolRequest.model_validate(arguments)
+    return remap_capability_package(
+        CapabilityRemapRequest(
+            capability_name=request.capability_name,
+            capabilities_dir=request.capabilities_dir,
+            target=request.target,
+            model=request.model,
+            target_project=request.target_project,
+            mappings=tuple(request.mappings.items()),
+            unresolved=request.unresolved,
+        ),
+    )
+
+
+def _adapt_capability(arguments: object) -> StrictModel:
+    request = AdaptCapabilityToolRequest.model_validate(arguments)
+    return adapt_capability_package(
+        CapabilityAdaptRequest(
+            capability_name=request.capability_name,
+            capabilities_dir=request.capabilities_dir,
+            target=request.target,
+            model=request.model,
+            instruction_variant=request.instruction_variant,
+            context_variant=request.context_variant,
+            require_human_review=request.require_human_review,
+        ),
+    )
+
+
+def _explain(arguments: object) -> StrictModel:
+    request = ExplainToolRequest.model_validate(arguments)
+    return explain_artifact(
+        ExplainRequest(
+            target_type=request.target_type,
+            target_id=request.target_id,
+            rule=request.rule,
+            check=request.check,
+            capabilities_dir=request.capabilities_dir,
+            learning_patch_dir=request.learning_patch_dir,
+        ),
+    )
+
+
+def _card(arguments: object) -> StrictModel:
+    request = CardToolRequest.model_validate(arguments)
+    return run_card_workflow(
+        capability_name=request.capability_name,
+        capabilities_dir=request.capabilities_dir,
+        write=request.write,
     )
 
 
@@ -362,11 +461,55 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
     ToolSpec(
         name="omf_validate_capability",
         description=(
-            "Re-validate an imported capability against a target runtime "
-            "without executing a target run command."
+            "Re-validate an imported capability against a target runtime. "
+            "Pass run_command (your runtime's run invocation) to observe a real "
+            "target run and reach the terminal `validated` status; without it "
+            "the target stays `needs_validation` (pending, not a failure)."
         ),
         request_model=ValidateCapabilityToolRequest,
         handler=_validate_capability,
+    ),
+    ToolSpec(
+        name="omf_import_capability",
+        description=(
+            "Import a portable capability bundle into the local registry and "
+            "write a target validation report."
+        ),
+        request_model=ImportCapabilityToolRequest,
+        handler=_import_capability,
+    ),
+    ToolSpec(
+        name="omf_remap_capability",
+        description=(
+            "Record a context remap plan binding source context keys to target "
+            "values for an imported target."
+        ),
+        request_model=RemapCapabilityToolRequest,
+        handler=_remap_capability,
+    ),
+    ToolSpec(
+        name="omf_adapt_capability",
+        description=(
+            "Apply instruction/context/review overrides to an imported target "
+            "to resolve a needs_adaptation status."
+        ),
+        request_model=AdaptCapabilityToolRequest,
+        handler=_adapt_capability,
+    ),
+    ToolSpec(
+        name="omf_explain",
+        description=(
+            "Explain why an OMF capability, harness, or learning patch is in its "
+            "current state instead of guessing from raw files."
+        ),
+        request_model=ExplainToolRequest,
+        handler=_explain,
+    ),
+    ToolSpec(
+        name="omf_card",
+        description="Render the human capability card (goal, contract, portability).",
+        request_model=CardToolRequest,
+        handler=_card,
     ),
 )
 
