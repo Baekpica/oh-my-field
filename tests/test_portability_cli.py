@@ -1023,7 +1023,9 @@ def test_capability_validate_contract_validator_adds_confidence(
         ],
     )
     package_dir = target_caps / "repo_issue_triage"
-    _write_expected_artifact(package_dir)
+    command_cwd = tmp_path / "target-run"
+    _write_expected_artifact(command_cwd)
+    assert not package_dir.joinpath("output", "report.json").exists()
 
     result = CliRunner().invoke(
         app,
@@ -1040,7 +1042,7 @@ def test_capability_validate_contract_validator_adds_confidence(
             "--run-command",
             "true",
             "--command-cwd",
-            str(package_dir),
+            str(command_cwd),
             "--run-contract-validator",
             "--capabilities-dir",
             str(target_caps),

@@ -314,11 +314,11 @@ def _contract_validator_check(
                 ),
             ),
         )
-    argv = (sys.executable, "validators/validate_contract.py")
+    argv = (sys.executable, str(validator.resolve()))
     execution = execute_shell_command(
         CommandExecutionRequest(
             command=shlex.join(argv),
-            cwd=package_dir,
+            cwd=request.command_cwd,
             timeout_seconds=request.command_timeout_seconds,
             approve_risk=request.approve_command_risk,
             allow_env=request.allow_env,
