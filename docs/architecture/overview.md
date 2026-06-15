@@ -109,7 +109,7 @@ that exported, imported, validated, and portable are separate states:
 - `exported`: a canonical archive package exists, optionally with runtime
   projection files.
 - `imported`: a target overlay and imported package record exist.
-- `validated`: a real target run passed.
+- `validated`: a real target run passed and no hard blockers remain.
 - `portable`: at least one imported target is validated.
 
 Static validation and manual-run planning do not mark a target as validated.

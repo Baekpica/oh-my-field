@@ -6,11 +6,27 @@ OMF keeps runtime conversion separate from target validation.
   archive, with optional target runtime projections.
 - `imported`: the archive or directory package has been materialized in a
   target project's OMF registry.
-- `validated`: an actual target run passed under the target runtime/model.
+- `validated`: an actual target run passed and no hard blockers remain.
 - `portable`: at least one target import has been validated.
 
 Static import validation can show that files and metadata are present, but it
 does not prove the target runtime can perform the task.
+
+## Validation Signals
+
+Target validation reports use v0.2 schemas and separate status from risk:
+
+- `hard_blockers`: actionable failures such as unavailable required tools,
+  unresolved context remaps, target run failures, missing expected artifacts, or
+  failed `--run-contract-validator` checks.
+- `warnings`: advisory transfer-risk factors such as runtime/model/project
+  changes or context compression.
+- `portability_risk`: the former readiness score as advisory risk only.
+- `validation_confidence`: an advisory signal for how strong the evidence is
+  (target run only, artifact checks, optional contract validator, and so on).
+
+`needs_adaptation` now means at least one hard blocker must be resolved.
+A low portability risk score by itself does not block `validated`.
 
 ## Skill Portability Is Not Capability Portability
 
@@ -90,7 +106,9 @@ A failed check returns `status: degraded` with a recommendation per check.
 Conformance never invokes the agent runtime; folding a real target run into
 the eval stays on `omf capability validate --run-command/--run-argv`. That is
 also the current pattern for OMF-led execution: pass the target agent CLI as
-the validation run command and gate `validated` status on its exit code.
+the validation run command, then let OMF combine the exit code, required
+artifact checks, optional contract validator, and hard blockers into the final
+validation status.
 
 ## Contract Files
 
@@ -101,7 +119,8 @@ capability package includes:
 - `contracts/artifacts.yaml`: artifact kind, path, role, and validation mapping.
 - `contracts/validation.md`: human-readable validation guide.
 - `contracts/replay_plan.yaml`: replay and target-run expectations.
-- `validators/validate_contract.py`: generic contract validator.
+- `validators/validate_contract.py`: generic contract validator, executable
+  during target validation with `--run-contract-validator`.
 
 Dedicated runtime projections copy the same contract into `references/` next to
 the generated skill. The generic projection keeps the `contracts/` and

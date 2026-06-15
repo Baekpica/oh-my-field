@@ -19,7 +19,7 @@ SCHEMA_VERSIONS = {
     "capability": "0.1",
     "evidence": "0.1",
     "harness": "0.1",
-    "portability": "0.1",
+    "portability": "0.2",
 }
 OPTIONAL_RUNTIME_COMMANDS = ("codex", "claude", "hermes-code")
 

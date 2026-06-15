@@ -151,7 +151,7 @@ omf capability import .omf/exports/repo_issue_triage-hermes.omfcap.tar.gz \
   --validate
 
 # Validate with a real target run; OMF gates the command behind
-# --approve-command-risk and folds its exit code into the target eval.
+# --approve-command-risk and folds hard blockers into the target eval.
 omf capability validate repo_issue_triage \
   --target hermes \
   --run-command "hermes-code --profile target --skill repo_issue_triage" \
@@ -160,4 +160,6 @@ omf capability validate repo_issue_triage \
 
 Without `--run-command`, `validate` records a manual-run plan and the expected
 artifacts to bring back via `import-run`; the import stays at
-`needs_validation` until a real target run passes.
+`needs_validation` until a real target run passes. With a target run, missing
+expected artifacts or failed opt-in `--run-contract-validator` checks are hard
+blockers; runtime/model/project transfer risk is advisory.

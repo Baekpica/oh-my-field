@@ -347,8 +347,9 @@ separate, because "can be exported" is not "works on the target":
 - **Imported**: the archive or directory package has been materialized into a
   target project's OMF registry (`omf capability import`).
 - **Validated**: an actual target run passed under the recorded target
-  runtime/model/project (`omf capability validate --run-command ...`). Static
-  `import --validate` alone leaves the import at `needs_validation`.
+  runtime/model/project and no hard blockers remain (`omf capability validate
+  --run-command ...`). Static `import --validate` alone leaves the import at
+  `needs_validation`.
 - **Portable**: the capability has at least one validated target import.
 
 `omf health` reports `export_status`, `import_status`, and `validation_status`
@@ -364,6 +365,12 @@ omf capability validate repo_issue_triage --target hermes \
   --run-command "hermes-code --profile target --skill repo_issue_triage" \
   --approve-command-risk
 ```
+
+Target validation reports separate hard blockers from advisory portability risk.
+Missing required tools, unresolved context remaps, failed target runs, missing
+expected artifacts, and opt-in contract validator failures require adaptation.
+Runtime/model/project differences lower the advisory risk score but do not block
+`validated` after the target run and required artifacts pass.
 
 Copying a generated Codex, Claude Code, Hermes, Pi, Odysseus, or generic
 projection into a runtime only makes that runtime discover a launcher. It is
