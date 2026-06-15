@@ -307,7 +307,7 @@ def _unpack_archive(archive_path: Path, import_dir: Path) -> Path:
                         reason=reason,
                     )
             # All paths and member types are validated above before extraction.
-            archive.extractall(destination, members=members)  # noqa: S202
+            archive.extractall(destination, members=members, filter="data")
     except (OSError, tarfile.TarError) as exc:
         raise PortabilityBundleParseError(path=archive_path, reason=str(exc)) from exc
     ok, errors = _verify_directory_manifest(destination)
