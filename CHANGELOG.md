@@ -4,6 +4,8 @@ All notable changes to this project will be documented here.
 
 ## Unreleased
 
+## 0.3.0 - 2026-06-16
+
 ### Added
 
 - Added target validation and overlay v0.2 schema contracts with explicit
