@@ -1,4 +1,5 @@
 import shlex
+import sys
 from pathlib import Path
 
 import yaml
@@ -10,20 +11,22 @@ from oh_my_field.application.portability.manifest_builder import (
 from oh_my_field.application.portability.rendering import yaml_dump
 from oh_my_field.application.portability.validation_support import (
     build_overlay,
+    next_action_for_report,
     pass_rate_comparison,
     validated_status,
+    validation_confidence,
     validation_report,
     write_failure_evidence,
     write_target_eval,
 )
 from oh_my_field.domain.models import CapabilityManifest, EvalCheck
-from oh_my_field.domain.portability.lifecycle import next_validation_action
 from oh_my_field.domain.portability.models import (
     CapabilityValidationRequest,
     CapabilityValidationSummary,
     ContextRemapPlan,
     PortabilityTarget,
     TargetRunPlan,
+    ValidationIssue,
     ValidationStatus,
 )
 from oh_my_field.infrastructure.fs.storage import (
@@ -69,12 +72,43 @@ def validate_capability_package(
         context_remapped=context_remapped,
     )
     expected_artifacts = _expected_artifacts(request, manifest)
-    run_plan, run_check = _run_target_hook(request, expected_artifacts)
+    run_plan, run_check, run_blockers = _run_target_hook(request, expected_artifacts)
+    artifact_checks, artifact_blockers = _artifact_checks(
+        expected_artifacts,
+        request.command_cwd,
+        enabled=run_plan.executed,
+    )
+    contract_check, contract_blockers = _contract_validator_check(
+        request,
+        package_dir,
+        enabled=request.run_contract_validator and run_plan.executed,
+    )
+    extra_checks = tuple(
+        check
+        for check in (run_check, *artifact_checks, contract_check)
+        if check is not None
+    )
+    runtime_blockers = (*run_blockers, *artifact_blockers, *contract_blockers)
+    report = report.model_copy(
+        update={
+            "hard_blockers": (*report.hard_blockers, *runtime_blockers),
+            "validation_confidence": validation_confidence(
+                target_run_executed=run_plan.executed,
+                target_run_passed=run_plan.executed and run_plan.exit_code == 0,
+                expected_artifacts=expected_artifacts,
+                artifact_checks=artifact_checks,
+                contract_validator_executed=contract_check is not None,
+                contract_validator_passed=(
+                    contract_check is not None and contract_check.status == "pass"
+                ),
+            ),
+        },
+    )
     eval_result, eval_path = write_target_eval(
         report=report,
         manifest=manifest,
         eval_dir=request.eval_dir,
-        extra_checks=(run_check,) if run_check is not None else (),
+        extra_checks=extra_checks,
     )
     final_status = validated_status(
         report=report,
@@ -84,7 +118,7 @@ def validate_capability_package(
     report = report.model_copy(
         update={
             "status": final_status,
-            "next_action": next_validation_action(final_status),
+            "next_action": next_action_for_report(final_status, report.hard_blockers),
             "eval_id": eval_result.id,
             "eval_path": str(eval_path),
             "target_run": run_plan,
@@ -152,7 +186,7 @@ def _validation_run_command(request: CapabilityValidationRequest) -> str | None:
 def _run_target_hook(
     request: CapabilityValidationRequest,
     expected_artifacts: tuple[str, ...],
-) -> tuple[TargetRunPlan, EvalCheck | None]:
+) -> tuple[TargetRunPlan, EvalCheck | None, tuple[ValidationIssue, ...]]:
     command = _validation_run_command(request)
     if command is None:
         return (
@@ -161,6 +195,7 @@ def _run_target_hook(
                 expected_artifacts=expected_artifacts,
             ),
             None,
+            (),
         )
     risk = assess_command_risk(command)
     if risk.approval_required and not request.approve_command_risk:
@@ -174,6 +209,7 @@ def _run_target_hook(
                 risk_categories=risk.categories,
             ),
             None,
+            (),
         )
     execution = execute_shell_command(
         CommandExecutionRequest(
@@ -200,7 +236,115 @@ def _run_target_hook(
         status="pass" if execution.exit_code == 0 else "fail",
         message=f"target run exit code {execution.exit_code}",
     )
-    return plan, check
+    blockers: tuple[ValidationIssue, ...] = ()
+    if execution.exit_code != 0:
+        blockers = (
+            ValidationIssue(
+                name="target_run_failed",
+                message=f"target run exit code {execution.exit_code}",
+                action="fix the target run failure and rerun validation",
+            ),
+        )
+    return plan, check, blockers
+
+
+def _artifact_checks(
+    expected_artifacts: tuple[str, ...],
+    cwd: Path,
+    *,
+    enabled: bool,
+) -> tuple[tuple[EvalCheck, ...], tuple[ValidationIssue, ...]]:
+    if not enabled or not expected_artifacts:
+        return (), ()
+    checks: list[EvalCheck] = []
+    blockers: list[ValidationIssue] = []
+    root = cwd.resolve()
+    for artifact in expected_artifacts:
+        artifact_path = Path(artifact)
+        path = artifact_path if artifact_path.is_absolute() else root / artifact_path
+        exists = path.exists()
+        checks.append(
+            EvalCheck(
+                name=f"artifact_exists:{artifact}",
+                status="pass" if exists else "fail",
+                message=(
+                    f"artifact exists: {artifact}"
+                    if exists
+                    else f"missing artifact: {artifact}"
+                ),
+            ),
+        )
+        if not exists:
+            blockers.append(
+                ValidationIssue(
+                    name="missing_artifact",
+                    message=f"missing artifact: {artifact}",
+                    action="produce required artifacts and rerun validation",
+                    path=artifact,
+                ),
+            )
+    return tuple(checks), tuple(blockers)
+
+
+def _contract_validator_check(
+    request: CapabilityValidationRequest,
+    package_dir: Path,
+    *,
+    enabled: bool,
+) -> tuple[EvalCheck | None, tuple[ValidationIssue, ...]]:
+    if not enabled:
+        return None, ()
+    validator = package_dir / "validators" / "validate_contract.py"
+    if not validator.exists():
+        return (
+            EvalCheck(
+                name="contract_validator",
+                status="fail",
+                message="contract validator missing",
+            ),
+            (
+                ValidationIssue(
+                    name="contract_validator_missing",
+                    message="validators/validate_contract.py is missing",
+                    action=(
+                        "restore the contract validator or rerun without "
+                        "--run-contract-validator"
+                    ),
+                    path="validators/validate_contract.py",
+                ),
+            ),
+        )
+    argv = (sys.executable, str(validator.resolve()))
+    execution = execute_shell_command(
+        CommandExecutionRequest(
+            command=shlex.join(argv),
+            cwd=request.command_cwd,
+            timeout_seconds=request.command_timeout_seconds,
+            approve_risk=request.approve_command_risk,
+            allow_env=request.allow_env,
+            argv=argv,
+            require_cwd_inside_project=False,
+        ),
+    )
+    message = f"contract validator exit code {execution.exit_code}"
+    check = EvalCheck(
+        name="contract_validator",
+        status="pass" if execution.exit_code == 0 else "fail",
+        message=message,
+    )
+    if execution.exit_code == 0:
+        return check, ()
+    return (
+        check,
+        (
+            ValidationIssue(
+                name="contract_validator_failed",
+                message=message,
+                action="fix contract validation failures and rerun validation",
+                path="validators/validate_contract.py",
+            ),
+        ),
+    )
 
 
 def _expected_artifacts(

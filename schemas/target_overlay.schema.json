@@ -1,0 +1,380 @@
+{
+  "$defs": {
+    "ExportTarget": {
+      "enum": [
+        "codex",
+        "claude_code",
+        "hermes",
+        "pi",
+        "odysseus",
+        "generic"
+      ],
+      "type": "string"
+    },
+    "PortabilityRisk": {
+      "additionalProperties": false,
+      "properties": {
+        "advisory_only": {
+          "default": true,
+          "title": "Advisory Only",
+          "type": "boolean"
+        },
+        "factors": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ReadinessFactor"
+          },
+          "title": "Factors",
+          "type": "array"
+        },
+        "level": {
+          "$ref": "#/$defs/RiskLevel"
+        },
+        "score": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Score",
+          "type": "number"
+        }
+      },
+      "required": [
+        "score",
+        "level"
+      ],
+      "title": "PortabilityRisk",
+      "type": "object"
+    },
+    "PortabilitySource": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Ids",
+          "type": "array"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "project": {
+          "minLength": 1,
+          "title": "Project",
+          "type": "string"
+        },
+        "reasoning_effort": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reasoning Effort"
+        },
+        "runtime": {
+          "minLength": 1,
+          "title": "Runtime",
+          "type": "string"
+        }
+      },
+      "required": [
+        "runtime",
+        "project"
+      ],
+      "title": "PortabilitySource",
+      "type": "object"
+    },
+    "PortabilityTarget": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "project": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Project"
+        },
+        "runtime": {
+          "$ref": "#/$defs/ExportTarget"
+        }
+      },
+      "required": [
+        "runtime"
+      ],
+      "title": "PortabilityTarget",
+      "type": "object"
+    },
+    "ReadinessFactor": {
+      "additionalProperties": false,
+      "properties": {
+        "delta": {
+          "title": "Delta",
+          "type": "number"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "reason": {
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "delta",
+        "reason"
+      ],
+      "title": "ReadinessFactor",
+      "type": "object"
+    },
+    "RiskLevel": {
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "severe"
+      ],
+      "type": "string"
+    },
+    "TargetOverrides": {
+      "additionalProperties": false,
+      "properties": {
+        "context_variant": {
+          "default": "full",
+          "title": "Context Variant",
+          "type": "string"
+        },
+        "instruction_variant": {
+          "default": "base",
+          "title": "Instruction Variant",
+          "type": "string"
+        },
+        "required_human_review": {
+          "default": true,
+          "title": "Required Human Review",
+          "type": "boolean"
+        }
+      },
+      "title": "TargetOverrides",
+      "type": "object"
+    },
+    "ToolCompatibilityStatus": {
+      "enum": [
+        "pass",
+        "partial",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "ValidationIssue": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Action"
+        },
+        "message": {
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Path"
+        }
+      },
+      "required": [
+        "name",
+        "message"
+      ],
+      "title": "ValidationIssue",
+      "type": "object"
+    },
+    "ValidationStatus": {
+      "enum": [
+        "needs_validation",
+        "needs_adaptation",
+        "validated"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "capability_name": {
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "title": "Capability Name",
+      "type": "string"
+    },
+    "context_pack_path": {
+      "default": "context.pack.md",
+      "title": "Context Pack Path",
+      "type": "string"
+    },
+    "direct_execution_allowed": {
+      "default": false,
+      "title": "Direct Execution Allowed",
+      "type": "boolean"
+    },
+    "eval_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Eval Id"
+    },
+    "failure_evidence_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Failure Evidence Id"
+    },
+    "hard_blockers": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ValidationIssue"
+      },
+      "title": "Hard Blockers",
+      "type": "array"
+    },
+    "instructions_path": {
+      "default": "instructions.md",
+      "title": "Instructions Path",
+      "type": "string"
+    },
+    "overrides": {
+      "$ref": "#/$defs/TargetOverrides"
+    },
+    "portability_readiness_score": {
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Portability Readiness Score",
+      "type": "number"
+    },
+    "portability_risk": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PortabilityRisk"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "schema_version": {
+      "default": "omf.target_overlay.v0.2",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "source": {
+      "$ref": "#/$defs/PortabilitySource"
+    },
+    "status": {
+      "$ref": "#/$defs/ValidationStatus"
+    },
+    "target": {
+      "$ref": "#/$defs/PortabilityTarget"
+    },
+    "tool_compatibility": {
+      "$ref": "#/$defs/ToolCompatibilityStatus"
+    },
+    "transfer_type": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Transfer Type",
+      "type": "array"
+    },
+    "validation_report_path": {
+      "default": "validation_report.yaml",
+      "title": "Validation Report Path",
+      "type": "string"
+    },
+    "warnings": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ValidationIssue"
+      },
+      "title": "Warnings",
+      "type": "array"
+    }
+  },
+  "required": [
+    "capability_name",
+    "source",
+    "target",
+    "status",
+    "tool_compatibility",
+    "portability_readiness_score"
+  ],
+  "title": "TargetOverlay",
+  "type": "object"
+}

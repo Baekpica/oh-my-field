@@ -21,11 +21,13 @@ type ExportBundleFormat = Literal["archive", "dir"]
 type SkillStyle = Literal["launcher", "full"]
 
 PORTABILITY_SCHEMA_VERSION = "omf.portability.v0.1"
-TARGET_VALIDATION_SCHEMA_VERSION = "omf.target_validation.v0.1"
-TARGET_OVERLAY_SCHEMA_VERSION = "omf.target_overlay.v0.1"
+TARGET_VALIDATION_SCHEMA_VERSION = "omf.target_validation.v0.2"
+TARGET_OVERLAY_SCHEMA_VERSION = "omf.target_overlay.v0.2"
 RUNTIME_SKILL_SCHEMA_VERSION = "omf.runtime_skill.v0.1"
 type ModelClass = Literal["frontier", "standard", "local"]
 type CapabilityTier = Literal["high", "medium", "low"]
+type RiskLevel = Literal["low", "medium", "high", "severe"]
+type ConfidenceLevel = Literal["low", "medium", "high"]
 type YamlValue = (
     str | int | float | bool | None | list["YamlValue"] | dict[str, "YamlValue"]
 )
@@ -180,6 +182,33 @@ class PortabilityReadiness(StrictModel):
     factors: tuple[ReadinessFactor, ...] = ()
 
 
+class ValidationIssue(StrictModel):
+    name: str = Field(min_length=1)
+    message: str = Field(min_length=1)
+    action: str | None = None
+    path: str | None = None
+
+
+class PortabilityRisk(StrictModel):
+    score: float = Field(ge=0.0, le=1.0)
+    level: RiskLevel
+    advisory_only: bool = True
+    factors: tuple[ReadinessFactor, ...] = ()
+
+
+class ValidationConfidenceFactor(StrictModel):
+    name: str = Field(min_length=1)
+    observed: bool
+    message: str = Field(min_length=1)
+
+
+class ValidationConfidence(StrictModel):
+    score: float = Field(ge=0.0, le=1.0)
+    level: ConfidenceLevel
+    advisory_only: bool = True
+    factors: tuple[ValidationConfidenceFactor, ...] = ()
+
+
 class EvalPassRateComparison(StrictModel):
     source_pass_rate: float | None = Field(default=None, ge=0.0, le=1.0)
     target_pass_rate: float | None = Field(default=None, ge=0.0, le=1.0)
@@ -207,6 +236,10 @@ class TargetValidationReport(StrictModel):
     eval_set: str | None = None
     initial_pass_rate: float | None = Field(default=None, ge=0.0, le=1.0)
     readiness: PortabilityReadiness
+    hard_blockers: tuple[ValidationIssue, ...] = ()
+    warnings: tuple[ValidationIssue, ...] = ()
+    portability_risk: PortabilityRisk
+    validation_confidence: ValidationConfidence
     model_delta: PortabilityModelDelta
     target_run: TargetRunPlan | None = None
     pass_rate_comparison: EvalPassRateComparison | None = None
@@ -235,6 +268,9 @@ class TargetOverlay(StrictModel):
     status: ValidationStatus
     tool_compatibility: ToolCompatibilityStatus
     portability_readiness_score: float = Field(ge=0.0, le=1.0)
+    hard_blockers: tuple[ValidationIssue, ...] = ()
+    warnings: tuple[ValidationIssue, ...] = ()
+    portability_risk: PortabilityRisk | None = None
     transfer_type: tuple[str, ...] = ()
     overrides: TargetOverrides = Field(default_factory=TargetOverrides)
     validation_report_path: str = "validation_report.yaml"
@@ -332,6 +368,7 @@ class CapabilityValidationRequest(StrictModel):
     command_cwd: Path = Path()
     command_timeout_seconds: int = Field(default=600, ge=1)
     approve_command_risk: bool = False
+    run_contract_validator: bool = False
     require_cwd_inside_project: bool = False
     allow_env: tuple[str, ...] = ()
 

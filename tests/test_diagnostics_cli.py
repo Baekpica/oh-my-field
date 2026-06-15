@@ -38,7 +38,7 @@ class DoctorOutput(BaseModel):
 
 
 def test_version_outputs_json_schema_versions() -> None:
-    result = CliRunner().invoke(app, ["version", "--json"])
+    result = CliRunner().invoke(app, ["--version", "--json"])
 
     assert result.exit_code == 0
     output = VersionOutput.model_validate_json(result.stdout)
@@ -46,7 +46,20 @@ def test_version_outputs_json_schema_versions() -> None:
     assert output.schema_versions["capability"] == "0.1"
     assert output.schema_versions["evidence"] == "0.1"
     assert output.schema_versions["harness"] == "0.1"
-    assert output.schema_versions["portability"] == "0.1"
+    assert output.schema_versions["portability"] == "0.2"
+
+
+def test_version_option_outputs_text() -> None:
+    result = CliRunner().invoke(app, ["--version"])
+
+    assert result.exit_code == 0
+    assert f"oh-my-field {__version__}" in result.stdout
+
+
+def test_version_subcommand_is_not_registered() -> None:
+    result = CliRunner().invoke(app, ["version"])
+
+    assert result.exit_code != 0
 
 
 def test_doctor_outputs_json_environment_summary() -> None:

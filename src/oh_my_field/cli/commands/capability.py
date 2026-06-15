@@ -186,6 +186,10 @@ def capability_validate(
         bool,
         typer.Option("--approve-command-risk"),
     ] = False,
+    run_contract_validator: Annotated[
+        bool,
+        typer.Option("--run-contract-validator"),
+    ] = False,
     require_cwd_inside_project: Annotated[
         bool,
         typer.Option("--require-cwd-inside-project"),
@@ -215,6 +219,7 @@ def capability_validate(
             command_cwd=command_cwd,
             command_timeout_seconds=command_timeout_seconds,
             approve_command_risk=approve_command_risk,
+            run_contract_validator=run_contract_validator,
             require_cwd_inside_project=require_cwd_inside_project,
             allow_env=tuple(allow_env or ()),
         )

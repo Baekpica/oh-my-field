@@ -58,8 +58,8 @@ def validation_markdown(manifest: CapabilityManifest) -> str:
         _bullets(artifact_paths, "No expected artifacts recorded."),
         "",
         "## Validator",
-        "- Run `python validators/validate_contract.py` from the package root "
-        "when available.",
+        "- Run `python /path/to/package/validators/validate_contract.py` from "
+        "the target artifact root when available.",
         "- If the target runtime cannot run Python, manually apply the same "
         "contract checks.",
         "",

@@ -35,4 +35,4 @@ under Apache-2.0.
 
 OMF separates export, import, target validation, and portable status. A
 capability archive is portable only after a target runtime has been validated by
-an actual target run.
+an actual target run with no hard blockers.

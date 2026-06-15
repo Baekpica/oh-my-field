@@ -10,6 +10,10 @@ from oh_my_field.domain.models import (
     EvidenceRecord,
     HarnessResult,
 )
+from oh_my_field.domain.portability.models import (
+    TargetOverlay,
+    TargetValidationReport,
+)
 
 type JsonSchema = dict[str, Any]
 
@@ -20,6 +24,8 @@ SCHEMA_MODELS: dict[str, type[BaseModel]] = {
     "evidence.schema.json": EvidenceRecord,
     "harness.schema.json": HarnessResult,
     "export_bundle.schema.json": CapabilityExportBundle,
+    "target_validation.schema.json": TargetValidationReport,
+    "target_overlay.schema.json": TargetOverlay,
 }
 
 

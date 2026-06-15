@@ -1,0 +1,778 @@
+{
+  "$defs": {
+    "CapabilityTier": {
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ],
+      "type": "string"
+    },
+    "CommandRiskCategory": {
+      "enum": [
+        "write",
+        "destructive",
+        "external_call",
+        "credential_access",
+        "production_write",
+        "paid_operation",
+        "privilege_escalation"
+      ],
+      "type": "string"
+    },
+    "ConfidenceLevel": {
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "type": "string"
+    },
+    "EvalPassRateComparison": {
+      "additionalProperties": false,
+      "properties": {
+        "delta": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Delta"
+        },
+        "source_pass_rate": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Pass Rate"
+        },
+        "target_pass_rate": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Pass Rate"
+        }
+      },
+      "title": "EvalPassRateComparison",
+      "type": "object"
+    },
+    "ExportTarget": {
+      "enum": [
+        "codex",
+        "claude_code",
+        "hermes",
+        "pi",
+        "odysseus",
+        "generic"
+      ],
+      "type": "string"
+    },
+    "ModelClass": {
+      "enum": [
+        "frontier",
+        "standard",
+        "local"
+      ],
+      "type": "string"
+    },
+    "ModelProfile": {
+      "additionalProperties": false,
+      "properties": {
+        "context_tokens": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Context Tokens"
+        },
+        "model_class": {
+          "$ref": "#/$defs/ModelClass",
+          "default": "standard"
+        },
+        "reasoning": {
+          "$ref": "#/$defs/CapabilityTier",
+          "default": "medium"
+        },
+        "tool_use": {
+          "$ref": "#/$defs/CapabilityTier",
+          "default": "medium"
+        }
+      },
+      "title": "ModelProfile",
+      "type": "object"
+    },
+    "PortabilityModelDelta": {
+      "additionalProperties": false,
+      "properties": {
+        "downgrade": {
+          "default": false,
+          "title": "Downgrade",
+          "type": "boolean"
+        },
+        "model_changed": {
+          "default": false,
+          "title": "Model Changed",
+          "type": "boolean"
+        },
+        "source_model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Model"
+        },
+        "source_profile": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelProfile"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "target_model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Model"
+        },
+        "target_profile": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelProfile"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "transfer_type": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Transfer Type",
+          "type": "array"
+        }
+      },
+      "title": "PortabilityModelDelta",
+      "type": "object"
+    },
+    "PortabilityReadiness": {
+      "additionalProperties": false,
+      "properties": {
+        "factors": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ReadinessFactor"
+          },
+          "title": "Factors",
+          "type": "array"
+        },
+        "required_pass_rate": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Required Pass Rate",
+          "type": "number"
+        },
+        "score": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Score",
+          "type": "number"
+        }
+      },
+      "required": [
+        "score",
+        "required_pass_rate"
+      ],
+      "title": "PortabilityReadiness",
+      "type": "object"
+    },
+    "PortabilityRisk": {
+      "additionalProperties": false,
+      "properties": {
+        "advisory_only": {
+          "default": true,
+          "title": "Advisory Only",
+          "type": "boolean"
+        },
+        "factors": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ReadinessFactor"
+          },
+          "title": "Factors",
+          "type": "array"
+        },
+        "level": {
+          "$ref": "#/$defs/RiskLevel"
+        },
+        "score": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Score",
+          "type": "number"
+        }
+      },
+      "required": [
+        "score",
+        "level"
+      ],
+      "title": "PortabilityRisk",
+      "type": "object"
+    },
+    "PortabilitySource": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Ids",
+          "type": "array"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "project": {
+          "minLength": 1,
+          "title": "Project",
+          "type": "string"
+        },
+        "reasoning_effort": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reasoning Effort"
+        },
+        "runtime": {
+          "minLength": 1,
+          "title": "Runtime",
+          "type": "string"
+        }
+      },
+      "required": [
+        "runtime",
+        "project"
+      ],
+      "title": "PortabilitySource",
+      "type": "object"
+    },
+    "PortabilityTarget": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "project": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Project"
+        },
+        "runtime": {
+          "$ref": "#/$defs/ExportTarget"
+        }
+      },
+      "required": [
+        "runtime"
+      ],
+      "title": "PortabilityTarget",
+      "type": "object"
+    },
+    "ReadinessFactor": {
+      "additionalProperties": false,
+      "properties": {
+        "delta": {
+          "title": "Delta",
+          "type": "number"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "reason": {
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "delta",
+        "reason"
+      ],
+      "title": "ReadinessFactor",
+      "type": "object"
+    },
+    "RiskLevel": {
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "severe"
+      ],
+      "type": "string"
+    },
+    "TargetRunPlan": {
+      "additionalProperties": false,
+      "properties": {
+        "approved": {
+          "default": false,
+          "title": "Approved",
+          "type": "boolean"
+        },
+        "executed": {
+          "default": false,
+          "title": "Executed",
+          "type": "boolean"
+        },
+        "exit_code": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Exit Code"
+        },
+        "expected_artifacts": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Expected Artifacts",
+          "type": "array"
+        },
+        "manual_run_required": {
+          "default": true,
+          "title": "Manual Run Required",
+          "type": "boolean"
+        },
+        "risk_categories": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CommandRiskCategory"
+          },
+          "title": "Risk Categories",
+          "type": "array"
+        },
+        "target_run_command": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Run Command"
+        }
+      },
+      "title": "TargetRunPlan",
+      "type": "object"
+    },
+    "ToolCompatibilityStatus": {
+      "enum": [
+        "pass",
+        "partial",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "ValidationConfidence": {
+      "additionalProperties": false,
+      "properties": {
+        "advisory_only": {
+          "default": true,
+          "title": "Advisory Only",
+          "type": "boolean"
+        },
+        "factors": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ValidationConfidenceFactor"
+          },
+          "title": "Factors",
+          "type": "array"
+        },
+        "level": {
+          "$ref": "#/$defs/ConfidenceLevel"
+        },
+        "score": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Score",
+          "type": "number"
+        }
+      },
+      "required": [
+        "score",
+        "level"
+      ],
+      "title": "ValidationConfidence",
+      "type": "object"
+    },
+    "ValidationConfidenceFactor": {
+      "additionalProperties": false,
+      "properties": {
+        "message": {
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "observed": {
+          "title": "Observed",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "observed",
+        "message"
+      ],
+      "title": "ValidationConfidenceFactor",
+      "type": "object"
+    },
+    "ValidationIssue": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Action"
+        },
+        "message": {
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Path"
+        }
+      },
+      "required": [
+        "name",
+        "message"
+      ],
+      "title": "ValidationIssue",
+      "type": "object"
+    },
+    "ValidationStatus": {
+      "enum": [
+        "needs_validation",
+        "needs_adaptation",
+        "validated"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "capability_name": {
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "title": "Capability Name",
+      "type": "string"
+    },
+    "compact_instruction_path": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Compact Instruction Path"
+    },
+    "compressed_context_path": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Compressed Context Path"
+    },
+    "context_remap_required": {
+      "default": false,
+      "title": "Context Remap Required",
+      "type": "boolean"
+    },
+    "eval_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Eval Id"
+    },
+    "eval_path": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Eval Path"
+    },
+    "eval_set": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Eval Set"
+    },
+    "failure_evidence_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Failure Evidence Id"
+    },
+    "failure_evidence_path": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Failure Evidence Path"
+    },
+    "hard_blockers": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ValidationIssue"
+      },
+      "title": "Hard Blockers",
+      "type": "array"
+    },
+    "initial_pass_rate": {
+      "anyOf": [
+        {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Initial Pass Rate"
+    },
+    "model_delta": {
+      "$ref": "#/$defs/PortabilityModelDelta"
+    },
+    "next_action": {
+      "minLength": 1,
+      "title": "Next Action",
+      "type": "string"
+    },
+    "pass_rate_comparison": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EvalPassRateComparison"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "portability_risk": {
+      "$ref": "#/$defs/PortabilityRisk"
+    },
+    "readiness": {
+      "$ref": "#/$defs/PortabilityReadiness"
+    },
+    "schema_version": {
+      "default": "omf.target_validation.v0.2",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "source": {
+      "$ref": "#/$defs/PortabilitySource"
+    },
+    "status": {
+      "$ref": "#/$defs/ValidationStatus"
+    },
+    "target": {
+      "$ref": "#/$defs/PortabilityTarget"
+    },
+    "target_run": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TargetRunPlan"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "tool_compatibility": {
+      "$ref": "#/$defs/ToolCompatibilityStatus"
+    },
+    "unavailable_tools": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Unavailable Tools",
+      "type": "array"
+    },
+    "validation_confidence": {
+      "$ref": "#/$defs/ValidationConfidence"
+    },
+    "warnings": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ValidationIssue"
+      },
+      "title": "Warnings",
+      "type": "array"
+    }
+  },
+  "required": [
+    "capability_name",
+    "source",
+    "target",
+    "tool_compatibility",
+    "readiness",
+    "portability_risk",
+    "validation_confidence",
+    "model_delta",
+    "status",
+    "next_action"
+  ],
+  "title": "TargetValidationReport",
+  "type": "object"
+}

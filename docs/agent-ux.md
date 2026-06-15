@@ -106,7 +106,7 @@ canonical capability package
 ```
 
 Exported and imported are not the same as validated. A capability becomes
-portable only after at least one target import passes a real target run.
+portable only after at least one target import passes a real target run with no hard blockers.
 Copying a runtime projection only installs a launcher; every runtime should
 enter the target project through `omf capability import`.
 
