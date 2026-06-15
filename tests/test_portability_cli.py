@@ -184,7 +184,9 @@ def test_capability_export_writes_portability_bundle(tmp_path: Path) -> None:
     assert "project_transfer" in portability["adaptation"]["transfer_type"]
 
 
-def test_capability_import_writes_validation_report(tmp_path: Path) -> None:
+def test_capability_import_writes_validation_report(  # noqa: PLR0915
+    tmp_path: Path,
+) -> None:
     source_capabilities_dir = tmp_path / "source-capabilities"
     export_dir = tmp_path / "exports" / "repo_issue_triage-generic"
     target_capabilities_dir = tmp_path / "target-capabilities"
@@ -243,7 +245,7 @@ def test_capability_import_writes_validation_report(tmp_path: Path) -> None:
     imported = load_manifest("repo_issue_triage", target_capabilities_dir)
     assert output.status == "needs_adaptation"
     assert output.tool_compatibility == "partial"
-    assert output.portability_readiness_score == 0.45
+    assert output.portability_readiness_score == 0.65
     assert output.eval_id is not None
     assert output.eval_path is not None
     assert output.failure_evidence_id is not None
@@ -252,29 +254,40 @@ def test_capability_import_writes_validation_report(tmp_path: Path) -> None:
     assert Path(output.imported_package_path).joinpath("capability.yaml").exists()
     assert Path(output.eval_path).exists()
     assert Path(output.failure_evidence_path).exists()
-    assert report["schema_version"] == "omf.target_validation.v0.1"
+    assert report["schema_version"] == "omf.target_validation.v0.2"
     assert report["target"]["runtime"] == "generic"
     assert report["target"]["model"] == "small-local"
     assert report["context_remap_required"]
     assert report["unavailable_tools"] == ["shell"]
-    assert report["readiness"]["score"] == 0.45
+    assert report["readiness"]["score"] == 0.65
     assert report["readiness"]["required_pass_rate"] == 0.8
     factor_names = {factor["name"] for factor in report["readiness"]["factors"]}
     assert factor_names == {
         "cross_runtime",
-        "model_transfer",
+        "model_downgrade",
         "project_transfer",
-        "unavailable_tool",
     }
+    assert report["portability_risk"]["score"] == 0.65
+    assert report["portability_risk"]["level"] == "medium"
+    assert report["portability_risk"]["advisory_only"] is True
+    blocker_names = {blocker["name"] for blocker in report["hard_blockers"]}
+    assert blocker_names == {"unavailable_tool:shell", "unresolved_context_remap"}
+    warning_names = {warning["name"] for warning in report["warnings"]}
+    assert warning_names == factor_names
     assert report["model_delta"]["model_changed"]
     assert report["eval_id"] == output.eval_id
     assert report["failure_evidence_id"] == output.failure_evidence_id
     overlay = yaml.safe_load(Path(output.overlay_path).read_text(encoding="utf-8"))
     target_dir = Path(output.overlay_path).parent
-    assert overlay["schema_version"] == "omf.target_overlay.v0.1"
+    assert overlay["schema_version"] == "omf.target_overlay.v0.2"
     assert overlay["target"]["runtime"] == "generic"
     assert overlay["target"]["model"] == "small-local"
     assert overlay["status"] == "needs_adaptation"
+    assert {blocker["name"] for blocker in overlay["hard_blockers"]} == {
+        "unavailable_tool:shell",
+        "unresolved_context_remap",
+    }
+    assert overlay["portability_risk"]["score"] == 0.65
     assert overlay["overrides"]["instruction_variant"] == "compact"
     assert overlay["overrides"]["context_variant"] == "full"
     assert overlay["eval_id"] == output.eval_id
@@ -625,6 +638,8 @@ def test_capability_validate_marks_validated_after_passing_target_run(
     eval_dir = tmp_path / "evals"
     evidence_dir = tmp_path / "evidence"
     write_manifest(make_manifest(), source_caps)
+    command_cwd = tmp_path / "target-run"
+    _write_expected_artifact(command_cwd)
     _run_ok(
         [
             "capability",
@@ -674,6 +689,8 @@ def test_capability_validate_marks_validated_after_passing_target_run(
             "shell",
             "--run-command",
             "true",
+            "--command-cwd",
+            str(command_cwd),
             "--capabilities-dir",
             str(target_caps),
             "--eval-dir",
@@ -705,6 +722,8 @@ def test_capability_validate_marks_validated_after_passing_argv_run(
     eval_dir = tmp_path / "evals"
     evidence_dir = tmp_path / "evidence"
     write_manifest(make_manifest(), source_caps)
+    command_cwd = tmp_path / "target-run"
+    _write_expected_artifact(command_cwd)
     _run_ok(
         [
             "capability",
@@ -754,6 +773,8 @@ def test_capability_validate_marks_validated_after_passing_argv_run(
             "shell",
             "--run-argv",
             "true",
+            "--command-cwd",
+            str(command_cwd),
             "--capabilities-dir",
             str(target_caps),
             "--eval-dir",
@@ -1473,6 +1494,8 @@ def test_capability_remap_writes_plan(tmp_path: Path) -> None:
 
 def test_capability_remap_resolves_context_for_validation(tmp_path: Path) -> None:
     target_caps, eval_dir, evidence_dir = _seed_project_transfer_import(tmp_path)
+    command_cwd = tmp_path / "target-run"
+    _write_expected_artifact(command_cwd)
     validate_args = [
         "capability",
         "validate",
@@ -1485,6 +1508,8 @@ def test_capability_remap_resolves_context_for_validation(tmp_path: Path) -> Non
         "shell",
         "--run-command",
         "true",
+        "--command-cwd",
+        str(command_cwd),
         "--capabilities-dir",
         str(target_caps),
         "--eval-dir",
@@ -1521,6 +1546,108 @@ def test_capability_remap_resolves_context_for_validation(tmp_path: Path) -> Non
     assert (
         CapabilityValidateOutput.model_validate_json(after.stdout).status == "validated"
     )
+
+
+def test_low_readiness_risk_does_not_block_validated_target_run(
+    tmp_path: Path,
+) -> None:
+    source_caps = tmp_path / "src"
+    target_caps = tmp_path / "tgt"
+    export_dir = tmp_path / "bundle"
+    eval_dir = tmp_path / "evals"
+    evidence_dir = tmp_path / "evidence"
+    command_cwd = tmp_path / "target-run"
+    _write_expected_artifact(command_cwd)
+    write_manifest(make_manifest(), source_caps)
+    _run_ok(
+        [
+            "capability",
+            "export",
+            "repo_issue_triage",
+            "--target",
+            "generic",
+            "--target-model",
+            "small-local",
+            "--source-project",
+            "source-repo",
+            "--target-project",
+            "target-repo",
+            "--out",
+            str(export_dir),
+            "--capabilities-dir",
+            str(source_caps),
+        ],
+    )
+    _run_ok(
+        [
+            "capability",
+            "import",
+            str(export_dir),
+            "--runtime",
+            "generic",
+            "--model",
+            "small-local",
+            "--available-tool",
+            "shell",
+            "--capabilities-dir",
+            str(target_caps),
+            "--eval-dir",
+            str(eval_dir),
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
+    )
+    _run_ok(
+        [
+            "capability",
+            "remap",
+            "repo_issue_triage",
+            "--target",
+            "generic",
+            "--model",
+            "small-local",
+            "--map",
+            "repository_path=/target",
+            "--capabilities-dir",
+            str(target_caps),
+        ],
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "capability",
+            "validate",
+            "repo_issue_triage",
+            "--target",
+            "generic",
+            "--model",
+            "small-local",
+            "--available-tool",
+            "shell",
+            "--run-command",
+            "true",
+            "--command-cwd",
+            str(command_cwd),
+            "--capabilities-dir",
+            str(target_caps),
+            "--eval-dir",
+            str(eval_dir),
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = CapabilityValidateOutput.model_validate_json(result.stdout)
+    assert output.status == "validated"
+    assert output.portability_readiness_score == 0.65
+    report = yaml.safe_load(
+        Path(output.validation_report_path).read_text(encoding="utf-8"),
+    )
+    assert report["hard_blockers"] == []
+    assert report["portability_risk"]["advisory_only"] is True
+    assert report["validation_confidence"]["level"] == "medium"
 
 
 def test_validation_report_compares_eval_pass_rate(tmp_path: Path) -> None:
@@ -1823,6 +1950,12 @@ def make_evidence() -> EvidenceRecord:
         artifact_type="evidence",
         artifact_id=record.id,
     )
+
+
+def _write_expected_artifact(root: Path) -> None:
+    artifact = root / "output" / "report.json"
+    artifact.parent.mkdir(parents=True, exist_ok=True)
+    artifact.write_text("{}", encoding="utf-8")
 
 
 def make_manifest() -> CapabilityManifest:
