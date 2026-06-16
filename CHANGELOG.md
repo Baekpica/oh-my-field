@@ -4,6 +4,31 @@ All notable changes to this project will be documented here.
 
 ## Unreleased
 
+## 0.3.2 - 2026-06-16
+
+### Added
+
+- Added a Runtimes tab to the local web dashboard (`omf dashboard` / `omf web`)
+  backed by a new runtime inventory workflow (`application/runtimes/`) that
+  aggregates all supported runtimes by reusing the conformance layer for
+  skill/MCP detection plus a best-effort local-presence probe. The tab exposes
+  gated action routes that POST to install and capability export/validate APIs,
+  with the record-don't-execute and `--approve-export` gates still enforced in
+  the application layer.
+- Added an optional `[web]` extra as a documented install entry point for the
+  dashboard (marker only — the UI is stdlib-only and works on a plain install).
+
+### Changed
+
+- Hardened every dashboard POST route against CSRF and DNS-rebinding with a
+  per-process token (`X-OMF-Csrf-Token`) and loopback-only `Origin`/`Host`
+  checks.
+
+### Fixed
+
+- Runtime inventory now degrades per runtime on a malformed config instead of
+  failing the whole inventory.
+
 ## 0.3.1 - 2026-06-16
 
 ### Added
