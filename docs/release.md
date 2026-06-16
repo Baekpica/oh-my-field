@@ -1,8 +1,9 @@
 # Release
 
-Public release is tag-driven. The release target for this branch is `v0.3.1`.
-Use `0.3.1` for the patch release that adds OpenCode runtime support across
-import, export, install, and conformance.
+Public release is tag-driven. The release target for this branch is `v0.3.2`.
+Use `0.3.2` for the patch release that adds the local web dashboard Runtimes
+tab and runtime inventory workflow, an optional `[web]` install extra, and
+CSRF/DNS-rebinding hardening for the dashboard POST routes.
 
 Tag only after the release commit has merged to `main` and the local gates below
 pass from a clean checkout.
@@ -21,7 +22,7 @@ tokens to this repository unless the OIDC path is intentionally retired.
 Local release smoke:
 
 ```bash
-version=0.3.1
+version=0.3.2
 uv build
 uv run --isolated --no-project --with dist/*.whl omf install skill --runtime generic --scope export --out /tmp/omf-wheel-skill
 uv run --isolated --no-project --with dist/*.whl omf install mcp --client generic --scope export --out /tmp/omf-wheel-mcp.json
@@ -85,12 +86,12 @@ The matching GitHub environments must exist before publishing. Keep `testpypi`
 unprotected for preflight publishing. Protect `pypi` with a required reviewer
 once GitHub environment protection is available for the repository visibility/plan.
 
-0.3.1 release tag:
+0.3.2 release tag:
 
 ```bash
 git checkout main
 git pull --ff-only
-version=0.3.1
+version=0.3.2
 git tag "v${version}"
 git push origin "v${version}"
 ```
