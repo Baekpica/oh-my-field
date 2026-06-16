@@ -1,14 +1,21 @@
+import http.client
+import json
+import threading
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
 from typer.testing import CliRunner
 
 from oh_my_field.cli import app
 from oh_my_field.dashboard import (
+    DashboardHTTPServer,
     DashboardPaths,
     DashboardReviewRequest,
+    DashboardServeRequest,
     DashboardSnapshot,
     build_dashboard_snapshot,
+    create_dashboard_server,
     dashboard_html,
     record_dashboard_review,
 )
@@ -143,11 +150,227 @@ def test_dashboard_once_outputs_snapshot_json(tmp_path: Path) -> None:
     assert result.exit_code == 0
     snapshot = DashboardSnapshot.model_validate_json(result.stdout)
     assert snapshot.metrics.workflow_count == 0
-    assert "/api/snapshot" in dashboard_html()
-    assert "/api/learning-patches" in dashboard_html()
-    assert "capability-rows" in dashboard_html()
-    assert "learning-patch-rows" in dashboard_html()
-    assert "workflow-rows" in dashboard_html()
+    assert len(snapshot.runtimes) == 6
+    html = dashboard_html()
+    assert "/api/snapshot" in html
+    assert "/api/learning-patches" in html
+    assert "/api/runtimes" in html
+    assert "capability-rows" in html
+    assert "learning-patch-rows" in html
+    assert "workflow-rows" in html
+    assert "runtime-cards" in html
+    assert 'data-tab="runtimes"' in html
+
+
+def test_dashboard_snapshot_lists_runtimes_without_installs(tmp_path: Path) -> None:
+    paths = make_dashboard_paths(tmp_path)
+    snapshot = build_dashboard_snapshot(paths)
+    runtimes = {state.runtime for state in snapshot.runtimes}
+    assert runtimes == {
+        "codex",
+        "claude_code",
+        "hermes",
+        "pi",
+        "odysseus",
+        "opencode",
+    }
+    for state in snapshot.runtimes:
+        assert state.skill_installed is False
+        assert state.mcp_installed is False
+
+
+def _serve(paths: DashboardPaths) -> DashboardHTTPServer:
+    server = create_dashboard_server(
+        DashboardServeRequest(host="127.0.0.1", port=0, paths=paths),
+    )
+    thread = threading.Thread(
+        target=server.serve_forever,
+        kwargs={"poll_interval": 0.05},
+        daemon=True,
+    )
+    thread.start()
+    return server
+
+
+def _request(
+    server: DashboardHTTPServer,
+    path: str,
+    payload: dict[str, object],
+    headers: dict[str, str],
+) -> tuple[int, dict[str, object]]:
+    host, port = cast("tuple[str, int]", server.server_address)
+    connection = http.client.HTTPConnection(host, port, timeout=10)
+    try:
+        body = json.dumps(payload).encode("utf-8")
+        connection.request("POST", path, body=body, headers=headers)
+        response = connection.getresponse()
+        decoded: dict[str, object] = json.loads(response.read())
+        return response.status, decoded
+    finally:
+        connection.close()
+
+
+def _csrf_headers(server: DashboardHTTPServer) -> dict[str, str]:
+    return {
+        "Content-Type": "application/json",
+        "X-OMF-Csrf-Token": server.csrf_token,
+    }
+
+
+def _post(
+    server: DashboardHTTPServer,
+    path: str,
+    payload: dict[str, object],
+) -> dict[str, object]:
+    _status, decoded = _request(server, path, payload, _csrf_headers(server))
+    return decoded
+
+
+def test_install_skill_route_previews_then_applies(tmp_path: Path) -> None:
+    paths = make_dashboard_paths(tmp_path)
+    server = _serve(paths)
+    try:
+        preview = _post(
+            server,
+            "/api/install/skill",
+            {"runtime": "claude_code", "dry_run": True},
+        )
+        assert preview["dry_run"] is True
+        assert preview["installed"] is False
+        assert Path(str(preview["skill_path"])).is_file() is False
+
+        applied = _post(
+            server,
+            "/api/install/skill",
+            {"runtime": "claude_code", "dry_run": False},
+        )
+        assert applied["installed"] is True
+        assert Path(str(applied["skill_path"])).is_file() is True
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_install_mcp_route_writes_config_on_apply(tmp_path: Path) -> None:
+    paths = make_dashboard_paths(tmp_path)
+    server = _serve(paths)
+    try:
+        applied = _post(
+            server,
+            "/api/install/mcp",
+            {"client": "claude_code", "dry_run": False},
+        )
+        assert applied["installed"] is True
+        assert Path(str(applied["config_path"])).is_file() is True
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_capability_export_route_enforces_approval_gate(tmp_path: Path) -> None:
+    paths = make_dashboard_paths(tmp_path)
+    server = _serve(paths)
+    try:
+        # Unapproved export must be refused at the gate, never executed.
+        refused = _post(
+            server,
+            "/api/capability/export",
+            {"capability_name": "repo_issue_triage", "approve_export": False},
+        )
+        assert "error" in refused
+        assert "approve-export" in str(refused["error"])
+
+        # Approved request gets past the gate (then fails on the missing
+        # capability), proving the flag is forwarded, not the gate bypassed.
+        approved = _post(
+            server,
+            "/api/capability/export",
+            {"capability_name": "repo_issue_triage", "approve_export": True},
+        )
+        assert "error" in approved
+        assert "approve-export" not in str(approved["error"])
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_capability_validate_route_rejects_run_command(tmp_path: Path) -> None:
+    paths = make_dashboard_paths(tmp_path)
+    server = _serve(paths)
+    try:
+        # The route model forbids run-command fields, so a client can never
+        # make the server spawn a local process.
+        rejected = _post(
+            server,
+            "/api/capability/validate",
+            {
+                "capability_name": "repo_issue_triage",
+                "target": "claude_code",
+                "run_command": "rm -rf /",
+            },
+        )
+        assert "error" in rejected
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_post_without_csrf_token_is_forbidden(tmp_path: Path) -> None:
+    paths = make_dashboard_paths(tmp_path)
+    server = _serve(paths)
+    try:
+        status, body = _request(
+            server,
+            "/api/install/skill",
+            {"runtime": "claude_code", "dry_run": False},
+            {"Content-Type": "application/json"},
+        )
+        assert status == 403
+        assert "CSRF" in str(body["error"])
+        # The blocked request must not have written any skill file.
+        skill = tmp_path / "home" / ".claude" / "skills" / "omf" / "SKILL.md"
+        assert skill.is_file() is False
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_cross_origin_post_is_forbidden(tmp_path: Path) -> None:
+    paths = make_dashboard_paths(tmp_path)
+    server = _serve(paths)
+    try:
+        headers = _csrf_headers(server)
+        headers["Origin"] = "http://evil.example"
+        status, body = _request(
+            server,
+            "/api/install/skill",
+            {"runtime": "claude_code", "dry_run": False},
+            headers,
+        )
+        assert status == 403
+        assert "cross-origin" in str(body["error"])
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_non_loopback_host_post_is_forbidden(tmp_path: Path) -> None:
+    paths = make_dashboard_paths(tmp_path)
+    server = _serve(paths)
+    try:
+        headers = _csrf_headers(server)
+        headers["Host"] = "evil.example"
+        status, body = _request(
+            server,
+            "/api/install/skill",
+            {"runtime": "claude_code", "dry_run": False},
+            headers,
+        )
+        assert status == 403
+        assert "host" in str(body["error"])
+    finally:
+        server.shutdown()
+        server.server_close()
 
 
 def test_dashboard_review_records_decision_and_clears_pending_approval(
@@ -186,6 +409,10 @@ def make_dashboard_paths(tmp_path: Path) -> DashboardPaths:
         review_dir=tmp_path / "reviews",
         eval_set_dir=tmp_path / "eval_sets",
         learning_patch_dir=tmp_path / "learning_patches",
+        # Keep the runtime inventory hermetic: probe a tmp home, not the
+        # developer's real ~/.claude, ~/.codex, etc.
+        home=tmp_path / "home",
+        project=tmp_path / "project",
     )
 
 

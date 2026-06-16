@@ -56,7 +56,7 @@ Every model inherits `StrictModel` = `BaseModel(extra="forbid", frozen=True)`. S
 
 ### Per-stage workflows are LangGraph graphs (`application/<stage>/workflow.py`)
 
-Nearly every pipeline stage is now an `application/<stage>/` package (`capture`, `promote`, `replay`, `eval`, `eval_set`, `eval_support`, `health`, `context`, `export`, `learn`, `learning_patch`, `reflect`, `review`, `verify`, `registry`, `inspection`, `import_run`, `conformance`, `dataset_export`, …); the few real flat modules above (`orchestrate`, `rollback`) keep the same shape inline. The shape is:
+Nearly every pipeline stage is now an `application/<stage>/` package (`capture`, `promote`, `replay`, `eval`, `eval_set`, `eval_support`, `health`, `context`, `export`, `learn`, `learning_patch`, `reflect`, `review`, `verify`, `registry`, `inspection`, `import_run`, `conformance`, `runtimes`, `dataset_export`, …); the few real flat modules above (`orchestrate`, `rollback`) keep the same shape inline. The shape is:
 
 - an `XxxRequest(StrictModel)` input,
 - a `run_xxx_workflow(request, dependencies=None)` entry point,
@@ -106,11 +106,19 @@ Within validation, **only `hard_blockers` (unavailable required tools, unresolve
 
 OMF ships activation assets so an agent runtime can use OMF itself: the meta-skill and per-runtime fragments live under `src/oh_my_field/resources/skills/omf/` (and a generic MCP config under `resources/mcp/`); both are declared as wheel `artifacts` in `pyproject.toml`. `omf install skill --runtime <target>` and `omf install mcp --client <client>` materialize them via `adapters/skill_install/`. `omf mcp serve` runs a stdio MCP server (`mcp/server.py`) exposing OMF tools.
 
+### Local web UI (`infrastructure/dashboard/`, `application/runtimes/`)
+
+`omf dashboard` (alias `omf web`) serves a local, single-page UI from `infrastructure/dashboard/server.py` — a **stdlib `http.server`**, vanilla-JS app with **no web framework dependency and no build step**. The HTML/CSS/JS is one inline string in `dashboard_html()`; the four tabs (Overview / Runtimes / Capabilities / Workflows) each render a focused slice of `build_dashboard_snapshot()`. `pipx install oh-my-field[web]` is a documented entry point, but the `[web]` extra is a **marker only** (empty) since the UI is stdlib-only — it works on a plain install too.
+
+The **Runtimes** tab reads `application/runtimes/workflow.py` (`run_runtime_inventory_workflow`), which aggregates all six runtimes by **reusing `application/conformance/`** for skill/MCP detection (`install_*` dry-run + `.is_file()`) plus a best-effort local-presence filesystem probe — don't reimplement that detection. The UI's action buttons POST to gated routes (`/api/install/skill|mcp`, `/api/capability/export|validate`); **enforcement of the record-don't-execute / `--approve-export` gates stays in the application layer** — the server only forwards `dry_run`/`approve_export` (defaulting them off) and never weakens a gate.
+
+Because the dashboard is a local HTTP server, **every POST is gated against CSRF/DNS-rebinding** in `DashboardRequestHandler`: a per-process `csrf_token` required via the `X-OMF-Csrf-Token` header, plus loopback-only `Origin`/`Host` checks (`_reject_unsafe_post`). Preserve this guard when adding any mutating route.
+
 ## CLI surface (`cli/`)
 
 Thin Typer layer, now a package rather than a single file. `cli/app.py` builds the `app` and the `capability` / `install` / `session` / `mcp` / `runtime` sub-Typers, then calls each command module's `register(app)`. Each command lives in `cli/commands/<name>.py`, builds a `*Request` model, calls the matching `run_*_workflow`, and prints the result via `emit_json` (`cli/output.py`, one JSON line). Errors are mapped to `typer.Exit(code=1)` by the `cli_errors(...)` context manager (`cli/errors.py`), which always handles `StorageError`/`ValidationError` plus any stage `*Error` you pass in. Shared option definitions live in `cli/options.py`.
 
-Commands group into: ingest (`import-run`, `capture`, `init`), build (`promote`, `run`, `resume`, `rollback`, `status`), verify (`replay`, `eval`, `regression-case`, `verify`), review (`approve`, `reject`, `revise`, `review`, `learn-patch`), learning (`learn`, `reflect`, `dataset-export`), operate (`health`, `harden`, `card`, `registry`, `dashboard`, `inspect`, `context`, `diff`), explain (`explain`/`why`), portability (`export`, `capability export|import|validate|remap|adapt`), activation (`install skill|mcp`, `runtime install|conformance`, `session start|event|finish`, `mcp serve`), and diagnose (`--version` root option, `doctor` — these print a `diagnostics.py` summary rather than a workflow result).
+Commands group into: ingest (`import-run`, `capture`, `init`), build (`promote`, `run`, `resume`, `rollback`, `status`), verify (`replay`, `eval`, `regression-case`, `verify`), review (`approve`, `reject`, `revise`, `review`, `learn-patch`), learning (`learn`, `reflect`, `dataset-export`), operate (`health`, `harden`, `card`, `registry`, `dashboard`/`web`, `inspect`, `context`, `diff`), explain (`explain`/`why`), portability (`export`, `capability export|import|validate|remap|adapt`), activation (`install skill|mcp`, `runtime install|conformance`, `session start|event|finish`, `mcp serve`), and diagnose (`--version` root option, `doctor` — these print a `diagnostics.py` summary rather than a workflow result).
 
 ## Conventions
 

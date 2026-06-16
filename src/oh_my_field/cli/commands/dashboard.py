@@ -84,3 +84,7 @@ def register(app: typer.Typer) -> None:
         "dashboard",
         help="Serve or print the local operating dashboard.",
     )(dashboard)
+    app.command(
+        "web",
+        help="Open the local omf web UI (alias of dashboard).",
+    )(dashboard)

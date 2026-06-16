@@ -32,6 +32,13 @@ dependencies = [
     "typer",
 ]
 
+[project.optional-dependencies]
+# The local web UI (`omf web` / `omf dashboard`) is built on the Python
+# standard library, so it works in a plain install with no extra packages.
+# This marker extra exists so `pipx install oh-my-field[web]` is a valid,
+# documented entry point and a future home for any optional web dependency.
+web = []
+
 [project.urls]
 Documentation = "https://github.com/Baekpica/oh-my-field#readme"
 Homepage = "https://oh-my-field.dev/"
