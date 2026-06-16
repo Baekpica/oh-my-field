@@ -11,7 +11,7 @@ from oh_my_field.domain.models import (
 )
 
 type ExportTarget = Literal[
-    "codex", "claude_code", "hermes", "pi", "odysseus", "generic"
+    "codex", "claude_code", "hermes", "pi", "odysseus", "opencode", "generic"
 ]
 type ValidationStatus = Literal["needs_validation", "needs_adaptation", "validated"]
 type ToolCompatibilityStatus = Literal["pass", "partial", "unknown"]

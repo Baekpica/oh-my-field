@@ -380,6 +380,37 @@ def test_install_mcp_pi_project_config(tmp_path: Path) -> None:
     assert config["mcpServers"]["oh-my-field"]["args"] == ["mcp", "serve"]
 
 
+def test_install_mcp_opencode_user_config(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "install",
+            "mcp",
+            "--client",
+            "opencode",
+            "--home",
+            str(home),
+            "--server-command",
+            "omf",
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = InstallMcpOutput.model_validate_json(result.stdout)
+    config_path = home / ".config" / "opencode" / "opencode.json"
+    assert output.client == "opencode"
+    assert output.scope == "user"
+    assert output.config_path == str(config_path)
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    assert config["$schema"] == "https://opencode.ai/config.json"
+    server = config["mcp"]["oh-my-field"]
+    assert server["type"] == "local"
+    assert server["command"] == ["omf", "mcp", "serve"]
+    assert server["enabled"] is True
+
+
 def test_install_mcp_odysseus_project_config(tmp_path: Path) -> None:
     result = CliRunner().invoke(
         app,

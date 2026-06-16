@@ -13,12 +13,13 @@ omf install mcp --client claude_code
 omf install mcp --client hermes
 omf install mcp --client pi
 omf install mcp --client odysseus --project /path/to/odysseus
+omf install mcp --client opencode
 omf install mcp --client generic --scope export --out .omf/mcp.json
 ```
 
 `--scope auto` is the default. It resolves to user config patching for Codex,
-Claude Code, Hermes, and Pi; to a project-scoped Odysseus API payload; and to
-export-only JSON generation for `generic`.
+Claude Code, Hermes, Pi, and OpenCode; to a project-scoped Odysseus API payload;
+and to export-only JSON generation for `generic`.
 
 | Client | User config | Project config |
 | --- | --- | --- |
@@ -27,6 +28,7 @@ export-only JSON generation for `generic`.
 | `hermes` | `~/.hermes/config.yaml` | unsupported |
 | `pi` | `~/.pi/agent/mcp.json` | `<project>/.mcp.json` |
 | `odysseus` | unsupported | `<project>/.omf/agent/odysseus/oh-my-field.add-server.json` API payload |
+| `opencode` | `~/.config/opencode/opencode.json` | `<project>/opencode.json` |
 | `generic` | unsupported | unsupported; writes JSON to `--out` |
 
 The installed config starts the server with:
@@ -57,7 +59,7 @@ Initial tool surface:
 | `omf_finish_session` | Mark the session outcome. |
 | `omf_materialize_session` | Convert a session into immutable evidence. |
 | `omf_promote_capability` | Promote evidence into a capability package; strict is true by default. |
-| `omf_export_capability` | Export a canonical `.omfcap.tar.gz` package plus Codex, Claude Code, Hermes, Pi, Odysseus, or generic projection assets. |
+| `omf_export_capability` | Export a canonical `.omfcap.tar.gz` package plus Codex, Claude Code, Hermes, Pi, Odysseus, OpenCode, or generic projection assets. |
 | `omf_health` | Read capability health and next action. |
 | `omf_list_capabilities` | List capabilities in the local OMF registry. |
 | `omf_inspect_capability` | Inspect goal, context policy, harness checks, and runtime assumptions. |

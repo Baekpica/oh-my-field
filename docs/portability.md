@@ -168,7 +168,7 @@ omf capability validate repo_issue_triage \
 ```
 
 
-## Pi And Odysseus Capability Flow
+## Pi, Odysseus, And OpenCode Capability Flow
 
 Pi exports render a project-local `.pi/skills/<capability>/SKILL.md` tree plus a
 `package.json` with a Pi manifest. That gives users two native import paths:
@@ -181,10 +181,16 @@ import into a running Odysseus checkout, copy the generated `data/skills/omf/`
 subtree into the Odysseus project data directory and reload/restart Odysseus so
 its skill scanner sees the file.
 
+OpenCode exports render project-local `.opencode/skills/<skill>/SKILL.md`
+trees. OpenCode skill names must use lowercase hyphen-separated names, so OMF
+maps capability IDs such as `repo_issue_triage` to skill directories such as
+`repo-issue-triage` while preserving the canonical OMF capability ID in the
+skill metadata and body.
+
 For cross-agent portability, keep the OMF `.omfcap.tar.gz` archive as the
-canonical source. The native Pi/Odysseus skill files are projections. After
-copying or installing a projection, run
-`omf capability import ... --runtime pi|odysseus --validate` in the target
+canonical source. The native Pi/Odysseus/OpenCode skill files are projections.
+After copying or installing a projection, run
+`omf capability import ... --runtime pi|odysseus|opencode --validate` in the target
 project, then run an actual target-agent task and record the result with
-`omf import-run pi|odysseus` or OMF session evidence before marking the
+`omf import-run pi|odysseus|opencode` or OMF session evidence before marking the
 capability portable.

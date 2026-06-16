@@ -71,6 +71,34 @@ def patch_json_mcp_config(
     )
 
 
+def patch_opencode_mcp_config(
+    *,
+    request: McpConfigPatchRequest,
+) -> McpConfigPatchResult:
+    data = _load_json_mapping(request.config_path)
+    servers = data.get("mcp")
+    if servers is None:
+        servers = {}
+    if not isinstance(servers, dict):
+        msg = "mcp must be a JSON object"
+        raise McpConfigPatchError(msg)
+    server_map = cast("dict[str, object]", servers)
+    if request.server_name in server_map and not request.overwrite:
+        return _skip_result(config_path=request.config_path, source=request.source)
+    next_data = dict(data)
+    next_data.setdefault("$schema", "https://opencode.ai/config.json")
+    next_servers = dict(server_map)
+    next_servers[request.server_name] = _opencode_server_json(request.server)
+    next_data["mcp"] = next_servers
+    content = json.dumps(next_data, indent=2, sort_keys=False) + "\n"
+    return _write_result(
+        config_path=request.config_path,
+        content=content,
+        dry_run=request.dry_run,
+        source=request.source,
+    )
+
+
 def patch_yaml_mcp_config(
     *,
     request: McpConfigPatchRequest,
@@ -164,6 +192,14 @@ def _load_yaml_mapping(config_path: Path) -> dict[str, object]:
 
 def _server_json(server: McpServerConfig) -> dict[str, object]:
     return {"command": server.command, "args": list(server.args)}
+
+
+def _opencode_server_json(server: McpServerConfig) -> dict[str, object]:
+    return {
+        "type": "local",
+        "command": [server.command, *server.args],
+        "enabled": True,
+    }
 
 
 def _skip_result(*, config_path: Path, source: str) -> McpConfigPatchResult:

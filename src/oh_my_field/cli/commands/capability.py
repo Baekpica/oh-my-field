@@ -28,7 +28,9 @@ from oh_my_field.portability import (
     validate_capability_package,
 )
 
-TargetRuntime = Literal["codex", "claude_code", "hermes", "pi", "odysseus", "generic"]
+TargetRuntime = Literal[
+    "codex", "claude_code", "hermes", "pi", "odysseus", "opencode", "generic"
+]
 
 
 class CapabilityUnpackOutput(StrictModel):

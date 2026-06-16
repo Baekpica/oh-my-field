@@ -226,7 +226,7 @@ class McpToolDefinition(StrictModel):
 
 
 type McpInstallClient = Literal[
-    "generic", "codex", "claude_code", "hermes", "pi", "odysseus"
+    "generic", "codex", "claude_code", "hermes", "pi", "odysseus", "opencode"
 ]
 type McpInstallScope = Literal["auto", "user", "project", "export"]
 type ResolvedMcpInstallScope = Literal["user", "project", "export"]

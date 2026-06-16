@@ -96,9 +96,9 @@ truth.
 
 `omf capability export` builds the canonical archive package through the
 application workflow, then asks the runtime export registry for the matching
-Codex, Claude Code, Hermes, Pi, Odysseus, or generic projection adapter. Import
-and validation workflows read package and overlay state through infrastructure
-stores rather than writing target files from the CLI layer.
+Codex, Claude Code, Hermes, Pi, Odysseus, OpenCode, or generic projection
+adapter. Import and validation workflows read package and overlay state through
+infrastructure stores rather than writing target files from the CLI layer.
 
 ## Portability Rules
 

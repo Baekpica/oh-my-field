@@ -25,6 +25,7 @@ def test_builtin_registry_exposes_known_runtimes() -> None:
         "codex",
         "hermes",
         "odysseus",
+        "opencode",
         "pi",
     )
     assert BUILTIN_ADAPTERS.get("codex").spec.name == "codex"
@@ -46,6 +47,7 @@ def test_registry_lists_available_runtimes_in_error() -> None:
     assert "codex" in message
     assert "hermes" in message
     assert "odysseus" in message
+    assert "opencode" in message
     assert "pi" in message
 
 
@@ -87,6 +89,7 @@ def test_build_registry_loads_runtime_adapter_entry_points() -> None:
         "codex",
         "hermes",
         "odysseus",
+        "opencode",
         "pi",
     )
     assert registry.get("acme").spec.name == "acme"

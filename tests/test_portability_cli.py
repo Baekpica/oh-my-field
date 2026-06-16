@@ -464,6 +464,17 @@ def test_capability_import_rejects_unsafe_archive_member(tmp_path: Path) -> None
             ),
         ),
         (
+            "opencode",
+            (
+                ".opencode/skills/repo-issue-triage/SKILL.md",
+                ".opencode/skills/repo-issue-triage/references/context.policy.md",
+                ".opencode/skills/repo-issue-triage/references/harness.md",
+                ".opencode/skills/repo-issue-triage/references/task_contract.yaml",
+                ".opencode/skills/repo-issue-triage/references/artifacts.yaml",
+                ".opencode/skills/repo-issue-triage/references/validation.md",
+            ),
+        ),
+        (
             "generic",
             (
                 "skill.md",
@@ -513,6 +524,7 @@ def test_capability_export_writes_runtime_specific_skill_assets(
         runtime_dir / "skills" / "repo_issue_triage" / "SKILL.md",
         runtime_dir / ".pi" / "skills" / "repo_issue_triage" / "SKILL.md",
         runtime_dir / "data" / "skills" / "omf" / "repo_issue_triage" / "SKILL.md",
+        runtime_dir / ".opencode" / "skills" / "repo-issue-triage" / "SKILL.md",
         runtime_dir / "skill.md",
     )
     skill_path = next(path for path in skill_candidates if path.exists())
@@ -1397,6 +1409,7 @@ def test_runtime_export_assets_have_native_sections(tmp_path: Path) -> None:
     codex_dir = tmp_path / "exports" / "codex"
     pi_dir = tmp_path / "exports" / "pi"
     odysseus_dir = tmp_path / "exports" / "odysseus"
+    opencode_dir = tmp_path / "exports" / "opencode"
     generic_dir = tmp_path / "exports" / "generic"
     _run_ok(
         [
@@ -1411,6 +1424,23 @@ def test_runtime_export_assets_have_native_sections(tmp_path: Path) -> None:
             "full",
             "--out",
             str(hermes_dir),
+            "--capabilities-dir",
+            str(caps),
+        ],
+    )
+    _run_ok(
+        [
+            "capability",
+            "export",
+            "repo_issue_triage",
+            "--target",
+            "opencode",
+            "--target-model",
+            "local",
+            "--skill-style",
+            "full",
+            "--out",
+            str(opencode_dir),
             "--capabilities-dir",
             str(caps),
         ],
@@ -1529,6 +1559,20 @@ def test_runtime_export_assets_have_native_sections(tmp_path: Path) -> None:
     assert "category: omf" in odysseus_skill
     assert "## When to Use" in odysseus_skill
     assert "schema_valid" in odysseus_skill
+
+    opencode_skill = (
+        opencode_dir
+        / "runtime"
+        / "opencode"
+        / ".opencode"
+        / "skills"
+        / "repo-issue-triage"
+        / "SKILL.md"
+    ).read_text(encoding="utf-8")
+    assert "name: repo-issue-triage" in opencode_skill
+    assert "capability_name: repo_issue_triage" in opencode_skill
+    assert "## Trigger" in opencode_skill
+    assert "schema_valid" in opencode_skill
 
     generic_skill = (generic_dir / "runtime" / "generic" / "skill.md").read_text(
         encoding="utf-8"

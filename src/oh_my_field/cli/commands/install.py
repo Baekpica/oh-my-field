@@ -15,9 +15,13 @@ from oh_my_field.domain.layout import (
 from oh_my_field.domain.skill.models import SkillInstallRequest
 from oh_my_field.mcp.schemas import McpInstallRequest
 
-TargetRuntime = Literal["codex", "claude_code", "hermes", "pi", "odysseus", "generic"]
+TargetRuntime = Literal[
+    "codex", "claude_code", "hermes", "pi", "odysseus", "opencode", "generic"
+]
 InstallScope = Literal["auto", "user", "project", "export"]
-McpClient = Literal["generic", "codex", "claude_code", "hermes", "pi", "odysseus"]
+McpClient = Literal[
+    "generic", "codex", "claude_code", "hermes", "pi", "odysseus", "opencode"
+]
 
 
 def install_skill(

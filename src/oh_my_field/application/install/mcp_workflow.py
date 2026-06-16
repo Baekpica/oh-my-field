@@ -9,6 +9,7 @@ from oh_my_field.infrastructure.install.mcp_config import (
     McpConfigPatchResult,
     McpServerConfig,
     patch_json_mcp_config,
+    patch_opencode_mcp_config,
     patch_toml_mcp_config,
     patch_yaml_mcp_config,
 )
@@ -110,6 +111,8 @@ def _patch_config(
             return patch_yaml_mcp_config(request=patch_request)
         case "odysseus":
             return _write_odysseus_payload(request=patch_request)
+        case "opencode":
+            return patch_opencode_mcp_config(request=patch_request)
     msg = f"unsupported MCP client {request.client!r}"
     raise McpInstallError(msg)
 
@@ -130,6 +133,8 @@ def _config_path(
         ("hermes", "user"): home / ".hermes" / "config.yaml",
         ("pi", "user"): home / ".pi" / "agent" / "mcp.json",
         ("pi", "project"): request.project / ".mcp.json",
+        ("opencode", "user"): home / ".config" / "opencode" / "opencode.json",
+        ("opencode", "project"): request.project / "opencode.json",
         ("odysseus", "project"): (
             request.project
             / ".omf"
@@ -238,23 +243,30 @@ def _next_action(
         if command_needs_path_check
         else ""
     )
-    action = "Verify the MCP server in the target agent client."
     if request.client == "generic" and scope == "export":
         action = "Add this MCP config to your agent client, then call omf_health."
-    elif request.client == "codex":
-        action = "Open Codex and run /mcp to verify oh-my-field is connected."
-    elif request.client == "claude_code":
-        action = "Open Claude Code and run /mcp to verify oh-my-field is connected."
-    elif request.client == "hermes":
-        action = "Run /reload-mcp in Hermes or restart Hermes, then use /omf."
-    elif request.client == "pi":
-        action = (
-            "Ensure pi-mcp-adapter is installed with "
-            "`pi install npm:pi-mcp-adapter`, restart Pi, then run /mcp."
-        )
-    elif request.client == "odysseus":
-        action = (
-            "Post the generated payload to Odysseus /api/mcp/servers as an "
-            "admin, or add the same stdio server in Settings > MCP."
+    else:
+        action = _client_next_actions().get(
+            request.client,
+            "Verify the MCP server in the target agent client.",
         )
     return f"{action}{path_note}"
+
+
+def _client_next_actions() -> dict[str, str]:
+    return {
+        "codex": "Open Codex and run /mcp to verify oh-my-field is connected.",
+        "claude_code": (
+            "Open Claude Code and run /mcp to verify oh-my-field is connected."
+        ),
+        "hermes": "Run /reload-mcp in Hermes or restart Hermes, then use /omf.",
+        "pi": (
+            "Ensure pi-mcp-adapter is installed with "
+            "`pi install npm:pi-mcp-adapter`, restart Pi, then run /mcp."
+        ),
+        "opencode": "Restart OpenCode, then run `opencode mcp list` to verify.",
+        "odysseus": (
+            "Post the generated payload to Odysseus /api/mcp/servers as an "
+            "admin, or add the same stdio server in Settings > MCP."
+        ),
+    }

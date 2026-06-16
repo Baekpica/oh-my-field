@@ -1,3 +1,4 @@
+import hashlib
 from typing import cast
 
 import yaml
@@ -7,6 +8,12 @@ from oh_my_field.domain.portability.models import (
     RUNTIME_SKILL_SCHEMA_VERSION,
     PortabilityManifest,
     YamlValue,
+)
+
+OPENCODE_SKILL_NAME_MAX_LENGTH = 64
+OPENCODE_SKILL_HASH_LENGTH = 8
+OPENCODE_SKILL_PREFIX_LENGTH = (
+    OPENCODE_SKILL_NAME_MAX_LENGTH - OPENCODE_SKILL_HASH_LENGTH - 1
 )
 
 
@@ -238,6 +245,37 @@ def agent_skill_markdown(manifest: CapabilityManifest) -> str:
     )
 
 
+def opencode_skill_name(capability_name: str) -> str:
+    name = capability_name.replace("_", "-")
+    if len(name) <= OPENCODE_SKILL_NAME_MAX_LENGTH:
+        return name
+    digest = hashlib.sha256(capability_name.encode("utf-8")).hexdigest()[
+        :OPENCODE_SKILL_HASH_LENGTH
+    ]
+    prefix = name[:OPENCODE_SKILL_PREFIX_LENGTH].rstrip("-")
+    return f"{prefix}-{digest}"
+
+
+def opencode_agent_skill_markdown(manifest: CapabilityManifest) -> str:
+    frontmatter = yaml.safe_dump(
+        {
+            "name": opencode_skill_name(manifest.name),
+            "description": manifest.description,
+            "metadata": {"capability_name": manifest.name},
+        },
+        sort_keys=False,
+    ).strip()
+    return "\n".join(
+        [
+            "---",
+            frontmatter,
+            "---",
+            "",
+            skill_markdown(manifest),
+        ],
+    )
+
+
 def launcher_frontmatter_fields(
     manifest: CapabilityManifest,
     *,
@@ -262,6 +300,30 @@ def launcher_skill_markdown(
 ) -> str:
     frontmatter = yaml.safe_dump(
         launcher_frontmatter_fields(manifest, target_runtime=target_runtime),
+        sort_keys=False,
+    ).strip()
+    return "\n".join(
+        [
+            "---",
+            frontmatter,
+            "---",
+            "",
+            launcher_body_markdown(manifest, target_runtime=target_runtime),
+        ],
+    )
+
+
+def opencode_launcher_skill_markdown(
+    manifest: CapabilityManifest,
+    *,
+    target_runtime: str,
+) -> str:
+    frontmatter = yaml.safe_dump(
+        {
+            **launcher_frontmatter_fields(manifest, target_runtime=target_runtime),
+            "name": opencode_skill_name(manifest.name),
+            "metadata": {"capability_name": manifest.name},
+        },
         sort_keys=False,
     ).strip()
     return "\n".join(

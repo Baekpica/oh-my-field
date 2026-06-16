@@ -191,7 +191,8 @@
 
 ### Export Runtime Assets Node
 
-- canonical package를 Codex, Claude Code, Hermes, generic skill bundle로 변환
+- canonical package를 Codex, Claude Code, Hermes, Pi, Odysseus, OpenCode,
+  generic skill bundle로 변환
 
 ### Record Learning Patch Node
 
@@ -211,7 +212,8 @@ CLI는 request를 구성하고 JSON summary를 출력하는 표면이다. portab
 
 - Domain: `domain/portability/models.py`, `readiness.py`, `lifecycle.py`
 - Application: `application/portability/*_workflow.py`
-- Runtime export adapters: `adapters/runtime_export/{codex,claude_code,hermes,generic}.py`
+- Runtime export adapters:
+  `adapters/runtime_export/{codex,claude_code,hermes,pi,odysseus,opencode,generic}.py`
 - Storage: `infrastructure/portability/{bundle_store,overlay_store,paths}.py`
 
 ## /import-run
