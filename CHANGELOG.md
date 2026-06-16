@@ -4,6 +4,17 @@ All notable changes to this project will be documented here.
 
 ## Unreleased
 
+## 0.3.1 - 2026-06-16
+
+### Added
+
+- Added OpenCode as a supported runtime across import, export, install, and
+  conformance: `omf capability export --target opencode` renders an OpenCode
+  skill bundle, `omf install skill --runtime opencode` and `omf install mcp
+  --client opencode` materialize the controller skill and MCP config, and
+  `omf runtime conformance opencode` statically checks the adoption surface,
+  including scanning OpenCode project skills.
+
 ## 0.3.0 - 2026-06-16
 
 ### Added
