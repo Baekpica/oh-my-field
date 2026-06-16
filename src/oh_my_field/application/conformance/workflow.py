@@ -173,6 +173,10 @@ def _capability_skill_roots(
         home = (request.home or Path.home()).expanduser()
         roots.append(home / ".pi" / "skills")
         roots.append(request.project / ".pi" / "skills")
+    if request.runtime == "opencode":
+        home = (request.home or Path.home()).expanduser()
+        roots.append(home / ".config" / "opencode" / "skills")
+        roots.append(request.project / ".opencode" / "skills")
     return tuple(dict.fromkeys(root.resolve() for root in roots))
 
 

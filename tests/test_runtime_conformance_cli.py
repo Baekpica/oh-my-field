@@ -225,6 +225,46 @@ def test_runtime_conformance_flags_opencode_hyphenated_direct_skill(
     assert "repo-issue-triage" in launcher_check["detail"]
 
 
+def test_runtime_conformance_flags_opencode_project_direct_skill(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    project = tmp_path / "project"
+    project.mkdir()
+    capabilities_dir = tmp_path / "capabilities"
+    _create_capability(tmp_path, "repo_issue_triage", capabilities_dir)
+    CliRunner().invoke(app, ["runtime", "install", "opencode", "--home", str(home)])
+    rogue_skill = project / ".opencode" / "skills" / "repo-issue-triage" / "SKILL.md"
+    rogue_skill.parent.mkdir(parents=True)
+    rogue_skill.write_text(
+        "# repo_issue_triage\n\n## Goal\nRun the project capability directly.\n",
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "runtime",
+            "conformance",
+            "opencode",
+            "--home",
+            str(home),
+            "--project",
+            str(project),
+            "--capabilities-dir",
+            str(capabilities_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = _json(result.stdout)
+    assert output["status"] == "degraded"
+    launcher_check = _launcher_check(output)
+    assert launcher_check["status"] == "fail"
+    assert "repo-issue-triage" in launcher_check["detail"]
+
+
 def test_runtime_conformance_flags_direct_execution_skill_in_pi_skill_root(
     tmp_path: Path,
 ) -> None:
