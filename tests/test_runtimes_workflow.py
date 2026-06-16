@@ -50,6 +50,27 @@ def test_inventory_flips_runtime_when_skill_and_mcp_installed(tmp_path: Path) ->
     assert summary.ready_count == 1
 
 
+def test_inventory_degrades_runtime_with_malformed_config(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    # The claude_code MCP user config lives at ~/.claude.json; a malformed file
+    # makes the dry-run installer raise McpInstallError during probing.
+    (home / ".claude.json").write_text("{ not valid json", encoding="utf-8")
+
+    summary = run_runtime_inventory_workflow(
+        RuntimeInventoryRequest(home=home, project=tmp_path / "project"),
+    )
+
+    # The whole inventory still resolves; only the affected runtime degrades.
+    assert len(summary.runtimes) == 6
+    claude = next(s for s in summary.runtimes if s.runtime == "claude_code")
+    assert claude.conformance_status == "degraded"
+    assert claude.skill_installed is False
+    assert "could not probe" in claude.next_action
+    codex = next(s for s in summary.runtimes if s.runtime == "codex")
+    assert "could not probe" not in codex.next_action
+
+
 def test_inventory_marks_runtime_present_from_config_dir(tmp_path: Path) -> None:
     home = tmp_path / "home"
     home.mkdir()

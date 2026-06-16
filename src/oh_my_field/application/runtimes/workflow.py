@@ -14,10 +14,13 @@ from pathlib import Path
 from typing import Final, Literal
 
 from oh_my_field.application.conformance import (
+    ConformanceError,
     RuntimeConformanceRequest,
     run_runtime_conformance_workflow,
 )
 from oh_my_field.application.install import install_mcp_config, install_omf_skill
+from oh_my_field.application.install.mcp_workflow import McpInstallError
+from oh_my_field.application.install.skill_workflow import SkillInstallError
 from oh_my_field.domain.layout import DEFAULT_CAPABILITIES_DIR
 from oh_my_field.domain.models import StrictModel
 from oh_my_field.domain.skill.models import SkillInstallRequest
@@ -102,6 +105,26 @@ def _runtime_state(
     home: Path,
 ) -> RuntimeState:
     presence, presence_detail = _probe_presence(runtime, request, home)
+    try:
+        return _probe_runtime_state(runtime, request, presence, presence_detail)
+    except (SkillInstallError, McpInstallError, ConformanceError) as exc:
+        # A malformed local runtime config (e.g. an invalid ~/.claude.json that
+        # the dry-run installer parses) must degrade only this runtime, never
+        # take down the whole inventory / `omf web` snapshot.
+        return _degraded_runtime_state(
+            runtime=runtime,
+            presence=presence,
+            presence_detail=presence_detail,
+            reason=str(exc),
+        )
+
+
+def _probe_runtime_state(
+    runtime: RuntimeName,
+    request: RuntimeInventoryRequest,
+    presence: RuntimePresence,
+    presence_detail: str,
+) -> RuntimeState:
     skill_path = _resolve_skill_path(runtime, request)
     mcp_config_path = _resolve_mcp_config_path(runtime, request)
     skill_installed = skill_path.is_file()
@@ -135,6 +158,27 @@ def _runtime_state(
             conformance_status=conformance.status,
             conformance_next_action=conformance.next_action,
         ),
+    )
+
+
+def _degraded_runtime_state(
+    *,
+    runtime: RuntimeName,
+    presence: RuntimePresence,
+    presence_detail: str,
+    reason: str,
+) -> RuntimeState:
+    return RuntimeState(
+        runtime=runtime,
+        presence=presence,
+        presence_detail=presence_detail,
+        skill_installed=False,
+        skill_path="",
+        mcp_installed=False,
+        mcp_config_path="",
+        conformance_status="degraded",
+        overall_status="absent" if presence == "absent" else "partial",
+        next_action=f"could not probe {runtime}: {reason}",
     )
 
 
