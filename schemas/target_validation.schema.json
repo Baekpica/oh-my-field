@@ -82,6 +82,7 @@
         "hermes",
         "pi",
         "odysseus",
+        "opencode",
         "generic"
       ],
       "type": "string"

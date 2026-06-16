@@ -31,7 +31,8 @@ surface to keep tightening while feedback lands.
 
 ## What OMF Is Not
 
-- Not an agent runtime — Codex, Claude Code, Hermes, Pi, Odysseus, or another agent does the work.
+- Not an agent runtime — Codex, Claude Code, Hermes, Pi, Odysseus, OpenCode,
+  or another agent does the work.
 - Not a prompt vault — a capability is instructions plus context policy, harness,
   evidence, eval cases, and integrity metadata.
 - Not an autonomous shell runner — risky commands are recorded as intent and
@@ -58,7 +59,7 @@ capability actually works on another runtime or project.
 
 ```text
 external agent runtime
-  Codex / Claude Code / Hermes / Pi / Odysseus / local agent
+  Codex / Claude Code / Hermes / Pi / Odysseus / OpenCode / local agent
         │
         ▼
 OMF session  ──or──  imported run
@@ -119,14 +120,16 @@ omf install skill --runtime claude_code
 omf install skill --runtime hermes
 omf install skill --runtime pi
 omf install skill --runtime odysseus --project /path/to/odysseus
+omf install skill --runtime opencode
 omf install skill --runtime generic --scope export
 ```
 
-By default Codex, Claude Code, Hermes, and Pi install into their user-level
-skill discovery paths (`~/.agents/skills`, `~/.claude/skills`,
-`~/.hermes/skills`, `~/.pi/agent/skills`). Odysseus installs into the target
-checkout's `data/skills` tree. `generic` keeps producing reviewable export
-assets under `.omf/agent/omf-skill`.
+By default Codex, Claude Code, Hermes, Pi, and OpenCode install into their
+user-level skill discovery paths (`~/.agents/skills`, `~/.claude/skills`,
+`~/.hermes/skills`, `~/.pi/agent/skills`,
+`~/.config/opencode/skills`). Odysseus installs into the target checkout's
+`data/skills` tree. `generic` keeps producing reviewable export assets under
+`.omf/agent/omf-skill`.
 
 For MCP-capable clients, patch the matching client config and run the stdio
 server:
@@ -137,6 +140,7 @@ omf install mcp --client claude_code
 omf install mcp --client hermes
 omf install mcp --client pi
 omf install mcp --client odysseus --project /path/to/odysseus
+omf install mcp --client opencode
 omf install mcp --client generic --scope export --out .omf/mcp.json
 omf mcp serve
 ```
@@ -299,7 +303,7 @@ capabilities/
 ```
 
 Runtime-specific files (Codex instructions, Claude Code memory,
-Hermes/Pi/Odysseus skill projections, and generic runbook projections) are
+Hermes/Pi/Odysseus/OpenCode skill projections, and generic runbook projections) are
 **projections** of the package, not the source of truth.
 
 `.omf/config.yaml` records local field defaults and `.omf/registry.yaml` is local
@@ -372,7 +376,7 @@ expected artifacts, and opt-in contract validator failures require adaptation.
 Runtime/model/project differences lower the advisory risk score but do not block
 `validated` after the target run and required artifacts pass.
 
-Copying a generated Codex, Claude Code, Hermes, Pi, Odysseus, or generic
+Copying a generated Codex, Claude Code, Hermes, Pi, Odysseus, OpenCode, or generic
 projection into a runtime only makes that runtime discover a launcher. It is
 not an import; every target run should enter through `omf capability import`
 so OMF can create registry state, import reports, and follow-up commands.
@@ -435,6 +439,9 @@ dependency direction and per-concept layout.
   [Codex](docs/runtime-adapters/codex.md),
   [Claude Code](docs/runtime-adapters/claude-code.md),
   [Hermes](docs/runtime-adapters/hermes.md),
+  [Pi](docs/runtime-adapters/pi.md),
+  [Odysseus](docs/runtime-adapters/odysseus.md),
+  [OpenCode](docs/runtime-adapters/opencode.md),
   [Generic](docs/runtime-adapters/generic.md)
 
 ## Practical Notes

@@ -78,6 +78,44 @@ def test_runtime_install_then_conformance_passes(tmp_path: Path) -> None:
     assert "conforms" in output["next_action"]
 
 
+def test_opencode_runtime_install_then_conformance_passes(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+
+    install_result = CliRunner().invoke(
+        app,
+        ["runtime", "install", "opencode", "--home", str(home)],
+    )
+    assert install_result.exit_code == 0
+    install_output = _json(install_result.stdout)
+    assert install_output["runtime"] == "opencode"
+    assert install_output["skill"]["skill_path"] == str(
+        home / ".config" / "opencode" / "skills" / "omf" / "SKILL.md",
+    )
+    assert install_output["mcp"]["config_path"] == str(
+        home / ".config" / "opencode" / "opencode.json",
+    )
+    assert "omf runtime conformance opencode" in install_output["next_action"]
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "runtime",
+            "conformance",
+            "opencode",
+            "--home",
+            str(home),
+            "--capabilities-dir",
+            str(tmp_path / "capabilities"),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = _json(result.stdout)
+    assert output["runtime"] == "opencode"
+    assert output["status"] == "pass"
+
+
 def test_runtime_conformance_flags_direct_execution_capability_skill(
     tmp_path: Path,
 ) -> None:
@@ -147,6 +185,44 @@ def test_runtime_conformance_ignores_unrelated_native_skills(tmp_path: Path) -> 
     output = _json(result.stdout)
     assert output["status"] == "pass"
     assert _launcher_check(output)["status"] == "pass"
+
+
+def test_runtime_conformance_flags_opencode_hyphenated_direct_skill(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    capabilities_dir = tmp_path / "capabilities"
+    _create_capability(tmp_path, "repo_issue_triage", capabilities_dir)
+    CliRunner().invoke(app, ["runtime", "install", "opencode", "--home", str(home)])
+    rogue_skill = (
+        home / ".config" / "opencode" / "skills" / "repo-issue-triage" / "SKILL.md"
+    )
+    rogue_skill.parent.mkdir(parents=True)
+    rogue_skill.write_text(
+        "# repo_issue_triage\n\n## Goal\nRun the capability directly.\n",
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "runtime",
+            "conformance",
+            "opencode",
+            "--home",
+            str(home),
+            "--capabilities-dir",
+            str(capabilities_dir),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = _json(result.stdout)
+    assert output["status"] == "degraded"
+    launcher_check = _launcher_check(output)
+    assert launcher_check["status"] == "fail"
+    assert "repo-issue-triage" in launcher_check["detail"]
 
 
 def test_runtime_conformance_flags_direct_execution_skill_in_pi_skill_root(

@@ -36,10 +36,11 @@ omf install skill --runtime claude_code
 omf install skill --runtime hermes
 omf install skill --runtime pi
 omf install skill --runtime odysseus --project /path/to/odysseus
+omf install skill --runtime opencode
 omf install skill --runtime generic --scope export
 ```
 
-`--scope auto` is the default. For Codex, Claude Code, Hermes, and Pi,
+`--scope auto` is the default. For Codex, Claude Code, Hermes, Pi, and OpenCode,
 `auto` resolves to `user` and writes directly to the runtime's user-level skill
 discovery path. For Odysseus, `auto` resolves to `project` because Odysseus
 stores skills under its app data directory. For `generic`, `auto` resolves to
@@ -52,6 +53,7 @@ stores skills under its app data directory. For `generic`, `auto` resolves to
 | `hermes` | `~/.hermes/skills/omf/SKILL.md` | unsupported | `<out>/hermes/skills/omf/SKILL.md` |
 | `pi` | `~/.pi/agent/skills/omf/SKILL.md` | `<project>/.pi/skills/omf/SKILL.md` | `<out>/pi/.pi/skills/omf/SKILL.md` |
 | `odysseus` | unsupported | `<project>/data/skills/omf/omf/SKILL.md` | `<out>/odysseus/data/skills/omf/omf/SKILL.md` |
+| `opencode` | `~/.config/opencode/skills/omf/SKILL.md` | `<project>/.opencode/skills/omf/SKILL.md` | `<out>/opencode/.opencode/skills/omf/SKILL.md` |
 | `generic` | unsupported | unsupported | `<out>/generic/skill.md` |
 
 OMF's internal state still lives under `.omf` (`.omf/config.yaml`,
@@ -70,7 +72,7 @@ same plan without writing files. Codex skill installs also include
 
 | Option | Default | Purpose |
 | --- | --- | --- |
-| `--runtime` | (required) | `codex`, `claude_code`, `hermes`, `pi`, `odysseus`, or `generic` |
+| `--runtime` | (required) | `codex`, `claude_code`, `hermes`, `pi`, `odysseus`, `opencode`, or `generic` |
 | `--project` | `.` | Project root used to resolve the target file and relative `--out` |
 | `--profile` | none | Runtime profile name (reserved for profile-aware runtimes) |
 | `--out` | `.omf/agent/omf-skill` | Output directory for `export` scope resources |
@@ -96,12 +98,13 @@ omf install mcp --client claude_code
 omf install mcp --client hermes
 omf install mcp --client pi
 omf install mcp --client odysseus --project /path/to/odysseus
+omf install mcp --client opencode
 omf install mcp --client generic --scope export --out .omf/mcp.json
 omf mcp serve
 ```
 
-`--scope auto` resolves to `user` for Codex, Claude Code, Hermes, and Pi; it
-resolves to `project` for Odysseus and to `export` for `generic`.
+`--scope auto` resolves to `user` for Codex, Claude Code, Hermes, Pi, and
+OpenCode; it resolves to `project` for Odysseus and to `export` for `generic`.
 
 | Client | `user` config | `project` config | `export` |
 | --- | --- | --- | --- |
@@ -110,6 +113,7 @@ resolves to `project` for Odysseus and to `export` for `generic`.
 | `hermes` | `~/.hermes/config.yaml` | unsupported | unsupported |
 | `pi` | `~/.pi/agent/mcp.json` | `<project>/.mcp.json` | unsupported |
 | `odysseus` | unsupported | `<project>/.omf/agent/odysseus/oh-my-field.add-server.json` API payload | unsupported |
+| `opencode` | `~/.config/opencode/opencode.json` | `<project>/opencode.json` | unsupported |
 | `generic` | unsupported | unsupported | JSON snippet at `--out` |
 
 The installed server entry points the client at the OMF stdio server:
@@ -124,6 +128,8 @@ The installed server entry points the client at the OMF stdio server:
 
 For Codex the same server is written as TOML; for Hermes it is written as YAML.
 For Pi it is written as JSON and requires the `pi-mcp-adapter` package. For
+OpenCode it is written under the native `mcp` config key with `type: "local"`
+and a `command` array. For
 Odysseus, OMF writes a reviewable `/api/mcp/servers` form payload because
 Odysseus persists MCP servers through its admin API/database rather than a
 shared MCP config file.
@@ -160,16 +166,18 @@ omf capability export --help
 omf install skill --runtime codex --home /tmp/omf-home
 omf install skill --runtime pi --home /tmp/omf-home
 omf install skill --runtime odysseus --project /tmp/odysseus
+omf install skill --runtime opencode --home /tmp/omf-home
 omf install skill --runtime generic --scope export --out /tmp/omf-skill
 omf install mcp --client codex --home /tmp/omf-home
 omf install mcp --client pi --home /tmp/omf-home
 omf install mcp --client odysseus --project /tmp/odysseus
+omf install mcp --client opencode --home /tmp/omf-home
 omf install mcp --client generic --scope export --out /tmp/omf-mcp.json
 ```
 
 From a source checkout, use `uv run omf ...`.
 
-## Source Notes For Pi And Odysseus
+## Source Notes For Pi, Odysseus, And OpenCode
 
 Pi support follows the official Pi docs: Pi loads user skills from
 `~/.pi/agent/skills/`, project skills from `.pi/skills/`, and package resources
@@ -182,8 +190,16 @@ admin-only `/api/mcp/servers` route and persisted by Odysseus. OMF therefore
 installs Odysseus skills directly and writes a reviewable MCP registration
 payload for the Odysseus API/settings flow.
 
+OpenCode support follows the official OpenCode docs: OpenCode discovers
+project skills from `.opencode/skills/<name>/SKILL.md`, global skills from
+`~/.config/opencode/skills/<name>/SKILL.md`, and MCP servers from the
+`mcp` object in `opencode.json`.
+
 Sources: <https://pi.dev/docs/latest/skills>, <https://pi.dev/docs/latest/packages>,
 <https://pi.dev/packages/pi-mcp-adapter>,
 <https://github.com/pewdiepie-archdaemon/odysseus>,
 <https://raw.githubusercontent.com/pewdiepie-archdaemon/odysseus/main/services/memory/skill_format.py>,
-<https://raw.githubusercontent.com/pewdiepie-archdaemon/odysseus/main/routes/mcp_routes.py>.
+<https://raw.githubusercontent.com/pewdiepie-archdaemon/odysseus/main/routes/mcp_routes.py>,
+<https://opencode.ai/docs/skills/>,
+<https://opencode.ai/docs/config/>,
+<https://opencode.ai/docs/mcp-servers>.

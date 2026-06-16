@@ -103,6 +103,7 @@ def _resolve_scope(request: SkillInstallRequest) -> ResolvedSkillInstallScope:
     if request.scope == "project" and request.runtime not in (
         "codex",
         "claude_code",
+        "opencode",
         "pi",
         "odysseus",
     ):
@@ -173,6 +174,15 @@ def _user_skill_targets(request: SkillInstallRequest) -> tuple[SkillTarget, ...]
                     primary=True,
                 ),
             )
+        case "opencode":
+            return (
+                SkillTarget(
+                    Path("opencode/SKILL.md"),
+                    home / ".config" / "opencode" / "skills" / "omf" / "SKILL.md",
+                    "OpenCode user skill written",
+                    primary=True,
+                ),
+            )
         case "generic" | "odysseus":
             msg = f"{request.runtime} skills do not support user scope"
             raise SkillInstallError(msg)
@@ -211,6 +221,15 @@ def _project_skill_targets(request: SkillInstallRequest) -> tuple[SkillTarget, .
                     Path("pi/SKILL.md"),
                     project / ".pi" / "skills" / "omf" / "SKILL.md",
                     "Pi project skill written",
+                    primary=True,
+                ),
+            )
+        case "opencode":
+            return (
+                SkillTarget(
+                    Path("opencode/SKILL.md"),
+                    project / ".opencode" / "skills" / "omf" / "SKILL.md",
+                    "OpenCode project skill written",
                     primary=True,
                 ),
             )
@@ -318,15 +337,36 @@ def _export_skill_targets(request: SkillInstallRequest) -> tuple[SkillTarget, ..
                     primary=True,
                 ),
             )
-        case "generic":
-            return (
-                SkillTarget(
-                    Path("generic/skill.md"),
-                    out_root / "generic" / "skill.md",
-                    "generic export skill written",
-                    primary=True,
-                ),
-            )
+        case "opencode" | "generic":
+            return _reviewable_export_skill_targets(request, out_root)
+
+
+def _reviewable_export_skill_targets(
+    request: SkillInstallRequest,
+    out_root: Path,
+) -> tuple[SkillTarget, ...]:
+    if request.runtime == "opencode":
+        return (
+            SkillTarget(
+                Path("SKILL.md"),
+                out_root / "SKILL.md",
+                "shared OMF skill resource written",
+            ),
+            SkillTarget(
+                Path("opencode/SKILL.md"),
+                out_root / "opencode" / ".opencode" / "skills" / "omf" / "SKILL.md",
+                "OpenCode export skill written",
+                primary=True,
+            ),
+        )
+    return (
+        SkillTarget(
+            Path("generic/skill.md"),
+            out_root / "generic" / "skill.md",
+            "generic export skill written",
+            primary=True,
+        ),
+    )
 
 
 def _home_root(request: SkillInstallRequest) -> Path:
@@ -395,6 +435,8 @@ def _next_action(
         ("odysseus", "project"): (
             "Restart Odysseus or reload skills, then use the OMF skill."
         ),
+        ("opencode", "user"): "Restart OpenCode if needed, then use /omf.",
+        ("opencode", "project"): "Open OpenCode from this project, then use /omf.",
         ("*", "export"): (
             "Review the exported OMF skill assets and copy them to the runtime."
         ),

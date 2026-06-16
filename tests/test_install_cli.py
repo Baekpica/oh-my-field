@@ -108,6 +108,32 @@ def test_install_skill_pi_defaults_to_user_skill_home(tmp_path: Path) -> None:
     assert "name: omf" in skill_path.read_text(encoding="utf-8")
 
 
+def test_install_skill_opencode_defaults_to_user_config_home(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "install",
+            "skill",
+            "--runtime",
+            "opencode",
+            "--home",
+            str(home),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = InstallSkillOutput.model_validate_json(result.stdout)
+    skill_path = home / ".config" / "opencode" / "skills" / "omf" / "SKILL.md"
+    assert output.runtime == "opencode"
+    assert output.scope == "user"
+    assert output.installed
+    assert output.skill_path == str(skill_path)
+    assert skill_path.exists()
+    assert "name: omf" in skill_path.read_text(encoding="utf-8")
+
+
 def test_install_skill_project_scope_writes_project_discovery_path(
     tmp_path: Path,
 ) -> None:
@@ -161,6 +187,33 @@ def test_install_skill_odysseus_project_scope_writes_data_skill(tmp_path: Path) 
     assert "category: omf" in content
 
 
+def test_install_skill_opencode_project_scope_writes_project_skill(
+    tmp_path: Path,
+) -> None:
+    result = CliRunner().invoke(
+        app,
+        [
+            "install",
+            "skill",
+            "--runtime",
+            "opencode",
+            "--scope",
+            "project",
+            "--project",
+            str(tmp_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    output = InstallSkillOutput.model_validate_json(result.stdout)
+    skill_path = tmp_path / ".opencode" / "skills" / "omf" / "SKILL.md"
+    assert output.runtime == "opencode"
+    assert output.scope == "project"
+    assert output.installed
+    assert output.skill_path == str(skill_path)
+    assert "Track OpenCode work with OMF" in skill_path.read_text(encoding="utf-8")
+
+
 def test_install_skill_export_scope_writes_reviewable_layout(tmp_path: Path) -> None:
     out_dir = tmp_path / "omf-skill"
 
@@ -190,7 +243,15 @@ def test_install_skill_export_scope_writes_reviewable_layout(tmp_path: Path) -> 
 def test_install_skill_resources_prompt_cli_help_and_structured_recording(
     tmp_path: Path,
 ) -> None:
-    for runtime in ("codex", "claude_code", "hermes", "pi", "odysseus", "generic"):
+    for runtime in (
+        "codex",
+        "claude_code",
+        "hermes",
+        "pi",
+        "odysseus",
+        "opencode",
+        "generic",
+    ):
         out_dir = tmp_path / f"{runtime}-skill"
         result = CliRunner().invoke(
             app,

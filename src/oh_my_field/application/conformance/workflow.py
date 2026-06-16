@@ -13,13 +13,16 @@ from typing import Literal
 from pydantic import Field
 
 from oh_my_field.application.install import install_mcp_config, install_omf_skill
+from oh_my_field.application.portability.rendering import opencode_skill_name
 from oh_my_field.domain.layout import DEFAULT_CAPABILITIES_DIR
 from oh_my_field.domain.models import CapabilityManifest, StrictModel
 from oh_my_field.domain.skill.models import SkillInstallRequest
 from oh_my_field.mcp.schemas import McpInstallRequest
 from oh_my_field.storage import list_manifests, read_portability_health
 
-type ConformanceRuntime = Literal["codex", "claude_code", "hermes", "pi", "odysseus"]
+type ConformanceRuntime = Literal[
+    "codex", "claude_code", "hermes", "pi", "odysseus", "opencode"
+]
 type ConformanceCheckStatus = Literal["pass", "fail"]
 type ConformanceStatus = Literal["pass", "degraded"]
 
@@ -63,7 +66,10 @@ def run_runtime_conformance_workflow(
         _cli_on_path_check(),
         _launcher_skills_check(
             _capability_skill_roots(request, controller_path),
-            capability_names=frozenset(manifest.name for _, manifest in manifests),
+            capability_skill_names=_capability_skill_names(
+                request,
+                manifests,
+            ),
         ),
         _imported_targets_check(request, manifests),
     )
@@ -170,10 +176,20 @@ def _capability_skill_roots(
     return tuple(dict.fromkeys(root.resolve() for root in roots))
 
 
+def _capability_skill_names(
+    request: RuntimeConformanceRequest,
+    manifests: tuple[tuple[Path, CapabilityManifest], ...],
+) -> frozenset[str]:
+    names = tuple(manifest.name for _, manifest in manifests)
+    if request.runtime != "opencode":
+        return frozenset(names)
+    return frozenset(opencode_skill_name(name) for name in names)
+
+
 def _launcher_skills_check(
     skill_roots: tuple[Path, ...],
     *,
-    capability_names: frozenset[str],
+    capability_skill_names: frozenset[str],
 ) -> RuntimeConformanceCheck:
     # Only skills matching a known OMF capability are judged; unrelated
     # native skills installed by the user are none of OMF's business.
@@ -181,7 +197,7 @@ def _launcher_skills_check(
         skill_path
         for skills_root in skill_roots
         for skill_path in sorted(skills_root.glob("*/SKILL.md"))
-        if skill_path.parent.name in capability_names
+        if skill_path.parent.name in capability_skill_names
         and OMF_MANAGED_MARKER not in skill_path.read_text(encoding="utf-8")
     )
     scanned = ", ".join(str(root) for root in skill_roots)

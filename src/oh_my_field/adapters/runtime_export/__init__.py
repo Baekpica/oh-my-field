@@ -13,6 +13,7 @@ from oh_my_field.adapters.runtime_export.hermes import HermesRuntimeExportAdapte
 from oh_my_field.adapters.runtime_export.odysseus import (
     OdysseusRuntimeExportAdapter,
 )
+from oh_my_field.adapters.runtime_export.opencode import OpenCodeRuntimeExportAdapter
 from oh_my_field.adapters.runtime_export.pi import PiRuntimeExportAdapter
 from oh_my_field.domain.models import CapabilityManifest
 from oh_my_field.domain.portability.models import ExportTarget, PortabilityManifest
@@ -23,6 +24,7 @@ _ADAPTERS: dict[ExportTarget, RuntimeExportAdapter] = {
     "generic": GenericRuntimeExportAdapter(),
     "hermes": HermesRuntimeExportAdapter(),
     "odysseus": OdysseusRuntimeExportAdapter(),
+    "opencode": OpenCodeRuntimeExportAdapter(),
     "pi": PiRuntimeExportAdapter(),
 }
 

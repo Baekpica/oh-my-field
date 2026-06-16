@@ -86,9 +86,10 @@ def test_harden_recommends_eval_export_and_learning_review(tmp_path: Path) -> No
         "run `omf eval repo_issue_triage --eval-set repo_issue_triage_regression`"
     )
     assert eval_action in output.recommended_actions
-    assert "export to Codex, Claude Code, Hermes, Pi, Odysseus, or generic target" in (
-        output.recommended_actions
-    )
+    assert (
+        "export to Codex, Claude Code, Hermes, Pi, Odysseus, OpenCode, "
+        "or generic target"
+    ) in output.recommended_actions
     assert "review learning patch candidates after `omf learn`" in (
         output.recommended_actions
     )

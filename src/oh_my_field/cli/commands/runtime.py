@@ -17,7 +17,7 @@ from oh_my_field.domain.models import StrictModel
 from oh_my_field.domain.skill.models import SkillInstallRequest, SkillInstallSummary
 from oh_my_field.mcp.schemas import McpInstallRequest, McpInstallSummary
 
-AgentRuntime = Literal["codex", "claude_code", "hermes", "pi", "odysseus"]
+AgentRuntime = Literal["codex", "claude_code", "hermes", "pi", "odysseus", "opencode"]
 
 
 class RuntimeInstallSummary(StrictModel):

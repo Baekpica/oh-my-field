@@ -227,7 +227,8 @@ def _harden_actions(entry: CapabilityHealthEntry) -> tuple[str, ...]:
         )
     if entry.export_status == "not_exported" and entry.import_count == 0:
         actions.append(
-            "export to Codex, Claude Code, Hermes, Pi, Odysseus, or generic target"
+            "export to Codex, Claude Code, Hermes, Pi, Odysseus, OpenCode, "
+            "or generic target"
         )
     if entry.validation_status == "needs_adaptation":
         actions.append(
