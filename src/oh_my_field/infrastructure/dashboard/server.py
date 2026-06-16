@@ -1,5 +1,5 @@
 import json
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from http import HTTPStatus
@@ -11,17 +11,37 @@ from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field, ValidationError
 
+from oh_my_field.application.conformance import ConformanceError
+from oh_my_field.application.install import install_mcp_config, install_omf_skill
+from oh_my_field.application.install.mcp_workflow import McpInstallError
+from oh_my_field.application.install.skill_workflow import SkillInstallError
+from oh_my_field.application.portability import validate_capability_package
+from oh_my_field.application.runtimes import (
+    RuntimeInventoryRequest,
+    run_runtime_inventory_workflow,
+)
 from oh_my_field.domain.layout import (
     DEFAULT_CAPABILITIES_DIR,
+    DEFAULT_CONTEXT_DIR,
     DEFAULT_EVAL_DIR,
     DEFAULT_EVAL_SET_DIR,
     DEFAULT_EVIDENCE_DIR,
+    DEFAULT_EXPORTS_DIR,
+    DEFAULT_LEARNING_DIR,
     DEFAULT_LEARNING_PATCH_DIR,
+    DEFAULT_REFLECTIONS_DIR,
     DEFAULT_REPLAYS_DIR,
     DEFAULT_REVIEW_DIR,
     DEFAULT_WORKFLOWS_DIR,
 )
+from oh_my_field.domain.portability.models import (
+    CapabilityValidationRequest,
+    ExportTarget,
+)
+from oh_my_field.domain.skill.models import SkillInstallRequest, SkillInstallRuntime
+from oh_my_field.export import ExportError, ExportRequest, run_export_workflow
 from oh_my_field.health import health_entry_from_manifest
+from oh_my_field.mcp.schemas import McpInstallClient, McpInstallRequest
 from oh_my_field.models import (
     CapabilityManifest,
     CommandExecution,
@@ -69,6 +89,8 @@ class DashboardPaths(StrictModel):
     review_dir: Path = DEFAULT_REVIEW_DIR
     eval_set_dir: Path = DEFAULT_EVAL_SET_DIR
     learning_patch_dir: Path = DEFAULT_LEARNING_PATCH_DIR
+    project: Path = Path()
+    home: Path | None = None
 
 
 class DashboardServeRequest(StrictModel):
@@ -264,11 +286,25 @@ class DashboardConsoleAction(StrictModel):
     target_id: str | None = None
 
 
+class DashboardRuntimeSummary(StrictModel):
+    runtime: str
+    presence: str
+    presence_detail: str
+    skill_installed: bool
+    mcp_installed: bool
+    conformance_status: str
+    overall_status: str
+    next_action: str
+    skill_path: str
+    mcp_config_path: str
+
+
 class DashboardSnapshot(StrictModel):
     generated_at: datetime
     metrics: DashboardMetrics
     workflows: tuple[DashboardWorkflowSummary, ...]
     capabilities: tuple[DashboardCapabilitySummary, ...]
+    runtimes: tuple[DashboardRuntimeSummary, ...]
     replays: tuple[DashboardReplaySummary, ...]
     evals: tuple[DashboardEvalSummary, ...]
     reviews: tuple[DashboardReviewSummary, ...]
@@ -290,6 +326,37 @@ class DashboardReviewRequest(StrictModel):
     changed_goal: str | None = None
     changed_constraint: str | None = None
     regression_case: str | None = None
+
+
+class DashboardSkillInstallRequest(StrictModel):
+    # dry_run defaults True: the UI previews the plan, then re-sends with
+    # dry_run=false on an explicit "Apply". The server never silently writes.
+    runtime: SkillInstallRuntime
+    dry_run: bool = True
+    overwrite: bool = False
+
+
+class DashboardMcpInstallRequest(StrictModel):
+    client: McpInstallClient
+    dry_run: bool = True
+    overwrite: bool = False
+
+
+class DashboardCapabilityExportRequest(StrictModel):
+    # approve_export defaults False; the export workflow raises until the UI
+    # re-sends with approve_export=true. The server only forwards the flag.
+    capability_name: str = Field(min_length=1)
+    approve_export: bool = False
+
+
+class DashboardCapabilityValidateRequest(StrictModel):
+    # Record-only validation: no run-command/approval is accepted over HTTP, so
+    # a client can never make the server spawn a local process. A real
+    # `validated` status still goes through the risk-gated `omf capability
+    # validate --run-command` CLI path (see the summary's next_commands).
+    capability_name: str = Field(min_length=1)
+    target: ExportTarget
+    model: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -326,6 +393,7 @@ def build_dashboard_snapshot(paths: DashboardPaths) -> DashboardSnapshot:
     learning_patch_summaries = tuple(
         _learning_patch_summary(decision) for decision in learning_patch_decisions
     )
+    runtime_summaries = _runtime_summaries(paths)
     comparisons = _capability_comparisons(workflow_summaries, eval_summaries)
     events = _events(
         workflow_summaries,
@@ -353,6 +421,7 @@ def build_dashboard_snapshot(paths: DashboardPaths) -> DashboardSnapshot:
         ),
         workflows=workflow_summaries,
         capabilities=capability_summaries,
+        runtimes=runtime_summaries,
         replays=replay_summaries,
         evals=eval_summaries,
         reviews=review_summaries,
@@ -402,7 +471,7 @@ def dashboard_html() -> str:
         <head>
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1">
-          <title>oh-my-field dashboard</title>
+          <title>oh-my-field</title>
           <style>
             :root {
               color-scheme: light;
@@ -421,53 +490,50 @@ def dashboard_html() -> str:
               margin: 0;
               color: var(--ink);
               background: var(--band);
-              font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-                "Segoe UI", sans-serif;
-              letter-spacing: 0;
+              font-family: ui-sans-serif, system-ui, -apple-system,
+                BlinkMacSystemFont, "Segoe UI", sans-serif;
             }
             header {
               display: flex;
               align-items: center;
-              justify-content: space-between;
+              gap: 24px;
               min-height: 56px;
               padding: 0 20px;
               background: #ffffff;
               border-bottom: 1px solid var(--line);
             }
-            header h1 {
-              margin: 0;
-              font-size: 17px;
-              font-weight: 700;
-            }
-            .layout {
-              display: grid;
-              grid-template-columns: 220px minmax(0, 1fr);
-              min-height: calc(100vh - 56px);
-            }
-            aside {
-              padding: 16px;
-              background: #eef2f7;
-              border-right: 1px solid var(--line);
-            }
-            nav a {
-              display: block;
-              padding: 8px 10px;
-              color: var(--ink);
-              text-decoration: none;
+            .brand { display: flex; align-items: baseline; gap: 10px; }
+            header h1 { margin: 0; font-size: 17px; font-weight: 700; }
+            #updated { color: var(--muted); font-size: 12px; }
+            .tabs { display: flex; gap: 4px; margin-left: auto; }
+            .tab {
+              padding: 8px 14px;
+              border: 1px solid transparent;
               border-radius: 6px;
+              background: transparent;
+              color: var(--muted);
+              font-size: 14px;
+              cursor: pointer;
             }
-            nav a:hover { background: #dde5ef; }
-            main {
+            .tab:hover { background: #eef2f7; }
+            .tab.active {
+              color: var(--ink);
+              font-weight: 600;
+              background: #e8eef6;
+            }
+            main { padding: 16px; }
+            .panel[hidden] { display: none; }
+            .grid2 {
               display: grid;
               grid-template-columns: minmax(360px, 1.1fr) minmax(320px, 0.9fr);
               gap: 16px;
-              padding: 16px;
             }
             section {
               background: var(--panel);
               border: 1px solid var(--line);
               border-radius: 6px;
               overflow: hidden;
+              margin-bottom: 16px;
             }
             section h2 {
               margin: 0;
@@ -475,7 +541,6 @@ def dashboard_html() -> str:
               font-size: 14px;
               border-bottom: 1px solid var(--line);
             }
-            .full { grid-column: 1 / -1; }
             .content { padding: 12px 14px; }
             .metrics {
               display: grid;
@@ -488,16 +553,9 @@ def dashboard_html() -> str:
               border-radius: 6px;
               background: #fbfcfe;
             }
-            .metric b {
-              display: block;
-              margin-top: 5px;
-              font-size: 18px;
-            }
-            table {
-              width: 100%;
-              border-collapse: collapse;
-              font-size: 13px;
-            }
+            .metric span { color: var(--muted); font-size: 12px; }
+            .metric b { display: block; margin-top: 5px; font-size: 18px; }
+            table { width: 100%; border-collapse: collapse; font-size: 13px; }
             th, td {
               padding: 9px 10px;
               border-bottom: 1px solid var(--line);
@@ -517,6 +575,35 @@ def dashboard_html() -> str:
             .pass { color: var(--pass); }
             .fail { color: var(--fail); }
             .warn { color: var(--warn); }
+            .cards {
+              display: grid;
+              grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+              gap: 12px;
+            }
+            .card {
+              border: 1px solid var(--line);
+              border-radius: 6px;
+              background: #fbfcfe;
+              padding: 12px;
+            }
+            .card h3 {
+              margin: 0 0 8px;
+              font-size: 14px;
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+            }
+            .badge {
+              font-size: 11px;
+              padding: 2px 8px;
+              border-radius: 999px;
+              border: 1px solid var(--line);
+            }
+            .badge.ready { color: var(--pass); border-color: #86efac; }
+            .badge.partial { color: var(--warn); border-color: #fcd34d; }
+            .badge.absent { color: var(--muted); }
+            .checks { font-size: 13px; margin: 6px 0; }
+            .next { color: var(--muted); font-size: 12px; margin: 6px 0; }
             .graph {
               display: grid;
               grid-template-columns: repeat(6, minmax(86px, 1fr));
@@ -545,10 +632,7 @@ def dashboard_html() -> str:
               height: 100%;
               background: var(--accent);
             }
-            .event {
-              padding: 9px 0;
-              border-bottom: 1px solid var(--line);
-            }
+            .event { padding: 9px 0; border-bottom: 1px solid var(--line); }
             .event:last-child { border-bottom: 0; }
             .controls {
               display: flex;
@@ -564,116 +648,137 @@ def dashboard_html() -> str:
               background: #ffffff;
               color: var(--ink);
             }
-            button {
-              padding: 0 10px;
-              cursor: pointer;
-            }
+            button { padding: 0 10px; cursor: pointer; }
+            .act { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; }
             pre {
               max-height: 280px;
               overflow: auto;
-              margin: 0;
+              margin: 8px 0 0;
               padding: 12px;
               background: #111827;
               color: #e5e7eb;
               border-radius: 6px;
               font-size: 12px;
+              white-space: pre-wrap;
+              overflow-wrap: anywhere;
             }
-            footer {
-              padding: 12px 16px;
-              color: var(--muted);
-              font-size: 12px;
-            }
+            footer { padding: 12px 16px; color: var(--muted); font-size: 12px; }
             @media (max-width: 900px) {
-              .layout { grid-template-columns: 1fr; }
-              aside { display: none; }
-              main { grid-template-columns: 1fr; }
+              .grid2 { grid-template-columns: 1fr; }
               .metrics { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
               .graph { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
+              .tabs { flex-wrap: wrap; }
             }
           </style>
         </head>
         <body>
           <header>
-            <h1>oh-my-field</h1>
-            <span id="updated">loading</span>
+            <div class="brand">
+              <h1>oh-my-field</h1>
+              <span id="updated">loading</span>
+            </div>
+            <nav class="tabs" id="tabs">
+              <button class="tab active" data-tab="overview">Overview</button>
+              <button class="tab" data-tab="runtimes">Runtimes</button>
+              <button class="tab" data-tab="capabilities">Capabilities</button>
+              <button class="tab" data-tab="workflows">Workflows</button>
+            </nav>
           </header>
-          <div class="layout">
-            <aside>
-              <nav>
-                <a href="#workflows">Workflows</a>
-                <a href="#graph">Graph</a>
-                <a href="#approvals">Approvals</a>
-                <a href="#capabilities">Capabilities</a>
-                <a href="#learning">Learning</a>
-                <a href="#actions">Actions</a>
-                <a href="#history">History</a>
-                <a href="#debug">Debug</a>
-              </nav>
-            </aside>
-            <main>
-              <section class="full">
+          <main>
+            <div class="panel" data-panel="overview">
+              <section>
                 <h2>Metrics</h2>
                 <div class="content metrics" id="metrics"></div>
               </section>
-              <section id="workflows">
-                <h2>Workflow Runs</h2>
-                <div class="content">
-                  <div class="controls">
-                    <select id="status-filter">
-                      <option value="">All status</option>
-                      <option value="running">running</option>
-                      <option value="completed">completed</option>
-                      <option value="failed">failed</option>
-                      <option value="pending_review">pending review</option>
-                    </select>
-                    <input id="search" placeholder="filter">
-                  </div>
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Run</th>
-                        <th>Status</th>
-                        <th>Capability</th>
-                        <th>Progress</th>
-                      </tr>
-                    </thead>
-                    <tbody id="workflow-rows"></tbody>
-                  </table>
-                </div>
+              <section>
+                <h2>Needs attention</h2>
+                <div class="content" id="attention"></div>
               </section>
-              <section id="graph">
-                <h2>Workflow Graph</h2>
-                <div class="content">
-                  <div id="selected-run"></div>
-                  <div class="graph" id="graph-nodes"></div>
-                </div>
+            </div>
+
+            <div class="panel" data-panel="runtimes" hidden>
+              <section>
+                <h2>Agent runtimes &middot; skill &amp; MCP status</h2>
+                <div class="content cards" id="runtime-cards"></div>
               </section>
-              <section id="approvals">
-                <h2>Approvals</h2>
-                <div class="content" id="approval-list"></div>
-              </section>
-              <section id="actions">
-                <h2>Console Actions</h2>
-                <div class="content" id="action-list"></div>
-              </section>
-              <section id="capabilities" class="full">
-                <h2>Capability Health</h2>
+            </div>
+
+            <div class="panel" data-panel="capabilities" hidden>
+              <section>
+                <h2>Capability portability</h2>
                 <div class="content">
                   <table>
                     <thead>
                       <tr>
                         <th>Capability</th>
                         <th>Health</th>
-                        <th>Portability</th>
-                        <th>Next action</th>
+                        <th>Export / Import / Validate</th>
+                        <th>Actions</th>
                       </tr>
                     </thead>
                     <tbody id="capability-rows"></tbody>
                   </table>
+                  <pre id="cap-output" hidden></pre>
                 </div>
               </section>
-              <section id="learning" class="full">
-                <h2>Learning Patches</h2>
+            </div>
+
+            <div class="panel" data-panel="workflows" hidden>
+              <div class="grid2">
+                <section>
+                  <h2>Workflow runs</h2>
+                  <div class="content">
+                    <div class="controls">
+                      <select id="status-filter">
+                        <option value="">All status</option>
+                        <option value="running">running</option>
+                        <option value="completed">completed</option>
+                        <option value="failed">failed</option>
+                        <option value="pending_review">pending review</option>
+                      </select>
+                      <input id="search" placeholder="filter">
+                    </div>
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Run</th>
+                          <th>Status</th>
+                          <th>Capability</th>
+                          <th>Progress</th>
+                        </tr>
+                      </thead>
+                      <tbody id="workflow-rows"></tbody>
+                    </table>
+                  </div>
+                </section>
+                <section>
+                  <h2>Approvals</h2>
+                  <div class="content" id="approval-list"></div>
+                </section>
+              </div>
+              <section>
+                <h2>Workflow graph</h2>
+                <div class="content">
+                  <div id="selected-run"></div>
+                  <div class="graph" id="graph-nodes"></div>
+                </div>
+              </section>
+              <section>
+                <h2>Events</h2>
+                <div class="content">
+                  <div class="controls">
+                    <label><input type="checkbox" data-severity="info" checked>
+                      info</label>
+                    <label><input type="checkbox" data-severity="warning"
+                      checked> warning</label>
+                    <label><input type="checkbox" data-severity="critical"
+                      checked> critical</label>
+                  </div>
+                  <div id="event-list"></div>
+                </div>
+              </section>
+              <section>
+                <h2>Learning patches</h2>
                 <div class="content">
                   <table>
                     <thead>
@@ -689,21 +794,7 @@ def dashboard_html() -> str:
                 </div>
               </section>
               <section>
-                <h2>Events</h2>
-                <div class="content">
-                  <div class="controls">
-                    <label><input type="checkbox" data-severity="info" checked>
-                      info</label>
-                    <label><input type="checkbox" data-severity="warning" checked>
-                      warning</label>
-                    <label><input type="checkbox" data-severity="critical" checked>
-                      critical</label>
-                  </div>
-                  <div id="event-list"></div>
-                </div>
-              </section>
-              <section id="history" class="full">
-                <h2>Execution History</h2>
+                <h2>Execution history</h2>
                 <div class="content">
                   <table>
                     <thead>
@@ -719,20 +810,35 @@ def dashboard_html() -> str:
                   </table>
                 </div>
               </section>
-              <section id="debug" class="full">
-                <h2>Debug</h2>
-                <div class="content"><pre id="debug-json">{}</pre></div>
-              </section>
-            </main>
-          </div>
-          <footer>Local API: /api/snapshot /api/learning-patches</footer>
+            </div>
+          </main>
+          <footer>
+            Local API: /api/snapshot /api/runtimes /api/capabilities
+            /api/learning-patches
+          </footer>
           <script>
             let snapshot = null;
             let selectedRunId = null;
+            let activeTab = "overview";
 
             const byId = (id) => document.getElementById(id);
             const pct = (value) => `${Math.round(value)}%`;
             const shortId = (value) => value ? value.slice(0, 18) : "";
+            const mark = (ok) => ok
+              ? '<span class="pass">&#10003;</span>'
+              : '<span class="fail">&#10007;</span>';
+            const esc = (value) => String(value == null ? "" : value)
+              .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+              .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+            async function postJson(url, payload) {
+              const response = await fetch(url, {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify(payload)
+              });
+              return response.json();
+            }
 
             async function refresh() {
               const response = await fetch("/api/snapshot");
@@ -744,49 +850,185 @@ def dashboard_html() -> str:
             }
 
             function render() {
+              if (!snapshot) return;
               byId("updated").textContent = snapshot.generated_at;
               renderMetrics();
+              renderAttention();
+              renderRuntimes();
               renderWorkflows();
               renderGraph();
               renderApprovals();
-              renderActions();
               renderCapabilities();
               renderLearningPatches();
               renderEvents();
               renderComparisons();
-              const run = selectedRun();
-              byId("debug-json").textContent = JSON.stringify(run || snapshot, null, 2);
+            }
+
+            function setTab(name) {
+              activeTab = name;
+              document.querySelectorAll(".tab").forEach((tab) => {
+                tab.classList.toggle("active", tab.dataset.tab === name);
+              });
+              document.querySelectorAll(".panel").forEach((panel) => {
+                panel.hidden = panel.dataset.panel !== name;
+              });
             }
 
             function renderMetrics() {
-              const metrics = snapshot.metrics;
+              const m = snapshot.metrics;
+              const ready = (snapshot.runtimes || [])
+                .filter((r) => r.overall_status === "ready").length;
               const items = [
-                ["Workflows", metrics.workflow_count],
-                ["Running", metrics.running_count],
-                ["Pending approvals", metrics.pending_approval_count],
-                ["Harness pass", pct(metrics.harness_pass_rate)],
-                ["Regression cases", metrics.regression_case_count],
-                ["Learning patches", metrics.learning_patch_count],
-                ["Capabilities", metrics.capability_count]
+                ["Workflows", m.workflow_count],
+                ["Running", m.running_count],
+                ["Pending approvals", m.pending_approval_count],
+                ["Harness pass", pct(m.harness_pass_rate)],
+                ["Capabilities", m.capability_count],
+                ["Ready runtimes", ready],
+                ["Regression cases", m.regression_case_count],
+                ["Learning patches", m.learning_patch_count]
               ];
               byId("metrics").innerHTML = items.map((item) =>
-                `<div class="metric"><span>${item[0]}</span><b>${item[1]}</b></div>`
+                `<div class="metric"><span>${item[0]}</span>` +
+                `<b>${item[1]}</b></div>`
               ).join("");
+            }
+
+            function renderAttention() {
+              const failed = snapshot.workflows
+                .filter((run) => run.status === "failed");
+              const approvals = snapshot.approvals || [];
+              const parts = [];
+              approvals.forEach((item) => parts.push(
+                `<div class="event"><strong class="warn">Approval` +
+                ` required</strong><div>${esc(item.reason)}</div>` +
+                `<code>${esc(item.command)}</code></div>`
+              ));
+              failed.forEach((run) => parts.push(
+                `<div class="event"><strong class="fail">Workflow` +
+                ` failed</strong><div>${esc(run.goal)}</div>` +
+                `<small>${esc(run.failure_reason || "")}</small></div>`
+              ));
+              byId("attention").innerHTML = parts.length
+                ? parts.join("")
+                : "<p>Nothing needs attention.</p>";
+            }
+
+            function renderRuntimes() {
+              const rows = snapshot.runtimes || [];
+              if (rows.length === 0) {
+                byId("runtime-cards").innerHTML =
+                  "<p>No runtime information available.</p>";
+                return;
+              }
+              byId("runtime-cards").innerHTML = rows.map((r) =>
+                `<div class="card">
+                  <h3>${esc(r.runtime)}
+                    <span class="badge ${r.overall_status}">` +
+                    `${esc(r.overall_status)}</span></h3>
+                  <div class="checks">presence: ${esc(r.presence)}</div>
+                  <div class="checks">skill ${mark(r.skill_installed)}
+                    &nbsp; MCP ${mark(r.mcp_installed)}</div>
+                  <div class="next">${esc(r.next_action)}</div>
+                  <div class="act">
+                    <button onclick="runtimeSkill('${esc(r.runtime)}', false)">
+                      Preview skill</button>
+                    <button onclick="runtimeSkill('${esc(r.runtime)}', true)">
+                      Install skill</button>
+                    <button onclick="runtimeMcp('${esc(r.runtime)}', false)">
+                      Preview MCP</button>
+                    <button onclick="runtimeMcp('${esc(r.runtime)}', true)">
+                      Install MCP</button>
+                  </div>
+                  <pre class="card-out" hidden></pre>
+                </div>`
+              ).join("");
+            }
+
+            function cardOut(runtime) {
+              const cards = document.querySelectorAll("#runtime-cards .card");
+              for (const card of cards) {
+                if (card.querySelector("h3").textContent.trim()
+                    .startsWith(runtime)) {
+                  return card.querySelector(".card-out");
+                }
+              }
+              return null;
+            }
+
+            function showCardOut(runtime, data) {
+              const out = cardOut(runtime);
+              if (!out) return;
+              out.hidden = false;
+              out.textContent = JSON.stringify(data, null, 2);
+            }
+
+            async function runtimeSkill(runtime, apply) {
+              if (apply && !window.confirm(
+                  `Install the OMF skill for ${runtime}?`)) return;
+              const data = await postJson("/api/install/skill", {
+                runtime: runtime, dry_run: !apply
+              });
+              showCardOut(runtime, data);
+              if (apply) refresh();
+            }
+
+            async function runtimeMcp(runtime, apply) {
+              if (apply && !window.confirm(
+                  `Install the OMF MCP config for ${runtime}?`)) return;
+              const data = await postJson("/api/install/mcp", {
+                client: runtime, dry_run: !apply
+              });
+              showCardOut(runtime, data);
+              if (apply) refresh();
+            }
+
+            function showCapOutput(data) {
+              const out = byId("cap-output");
+              out.hidden = false;
+              out.textContent = JSON.stringify(data, null, 2);
+            }
+
+            async function exportCapability(name) {
+              let data = await postJson("/api/capability/export", {
+                capability_name: name, approve_export: false
+              });
+              if (data.error) {
+                if (window.confirm(`${data.error}\\n\\nApprove and export?`)) {
+                  data = await postJson("/api/capability/export", {
+                    capability_name: name, approve_export: true
+                  });
+                }
+              }
+              showCapOutput(data);
+              refresh();
+            }
+
+            async function validateCapability(name, target) {
+              const chosen = window.prompt("Validate against target", target);
+              if (!chosen) return;
+              const data = await postJson("/api/capability/validate", {
+                capability_name: name, target: chosen
+              });
+              showCapOutput(data);
+              refresh();
             }
 
             function renderWorkflows() {
               const status = byId("status-filter").value;
               const query = byId("search").value.toLowerCase();
               const rows = snapshot.workflows.filter((run) => {
-                const matchesStatus = !status || run.status === status;
-                const haystack = `${run.id} ${run.goal} ${run.capability_name || ""}`;
-                return matchesStatus && haystack.toLowerCase().includes(query);
+                const okStatus = !status || run.status === status;
+                const hay =
+                  `${run.id} ${run.goal} ${run.capability_name || ""}`;
+                return okStatus && hay.toLowerCase().includes(query);
               });
               byId("workflow-rows").innerHTML = rows.map((run) =>
                 `<tr data-run="${run.id}" onclick="selectRun('${run.id}')">
-                  <td>${shortId(run.id)}<br>${run.goal}</td>
-                  <td><span class="tag">${run.status}</span></td>
-                  <td>${run.capability_name || ""}<br>${run.runtime}</td>
+                  <td>${shortId(run.id)}<br>${esc(run.goal)}</td>
+                  <td><span class="tag">${esc(run.status)}</span></td>
+                  <td>${esc(run.capability_name || "")}<br>` +
+                  `${esc(run.runtime)}</td>
                   <td>${pct(run.progress_percent)}
                     <div class="progress">
                       <span style="width:${run.progress_percent}%"></span>
@@ -804,12 +1046,13 @@ def dashboard_html() -> str:
                 return;
               }
               byId("selected-run").textContent =
-                `${shortId(run.id)} ${run.status} ${pct(run.progress_percent)}`;
+                `${shortId(run.id)} ${run.status} ` +
+                `${pct(run.progress_percent)}`;
               byId("graph-nodes").innerHTML = run.nodes.map((node) =>
                 `<div class="node ${node.status}">
-                  <strong>${node.name}</strong><br>
-                  <span>${node.status}</span><br>
-                  <small>${node.message || ""}</small>
+                  <strong>${esc(node.name)}</strong><br>
+                  <span>${esc(node.status)}</span><br>
+                  <small>${esc(node.message || "")}</small>
                 </div>`
               ).join("");
             }
@@ -822,46 +1065,16 @@ def dashboard_html() -> str:
               }
               byId("approval-list").innerHTML = approvals.map((item) =>
                 `<div class="event">
-                  <strong>${item.target_type} ${shortId(item.target_id)}</strong>
-                  <div>${item.reason}</div>
-                  <code>${item.command}</code><br>
+                  <strong>${esc(item.target_type)} ` +
+                  `${shortId(item.target_id)}</strong>
+                  <div>${esc(item.reason)}</div>
+                  <code>${esc(item.command)}</code><br>
                   <button onclick="review('${item.target_type}',
                     '${item.target_id}', 'approve')">Approve</button>
                   <button onclick="review('${item.target_type}',
                     '${item.target_id}', 'reject')">Reject</button>
                   <button onclick="revise('${item.target_type}',
                     '${item.target_id}')">Revise</button>
-                </div>`
-              ).join("");
-            }
-
-            function renderEvents() {
-              const enabled = {};
-              document.querySelectorAll("[data-severity]").forEach((input) => {
-                enabled[input.dataset.severity] = input.checked;
-              });
-              byId("event-list").innerHTML = snapshot.events
-                .filter((event) => enabled[event.severity])
-                .map((event) =>
-                  `<div class="event ${event.severity}">
-                    <strong>${event.title}</strong>
-                    <div>${event.message}</div>
-                    <small>${event.created_at}</small>
-                  </div>`
-                ).join("");
-            }
-
-            function renderActions() {
-              const actions = snapshot.console_actions || [];
-              if (actions.length === 0) {
-                byId("action-list").innerHTML = "<p>No suggested actions.</p>";
-                return;
-              }
-              byId("action-list").innerHTML = actions.map((item) =>
-                `<div class="event">
-                  <strong>${item.title}</strong>
-                  <div>${item.kind}</div>
-                  <code>${item.command}</code>
                 </div>`
               ).join("");
             }
@@ -874,18 +1087,24 @@ def dashboard_html() -> str:
                 return;
               }
               byId("capability-rows").innerHTML = rows.map((item) => {
-                const targets = (item.portability_targets || []).map((target) =>
-                  `${target.target}: ${target.validation_status}`
+                const targets = (item.portability_targets || []).map((t) =>
+                  `${esc(t.target)}: ${esc(t.validation_status)}`
                 ).join("<br>");
-                const portability =
-                  `${item.portability_export_status} / ` +
-                  `${item.portability_import_status} / ` +
-                  `${item.portability_validation_status}`;
+                const port =
+                  `${esc(item.portability_export_status)} / ` +
+                  `${esc(item.portability_import_status)} / ` +
+                  `${esc(item.portability_validation_status)}`;
+                const rt = esc(item.runtime);
                 return `<tr>
-                  <td>${item.name}<br><span class="tag">${item.status}</span></td>
-                  <td>${item.integrity_status}<br>${pct(item.pass_rate)}</td>
-                  <td>${portability}<br><small>${targets}</small></td>
-                  <td>${item.next_action}</td>
+                  <td>${esc(item.name)}<br>` +
+                  `<span class="tag">${esc(item.status)}</span></td>
+                  <td>${esc(item.integrity_status)}<br>` +
+                  `${pct(item.pass_rate)}</td>
+                  <td>${port}<br><small>${targets}</small></td>
+                  <td><button onclick="exportCapability(` +
+                  `'${esc(item.name)}')">Export</button>
+                    <button onclick="validateCapability(` +
+                    `'${esc(item.name)}', '${rt}')">Validate</button></td>
                 </tr>`;
               }).join("");
             }
@@ -899,46 +1118,59 @@ def dashboard_html() -> str:
               }
               byId("learning-patch-rows").innerHTML = rows.map((item) =>
                 `<tr>
-                  <td>${shortId(item.id)}<br>${item.capability_name}
-                    <br><span class="tag">${item.patch_kind}</span></td>
-                  <td>${item.decision}</td>
-                  <td>${item.reviewer || ""}</td>
+                  <td>${shortId(item.id)}<br>${esc(item.capability_name)}
+                    <br><span class="tag">${esc(item.patch_kind)}</span></td>
+                  <td>${esc(item.decision)}</td>
+                  <td>${esc(item.reviewer || "")}</td>
                   <td>${item.pass_rate_delta ?? ""}</td>
                 </tr>`
               ).join("");
             }
 
+            function renderEvents() {
+              const enabled = {};
+              document.querySelectorAll("[data-severity]").forEach((input) => {
+                enabled[input.dataset.severity] = input.checked;
+              });
+              byId("event-list").innerHTML = snapshot.events
+                .filter((event) => enabled[event.severity])
+                .map((event) =>
+                  `<div class="event ${event.severity}">
+                    <strong>${esc(event.title)}</strong>
+                    <div>${esc(event.message)}</div>
+                    <small>${esc(event.created_at)}</small>
+                  </div>`
+                ).join("");
+            }
+
             function renderComparisons() {
-              byId("comparison-rows").innerHTML = snapshot.comparisons.map((item) =>
-                `<tr>
-                  <td>${item.capability_name}</td>
-                  <td>${item.run_count}</td>
-                  <td>${item.eval_count}</td>
-                  <td>${pct(item.pass_rate)}</td>
-                  <td>${item.runtime_profiles.join(", ")}</td>
-                </tr>`
-              ).join("");
+              byId("comparison-rows").innerHTML =
+                snapshot.comparisons.map((item) =>
+                  `<tr>
+                    <td>${esc(item.capability_name)}</td>
+                    <td>${item.run_count}</td>
+                    <td>${item.eval_count}</td>
+                    <td>${pct(item.pass_rate)}</td>
+                    <td>${esc(item.runtime_profiles.join(", "))}</td>
+                  </tr>`
+                ).join("");
             }
 
             function selectedRun() {
-              return snapshot.workflows.find((run) => run.id === selectedRunId);
+              return snapshot.workflows.find((r) => r.id === selectedRunId);
             }
 
             function selectRun(runId) {
               selectedRunId = runId;
-              render();
+              renderGraph();
             }
 
             async function review(targetType, targetId, action) {
-              await fetch("/api/reviews", {
-                method: "POST",
-                headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({
-                  target_type: targetType,
-                  target_id: targetId,
-                  action: action,
-                  notes: [`dashboard ${action}`]
-                })
+              await postJson("/api/reviews", {
+                target_type: targetType,
+                target_id: targetId,
+                action: action,
+                notes: [`dashboard ${action}`]
               });
               await refresh();
             }
@@ -946,19 +1178,18 @@ def dashboard_html() -> str:
             async function revise(targetType, targetId) {
               const revision = window.prompt("Revision request");
               if (!revision) return;
-              await fetch("/api/reviews", {
-                method: "POST",
-                headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({
-                  target_type: targetType,
-                  target_id: targetId,
-                  action: "revise",
-                  revision_request: revision
-                })
+              await postJson("/api/reviews", {
+                target_type: targetType,
+                target_id: targetId,
+                action: "revise",
+                revision_request: revision
               });
               await refresh();
             }
 
+            document.querySelectorAll(".tab").forEach((tab) =>
+              tab.addEventListener("click", () => setTab(tab.dataset.tab))
+            );
             byId("status-filter").addEventListener("change", renderWorkflows);
             byId("search").addEventListener("input", renderWorkflows);
             document.querySelectorAll("[data-severity]").forEach((input) =>
@@ -1004,15 +1235,31 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
-        if parsed.path != "/api/reviews":
+        handlers: dict[str, Callable[[bytes], None]] = {
+            "/api/reviews": self._post_review,
+            "/api/install/skill": self._post_install_skill,
+            "/api/install/mcp": self._post_install_mcp,
+            "/api/capability/export": self._post_capability_export,
+            "/api/capability/validate": self._post_capability_validate,
+        }
+        handler = handlers.get(parsed.path)
+        if handler is None:
             self._send_error(HTTPStatus.NOT_FOUND, "route not found")
             return
+        body = self._read_body()
+        if body is None:
+            return
+        handler(body)
+
+    def _read_body(self) -> bytes | None:
         try:
             content_length = int(self.headers.get("Content-Length", "0"))
         except ValueError:
             self._send_error(HTTPStatus.BAD_REQUEST, "invalid content length")
-            return
-        body = self.rfile.read(content_length)
+            return None
+        return self.rfile.read(content_length)
+
+    def _post_review(self, body: bytes) -> None:
         try:
             request = DashboardReviewRequest.model_validate_json(body)
             response = record_dashboard_review(request, self._paths())
@@ -1020,6 +1267,83 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             self._send_error(HTTPStatus.BAD_REQUEST, str(exc))
             return
         self._send_text(response, "application/json; charset=utf-8")
+
+    def _post_install_skill(self, body: bytes) -> None:
+        paths = self._paths()
+        try:
+            request = DashboardSkillInstallRequest.model_validate_json(body)
+            summary = install_omf_skill(
+                SkillInstallRequest(
+                    runtime=request.runtime,
+                    project=paths.project,
+                    home=paths.home,
+                    dry_run=request.dry_run,
+                    overwrite=request.overwrite,
+                ),
+            )
+        except (SkillInstallError, StorageError, ValidationError) as exc:
+            self._send_error(HTTPStatus.BAD_REQUEST, str(exc))
+            return
+        self._send_text(summary.model_dump_json(), "application/json; charset=utf-8")
+
+    def _post_install_mcp(self, body: bytes) -> None:
+        paths = self._paths()
+        try:
+            request = DashboardMcpInstallRequest.model_validate_json(body)
+            summary = install_mcp_config(
+                McpInstallRequest(
+                    client=request.client,
+                    project=paths.project,
+                    home=paths.home,
+                    dry_run=request.dry_run,
+                    overwrite=request.overwrite,
+                ),
+            )
+        except (McpInstallError, StorageError, ValidationError) as exc:
+            self._send_error(HTTPStatus.BAD_REQUEST, str(exc))
+            return
+        self._send_text(summary.model_dump_json(), "application/json; charset=utf-8")
+
+    def _post_capability_export(self, body: bytes) -> None:
+        paths = self._paths()
+        try:
+            request = DashboardCapabilityExportRequest.model_validate_json(body)
+            summary = run_export_workflow(
+                ExportRequest(
+                    capability_name=request.capability_name,
+                    approve_export=request.approve_export,
+                    capabilities_dir=paths.capabilities_dir,
+                    evidence_dir=paths.evidence_dir,
+                    eval_dir=paths.eval_dir,
+                    context_dir=DEFAULT_CONTEXT_DIR,
+                    learning_dir=DEFAULT_LEARNING_DIR,
+                    reflection_dir=DEFAULT_REFLECTIONS_DIR,
+                    export_dir=DEFAULT_EXPORTS_DIR,
+                ),
+            )
+        except (ExportError, StorageError, ValidationError) as exc:
+            self._send_error(HTTPStatus.BAD_REQUEST, str(exc))
+            return
+        self._send_text(summary.model_dump_json(), "application/json; charset=utf-8")
+
+    def _post_capability_validate(self, body: bytes) -> None:
+        paths = self._paths()
+        try:
+            request = DashboardCapabilityValidateRequest.model_validate_json(body)
+            summary = validate_capability_package(
+                CapabilityValidationRequest(
+                    capability_name=request.capability_name,
+                    capabilities_dir=paths.capabilities_dir,
+                    eval_dir=paths.eval_dir,
+                    evidence_dir=paths.evidence_dir,
+                    target=request.target,
+                    model=request.model,
+                ),
+            )
+        except (StorageError, ValidationError) as exc:
+            self._send_error(HTTPStatus.BAD_REQUEST, str(exc))
+            return
+        self._send_text(summary.model_dump_json(), "application/json; charset=utf-8")
 
     def log_message(self, format: str, *args: object) -> None:  # noqa: A002
         del format, args
@@ -1075,6 +1399,7 @@ def _snapshot_route(
         "/api/events": snapshot.events,
         "/api/approvals": snapshot.approvals,
         "/api/capabilities": snapshot.capabilities,
+        "/api/runtimes": snapshot.runtimes,
         "/api/learning-patches": snapshot.learning_patches,
         "/api/actions": snapshot.console_actions,
     }
@@ -1225,6 +1550,37 @@ def _replay_command(record: WorkflowRunRecord) -> str | None:
 
 def _elapsed_ms(started_at: datetime, finished_at: datetime) -> int:
     return int((finished_at - started_at).total_seconds() * 1_000)
+
+
+def _runtime_summaries(
+    paths: DashboardPaths,
+) -> tuple[DashboardRuntimeSummary, ...]:
+    try:
+        summary = run_runtime_inventory_workflow(
+            RuntimeInventoryRequest(
+                project=paths.project,
+                home=paths.home,
+                capabilities_dir=paths.capabilities_dir,
+            ),
+        )
+    except ConformanceError:
+        # A single misconfigured runtime must never blank the whole dashboard.
+        return ()
+    return tuple(
+        DashboardRuntimeSummary(
+            runtime=state.runtime,
+            presence=state.presence,
+            presence_detail=state.presence_detail,
+            skill_installed=state.skill_installed,
+            mcp_installed=state.mcp_installed,
+            conformance_status=state.conformance_status,
+            overall_status=state.overall_status,
+            next_action=state.next_action,
+            skill_path=state.skill_path,
+            mcp_config_path=state.mcp_config_path,
+        )
+        for state in summary.runtimes
+    )
 
 
 def _capability_summaries(
