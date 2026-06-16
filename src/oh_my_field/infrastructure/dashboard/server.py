@@ -1,4 +1,5 @@
 import json
+import secrets
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -71,6 +72,8 @@ from oh_my_field.storage import (
 DEFAULT_DASHBOARD_PORT: Final = 8765
 APPROVAL_TIMEOUT_SECONDS: Final = 1_800
 MAX_EVENTS: Final = 50
+CSRF_HEADER: Final = "X-OMF-Csrf-Token"
+LOOPBACK_HOSTS: Final = frozenset({"127.0.0.1", "localhost", "::1", "[::1]"})
 
 type DashboardEventSeverity = Literal["info", "warning", "critical"]
 type DashboardNodeStatus = WorkflowNodeStatus | Literal["running"]
@@ -463,9 +466,10 @@ def create_dashboard_server(request: DashboardServeRequest) -> "DashboardHTTPSer
     )
 
 
-def dashboard_html() -> str:
-    return dedent(
-        """
+def dashboard_html(csrf_token: str = "") -> str:
+    return (
+        dedent(
+            """
         <!doctype html>
         <html lang="en">
         <head>
@@ -817,6 +821,7 @@ def dashboard_html() -> str:
             /api/learning-patches
           </footer>
           <script>
+            const CSRF_TOKEN = "__OMF_CSRF_TOKEN__";
             let snapshot = null;
             let selectedRunId = null;
             let activeTab = "overview";
@@ -834,7 +839,10 @@ def dashboard_html() -> str:
             async function postJson(url, payload) {
               const response = await fetch(url, {
                 method: "POST",
-                headers: {"Content-Type": "application/json"},
+                headers: {
+                  "Content-Type": "application/json",
+                  "X-OMF-Csrf-Token": CSRF_TOKEN
+                },
                 body: JSON.stringify(payload)
               });
               return response.json();
@@ -1201,7 +1209,10 @@ def dashboard_html() -> str:
         </body>
         </html>
         """,
-    ).strip()
+        )
+        .strip()
+        .replace("__OMF_CSRF_TOKEN__", csrf_token)
+    )
 
 
 class DashboardHTTPServer(ThreadingHTTPServer):
@@ -1214,15 +1225,23 @@ class DashboardHTTPServer(ThreadingHTTPServer):
         """Create a local dashboard server bound to artifact storage paths."""
         super().__init__(server_address, handler_class)
         self.paths = paths
+        # Per-process secret that gates mutating POST routes against CSRF.
+        self.csrf_token = secrets.token_urlsafe(32)
 
 
 class DashboardRequestHandler(BaseHTTPRequestHandler):
     server_version = "oh-my-field-dashboard/0.1"
 
     def do_GET(self) -> None:
+        if not self._host_allowed():
+            self._send_error(HTTPStatus.FORBIDDEN, "host not allowed")
+            return
         parsed = urlparse(self.path)
         if parsed.path == "/":
-            self._send_text(dashboard_html(), "text/html; charset=utf-8")
+            self._send_text(
+                dashboard_html(self._csrf_token()),
+                "text/html; charset=utf-8",
+            )
             return
         if parsed.path == "/api/snapshot":
             self._send_snapshot()
@@ -1246,10 +1265,49 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         if handler is None:
             self._send_error(HTTPStatus.NOT_FOUND, "route not found")
             return
+        if self._reject_unsafe_post():
+            return
         body = self._read_body()
         if body is None:
             return
         handler(body)
+
+    def _csrf_token(self) -> str:
+        return _dashboard_server(self.server).csrf_token
+
+    def _bound_port(self) -> int:
+        return cast("tuple[str, int]", self.server.server_address)[1]
+
+    def _host_allowed(self) -> bool:
+        host_header = self.headers.get("Host")
+        if host_header is None:
+            # Pre-1.1 clients omit Host; only browsers (which always send it)
+            # are the CSRF/rebinding threat, so allow header-less callers.
+            return True
+        return _hostname(host_header) in LOOPBACK_HOSTS
+
+    def _origin_allowed(self) -> bool:
+        origin = self.headers.get("Origin")
+        if origin is None:
+            return True
+        parsed = urlparse(origin)
+        if parsed.scheme != "http" or parsed.hostname not in LOOPBACK_HOSTS:
+            return False
+        return parsed.port in (None, self._bound_port())
+
+    def _reject_unsafe_post(self) -> bool:
+        """Return True (and send 403) when a POST fails a safety check."""
+        if not self._host_allowed():
+            self._send_error(HTTPStatus.FORBIDDEN, "host not allowed")
+            return True
+        if not self._origin_allowed():
+            self._send_error(HTTPStatus.FORBIDDEN, "cross-origin POST rejected")
+            return True
+        token = self.headers.get(CSRF_HEADER)
+        if token is None or not secrets.compare_digest(token, self._csrf_token()):
+            self._send_error(HTTPStatus.FORBIDDEN, "missing or invalid CSRF token")
+            return True
+        return False
 
     def _read_body(self) -> bytes | None:
         try:
@@ -1388,6 +1446,16 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
 
 def _dashboard_server(server: object) -> DashboardHTTPServer:
     return cast("DashboardHTTPServer", server)
+
+
+def _hostname(host_header: str) -> str:
+    """Return the hostname from a ``Host`` header, dropping any port."""
+    value = host_header.strip()
+    if value.startswith("["):
+        return value[: value.index("]") + 1] if "]" in value else value
+    if value.count(":") == 1:
+        return value.rsplit(":", 1)[0]
+    return value
 
 
 def _snapshot_route(

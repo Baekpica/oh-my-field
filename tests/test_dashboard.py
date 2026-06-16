@@ -1,7 +1,6 @@
+import http.client
 import json
 import threading
-import urllib.error
-import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
@@ -193,24 +192,37 @@ def _serve(paths: DashboardPaths) -> DashboardHTTPServer:
     return server
 
 
+def _request(
+    server: DashboardHTTPServer,
+    path: str,
+    payload: dict[str, object],
+    headers: dict[str, str],
+) -> tuple[int, dict[str, object]]:
+    host, port = cast("tuple[str, int]", server.server_address)
+    connection = http.client.HTTPConnection(host, port, timeout=10)
+    try:
+        body = json.dumps(payload).encode("utf-8")
+        connection.request("POST", path, body=body, headers=headers)
+        response = connection.getresponse()
+        decoded: dict[str, object] = json.loads(response.read())
+        return response.status, decoded
+    finally:
+        connection.close()
+
+
+def _csrf_headers(server: DashboardHTTPServer) -> dict[str, str]:
+    return {
+        "Content-Type": "application/json",
+        "X-OMF-Csrf-Token": server.csrf_token,
+    }
+
+
 def _post(
     server: DashboardHTTPServer,
     path: str,
     payload: dict[str, object],
 ) -> dict[str, object]:
-    host, port = cast("tuple[str, int]", server.server_address)
-    request = urllib.request.Request(
-        f"http://{host}:{port}{path}",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=10) as response:  # noqa: S310
-            raw = response.read()
-    except urllib.error.HTTPError as exc:
-        raw = exc.read()
-    decoded: dict[str, object] = json.loads(raw)
+    _status, decoded = _request(server, path, payload, _csrf_headers(server))
     return decoded
 
 
@@ -298,6 +310,64 @@ def test_capability_validate_route_rejects_run_command(tmp_path: Path) -> None:
             },
         )
         assert "error" in rejected
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_post_without_csrf_token_is_forbidden(tmp_path: Path) -> None:
+    paths = make_dashboard_paths(tmp_path)
+    server = _serve(paths)
+    try:
+        status, body = _request(
+            server,
+            "/api/install/skill",
+            {"runtime": "claude_code", "dry_run": False},
+            {"Content-Type": "application/json"},
+        )
+        assert status == 403
+        assert "CSRF" in str(body["error"])
+        # The blocked request must not have written any skill file.
+        skill = tmp_path / "home" / ".claude" / "skills" / "omf" / "SKILL.md"
+        assert skill.is_file() is False
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_cross_origin_post_is_forbidden(tmp_path: Path) -> None:
+    paths = make_dashboard_paths(tmp_path)
+    server = _serve(paths)
+    try:
+        headers = _csrf_headers(server)
+        headers["Origin"] = "http://evil.example"
+        status, body = _request(
+            server,
+            "/api/install/skill",
+            {"runtime": "claude_code", "dry_run": False},
+            headers,
+        )
+        assert status == 403
+        assert "cross-origin" in str(body["error"])
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_non_loopback_host_post_is_forbidden(tmp_path: Path) -> None:
+    paths = make_dashboard_paths(tmp_path)
+    server = _serve(paths)
+    try:
+        headers = _csrf_headers(server)
+        headers["Host"] = "evil.example"
+        status, body = _request(
+            server,
+            "/api/install/skill",
+            {"runtime": "claude_code", "dry_run": False},
+            headers,
+        )
+        assert status == 403
+        assert "host" in str(body["error"])
     finally:
         server.shutdown()
         server.server_close()
