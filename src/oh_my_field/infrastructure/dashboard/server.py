@@ -476,217 +476,630 @@ def dashboard_html(csrf_token: str = "") -> str:
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>oh-my-field</title>
+          <script>
+            (function () {
+              try {
+                var stored = localStorage.getItem("omf-theme");
+                if (stored !== "light" && stored !== "dark") {
+                  stored = window.matchMedia
+                    && matchMedia("(prefers-color-scheme: dark)").matches
+                    ? "dark" : "light";
+                }
+                document.documentElement.dataset.theme = stored;
+              } catch (e) {
+                document.documentElement.dataset.theme = "light";
+              }
+            })();
+          </script>
           <style>
             :root {
               color-scheme: light;
-              --ink: #18202a;
-              --muted: #657384;
-              --line: #d8dee8;
-              --panel: #ffffff;
-              --band: #f5f7fb;
-              --accent: #0f766e;
+              --bg: #eceff5;
+              --surface: #ffffff;
+              --surface-2: #f7f9fc;
+              --surface-3: #eef2f8;
+              --ink: #131922;
+              --ink-soft: #38434f;
+              --muted: #69768a;
+              --line: #e4e9f1;
+              --line-strong: #d0d8e4;
+              --accent: #0d9488;
+              --accent-strong: #0f766e;
+              --accent-ink: #ffffff;
+              --accent-soft: #d4f2ec;
+              --ok: #15803d;
+              --ok-bg: #dcfce7;
+              --ok-line: #a4e7bf;
+              --bad: #be123c;
+              --bad-bg: #ffe4e8;
+              --bad-line: #fbc6cf;
               --warn: #b45309;
-              --fail: #b91c1c;
-              --pass: #15803d;
+              --warn-bg: #fdf0cf;
+              --warn-line: #f5d58a;
+              --info: #1d4ed8;
+              --info-bg: #dce6fc;
+              --info-line: #bcd0f7;
+              --shadow: 0 1px 2px rgba(15,23,42,.06),
+                0 1px 3px rgba(15,23,42,.04);
+              --shadow-lg: 0 10px 30px rgba(15,23,42,.10);
+              --radius: 12px;
+              --radius-sm: 8px;
+              --pill: 999px;
+              --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo,
+                Consolas, monospace;
+              --sans: ui-sans-serif, system-ui, -apple-system,
+                BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            }
+            :root[data-theme="dark"] {
+              color-scheme: dark;
+              --bg: #0c1118;
+              --surface: #141b25;
+              --surface-2: #19212d;
+              --surface-3: #1f2935;
+              --ink: #e7edf5;
+              --ink-soft: #c2ccd9;
+              --muted: #8593a6;
+              --line: #243040;
+              --line-strong: #30404f;
+              --accent: #2dd4bf;
+              --accent-strong: #5eead4;
+              --accent-ink: #042f2a;
+              --accent-soft: #123b38;
+              --ok: #4ade80;
+              --ok-bg: #0f2f1f;
+              --ok-line: #1f5538;
+              --bad: #fb7185;
+              --bad-bg: #3a1620;
+              --bad-line: #6d2435;
+              --warn: #fbbf24;
+              --warn-bg: #392a10;
+              --warn-line: #5e451a;
+              --info: #7aa7ff;
+              --info-bg: #15233f;
+              --info-line: #2a4674;
+              --shadow: 0 1px 2px rgba(0,0,0,.5);
+              --shadow-lg: 0 14px 34px rgba(0,0,0,.55);
             }
             * { box-sizing: border-box; }
+            html { scrollbar-gutter: stable; }
             body {
               margin: 0;
               color: var(--ink);
-              background: var(--band);
-              font-family: ui-sans-serif, system-ui, -apple-system,
-                BlinkMacSystemFont, "Segoe UI", sans-serif;
+              background: var(--bg);
+              font-family: var(--sans);
+              font-size: 14px;
+              line-height: 1.5;
+              -webkit-font-smoothing: antialiased;
             }
+            a { color: var(--accent-strong); }
+            code, pre, .mono { font-family: var(--mono); }
             header {
+              position: sticky;
+              top: 0;
+              z-index: 20;
               display: flex;
               align-items: center;
-              gap: 24px;
-              min-height: 56px;
-              padding: 0 20px;
-              background: #ffffff;
+              gap: 18px;
+              flex-wrap: wrap;
+              padding: 12px 22px;
+              background: color-mix(in srgb, var(--surface) 88%,
+                transparent);
+              backdrop-filter: blur(10px);
               border-bottom: 1px solid var(--line);
             }
-            .brand { display: flex; align-items: baseline; gap: 10px; }
-            header h1 { margin: 0; font-size: 17px; font-weight: 700; }
-            #updated { color: var(--muted); font-size: 12px; }
-            .tabs { display: flex; gap: 4px; margin-left: auto; }
+            .brand { display: flex; align-items: center; gap: 11px; }
+            .logo {
+              display: grid;
+              place-items: center;
+              width: 34px;
+              height: 34px;
+              border-radius: 10px;
+              color: var(--accent-ink);
+              background: linear-gradient(135deg, var(--accent),
+                var(--accent-strong));
+              box-shadow: var(--shadow);
+            }
+            .brand-text { display: flex; flex-direction: column; }
+            header h1 {
+              margin: 0;
+              font-size: 16px;
+              font-weight: 700;
+              letter-spacing: -.01em;
+            }
+            .brand .sub {
+              color: var(--muted);
+              font-size: 11.5px;
+              letter-spacing: .04em;
+              text-transform: uppercase;
+            }
+            .tabs {
+              display: flex;
+              gap: 2px;
+              margin: 0 auto;
+              padding: 4px;
+              background: var(--surface-3);
+              border: 1px solid var(--line);
+              border-radius: var(--pill);
+              overflow: auto;
+            }
             .tab {
-              padding: 8px 14px;
-              border: 1px solid transparent;
-              border-radius: 6px;
+              padding: 7px 16px;
+              border: 0;
+              border-radius: var(--pill);
               background: transparent;
               color: var(--muted);
-              font-size: 14px;
+              font-size: 13.5px;
+              font-weight: 600;
+              white-space: nowrap;
               cursor: pointer;
+              transition: background .15s, color .15s;
             }
-            .tab:hover { background: #eef2f7; }
+            .tab:hover { color: var(--ink); }
             .tab.active {
               color: var(--ink);
-              font-weight: 600;
-              background: #e8eef6;
+              background: var(--surface);
+              box-shadow: var(--shadow);
             }
-            main { padding: 16px; }
+            .header-actions {
+              display: flex;
+              align-items: center;
+              gap: 12px;
+            }
+            .updated-wrap {
+              display: inline-flex;
+              align-items: center;
+              gap: 7px;
+              color: var(--muted);
+              font-size: 12px;
+              font-variant-numeric: tabular-nums;
+            }
+            .live-dot {
+              width: 8px;
+              height: 8px;
+              border-radius: 50%;
+              background: var(--ok);
+              box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 60%,
+                transparent);
+              animation: pulse 2s infinite;
+            }
+            @keyframes pulse {
+              70% { box-shadow: 0 0 0 7px transparent; }
+              100% { box-shadow: 0 0 0 0 transparent; }
+            }
+            .icon-btn {
+              display: grid;
+              place-items: center;
+              width: 34px;
+              height: 34px;
+              padding: 0;
+              font-size: 15px;
+              border: 1px solid var(--line-strong);
+              border-radius: 9px;
+              background: var(--surface);
+              color: var(--ink-soft);
+              cursor: pointer;
+            }
+            .icon-btn:hover {
+              background: var(--surface-3);
+              color: var(--ink);
+            }
+            main {
+              max-width: 1280px;
+              margin: 0 auto;
+              padding: 22px;
+            }
             .panel[hidden] { display: none; }
+            .panel { animation: fade .25s ease; }
+            @keyframes fade {
+              from { opacity: 0; transform: translateY(4px); }
+              to { opacity: 1; transform: none; }
+            }
             .grid2 {
               display: grid;
-              grid-template-columns: minmax(360px, 1.1fr) minmax(320px, 0.9fr);
-              gap: 16px;
+              grid-template-columns: minmax(360px, 1.15fr)
+                minmax(300px, 0.85fr);
+              gap: 18px;
             }
             section {
-              background: var(--panel);
+              background: var(--surface);
               border: 1px solid var(--line);
-              border-radius: 6px;
+              border-radius: var(--radius);
+              box-shadow: var(--shadow);
               overflow: hidden;
-              margin-bottom: 16px;
+              margin-bottom: 18px;
             }
-            section h2 {
+            section > h2 {
               margin: 0;
-              padding: 12px 14px;
-              font-size: 14px;
+              padding: 13px 18px;
+              font-size: 13px;
+              font-weight: 700;
+              letter-spacing: .02em;
+              text-transform: uppercase;
+              color: var(--ink-soft);
+              background: var(--surface-2);
               border-bottom: 1px solid var(--line);
             }
-            .content { padding: 12px 14px; }
+            .content { padding: 16px 18px; }
             .metrics {
               display: grid;
-              grid-template-columns: repeat(4, minmax(120px, 1fr));
-              gap: 10px;
+              grid-template-columns: repeat(4, minmax(130px, 1fr));
+              gap: 14px;
             }
             .metric {
-              padding: 10px;
+              position: relative;
+              padding: 14px 15px;
               border: 1px solid var(--line);
-              border-radius: 6px;
-              background: #fbfcfe;
+              border-radius: var(--radius-sm);
+              background: var(--surface-2);
+              transition: transform .15s, box-shadow .15s;
             }
-            .metric span { color: var(--muted); font-size: 12px; }
-            .metric b { display: block; margin-top: 5px; font-size: 18px; }
+            .metric:hover {
+              transform: translateY(-2px);
+              box-shadow: var(--shadow-lg);
+            }
+            .metric span {
+              display: block;
+              color: var(--muted);
+              font-size: 11.5px;
+              font-weight: 600;
+              letter-spacing: .04em;
+              text-transform: uppercase;
+            }
+            .metric b {
+              display: block;
+              margin-top: 7px;
+              font-size: 26px;
+              font-weight: 700;
+              letter-spacing: -.02em;
+              font-variant-numeric: tabular-nums;
+            }
             table { width: 100%; border-collapse: collapse; font-size: 13px; }
             th, td {
-              padding: 9px 10px;
+              padding: 11px 12px;
               border-bottom: 1px solid var(--line);
               text-align: left;
               vertical-align: top;
             }
-            th { color: var(--muted); font-weight: 600; }
+            thead th {
+              position: sticky;
+              top: 0;
+              color: var(--muted);
+              font-size: 11.5px;
+              font-weight: 700;
+              letter-spacing: .03em;
+              text-transform: uppercase;
+              background: var(--surface);
+            }
+            tbody tr { transition: background .12s; }
+            tbody tr:last-child td { border-bottom: 0; }
             tr[data-run] { cursor: pointer; }
-            tr[data-run]:hover { background: #f3f7fb; }
+            tr[data-run]:hover, tbody tr:hover { background: var(--surface-2); }
+            tr[data-run].selected {
+              background: var(--accent-soft);
+              box-shadow: inset 3px 0 0 var(--accent);
+            }
             .tag {
               display: inline-block;
-              padding: 2px 6px;
-              border-radius: 6px;
-              background: #e8eef6;
-              font-size: 12px;
+              padding: 2px 9px;
+              border-radius: var(--pill);
+              background: var(--surface-3);
+              border: 1px solid var(--line);
+              color: var(--ink-soft);
+              font-size: 11.5px;
+              font-weight: 600;
             }
-            .pass { color: var(--pass); }
-            .fail { color: var(--fail); }
-            .warn { color: var(--warn); }
+            .pill {
+              display: inline-flex;
+              align-items: center;
+              gap: 6px;
+              padding: 3px 10px;
+              border-radius: var(--pill);
+              border: 1px solid var(--line);
+              background: var(--surface-3);
+              color: var(--ink-soft);
+              font-size: 12px;
+              font-weight: 600;
+              white-space: nowrap;
+            }
+            .pill::before {
+              content: "";
+              width: 6px;
+              height: 6px;
+              border-radius: 50%;
+              background: currentColor;
+            }
+            .pill.ok { color: var(--ok); background: var(--ok-bg);
+              border-color: var(--ok-line); }
+            .pill.bad { color: var(--bad); background: var(--bad-bg);
+              border-color: var(--bad-line); }
+            .pill.warn { color: var(--warn); background: var(--warn-bg);
+              border-color: var(--warn-line); }
+            .pill.info { color: var(--info); background: var(--info-bg);
+              border-color: var(--info-line); }
+            .pill.muted { color: var(--muted); }
+            .pass { color: var(--ok); font-weight: 600; }
+            .fail { color: var(--bad); font-weight: 600; }
+            .warn { color: var(--warn); font-weight: 600; }
             .cards {
               display: grid;
-              grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-              gap: 12px;
+              grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+              gap: 14px;
             }
             .card {
+              display: flex;
+              flex-direction: column;
               border: 1px solid var(--line);
-              border-radius: 6px;
-              background: #fbfcfe;
-              padding: 12px;
+              border-radius: var(--radius-sm);
+              background: var(--surface-2);
+              padding: 15px;
+              transition: box-shadow .15s, border-color .15s;
+            }
+            .card:hover {
+              box-shadow: var(--shadow-lg);
+              border-color: var(--line-strong);
             }
             .card h3 {
-              margin: 0 0 8px;
-              font-size: 14px;
+              margin: 0 0 11px;
+              font-size: 14.5px;
+              font-weight: 700;
               display: flex;
               justify-content: space-between;
               align-items: center;
+              gap: 8px;
             }
             .badge {
               font-size: 11px;
-              padding: 2px 8px;
-              border-radius: 999px;
+              font-weight: 700;
+              letter-spacing: .03em;
+              text-transform: uppercase;
+              padding: 3px 10px;
+              border-radius: var(--pill);
               border: 1px solid var(--line);
+              color: var(--muted);
             }
-            .badge.ready { color: var(--pass); border-color: #86efac; }
-            .badge.partial { color: var(--warn); border-color: #fcd34d; }
-            .badge.absent { color: var(--muted); }
-            .checks { font-size: 13px; margin: 6px 0; }
-            .next { color: var(--muted); font-size: 12px; margin: 6px 0; }
+            .badge.ready {
+              color: var(--ok);
+              background: var(--ok-bg);
+              border-color: var(--ok-line);
+            }
+            .badge.partial {
+              color: var(--warn);
+              background: var(--warn-bg);
+              border-color: var(--warn-line);
+            }
+            .badge.absent {
+              color: var(--muted);
+              background: var(--surface-3);
+            }
+            .checks { font-size: 13px; margin: 5px 0; color: var(--ink-soft); }
+            .next {
+              color: var(--muted);
+              font-size: 12.5px;
+              margin: 8px 0 4px;
+              flex: 1;
+            }
             .graph {
               display: grid;
-              grid-template-columns: repeat(6, minmax(86px, 1fr));
-              gap: 8px;
+              grid-template-columns: repeat(6, minmax(92px, 1fr));
+              gap: 10px;
             }
             .node {
-              min-height: 70px;
-              padding: 8px;
+              min-height: 78px;
+              padding: 11px;
               border: 1px solid var(--line);
-              border-radius: 6px;
-              background: #fbfcfe;
+              border-radius: var(--radius-sm);
+              background: var(--surface-2);
               overflow-wrap: anywhere;
+              position: relative;
             }
-            .node.pass { border-color: #86efac; background: #f0fdf4; }
-            .node.fail { border-color: #fecaca; background: #fff1f2; }
-            .node.running { border-color: #5eead4; background: #ecfeff; }
+            .node strong {
+              font-size: 13px;
+              text-transform: capitalize;
+            }
+            .node .nstatus {
+              display: block;
+              margin: 4px 0 2px;
+              font-size: 11.5px;
+              font-weight: 600;
+            }
+            .node small { color: var(--muted); font-size: 11px; }
+            .node.pass {
+              border-color: var(--ok-line);
+              background: var(--ok-bg);
+            }
+            .node.pass .nstatus { color: var(--ok); }
+            .node.fail {
+              border-color: var(--bad-line);
+              background: var(--bad-bg);
+            }
+            .node.fail .nstatus { color: var(--bad); }
+            .node.running {
+              border-color: var(--info-line);
+              background: var(--info-bg);
+            }
+            .node.running .nstatus { color: var(--info); }
             .progress {
-              height: 8px;
+              height: 7px;
               margin-top: 8px;
-              background: #e5e9f0;
-              border-radius: 999px;
+              background: var(--surface-3);
+              border-radius: var(--pill);
               overflow: hidden;
             }
             .progress span {
               display: block;
               height: 100%;
-              background: var(--accent);
+              border-radius: var(--pill);
+              background: linear-gradient(90deg, var(--accent),
+                var(--accent-strong));
+              transition: width .4s ease;
             }
-            .event { padding: 9px 0; border-bottom: 1px solid var(--line); }
+            .event {
+              padding: 11px 0 11px 13px;
+              border-left: 3px solid var(--line-strong);
+              border-bottom: 1px solid var(--line);
+              margin-left: 2px;
+            }
             .event:last-child { border-bottom: 0; }
+            .event strong { font-size: 13.5px; }
+            .event div { color: var(--ink-soft); margin: 2px 0; }
+            .event small { color: var(--muted); font-size: 11.5px; }
+            .event code {
+              display: inline-block;
+              margin-top: 4px;
+              padding: 2px 7px;
+              border-radius: 6px;
+              background: var(--surface-3);
+              font-size: 12px;
+            }
+            .event.info { border-left-color: var(--info); }
+            .event.warning { border-left-color: var(--warn); }
+            .event.critical { border-left-color: var(--bad); }
+            .empty {
+              padding: 26px 14px;
+              text-align: center;
+              color: var(--muted);
+              font-size: 13px;
+            }
             .controls {
               display: flex;
               gap: 10px;
               flex-wrap: wrap;
               align-items: center;
-              margin-bottom: 10px;
+              margin-bottom: 14px;
             }
-            button, select, input {
-              min-height: 32px;
-              border: 1px solid var(--line);
-              border-radius: 6px;
-              background: #ffffff;
+            .controls label {
+              display: inline-flex;
+              align-items: center;
+              gap: 6px;
+              font-size: 13px;
+              color: var(--ink-soft);
+            }
+            button, .btn, select, input {
+              font-family: inherit;
+              font-size: 13px;
+              min-height: 34px;
+              border: 1px solid var(--line-strong);
+              border-radius: var(--radius-sm);
+              background: var(--surface);
               color: var(--ink);
             }
-            button { padding: 0 10px; cursor: pointer; }
-            .act { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; }
+            select, input { padding: 0 10px; }
+            input::placeholder { color: var(--muted); }
+            button, .btn {
+              padding: 0 13px;
+              font-weight: 600;
+              color: var(--ink-soft);
+              cursor: pointer;
+              transition: background .14s, border-color .14s, color .14s;
+            }
+            button:hover, .btn:hover {
+              background: var(--surface-3);
+              border-color: var(--muted);
+              color: var(--ink);
+            }
+            .btn.primary {
+              background: var(--accent);
+              border-color: var(--accent-strong);
+              color: var(--accent-ink);
+            }
+            .btn.primary:hover {
+              background: var(--accent-strong);
+              color: var(--accent-ink);
+            }
+            .btn.ghost { background: transparent; }
+            .btn.ok {
+              color: var(--ok);
+              background: var(--ok-bg);
+              border-color: var(--ok-line);
+            }
+            .btn.bad {
+              color: var(--bad);
+              background: var(--bad-bg);
+              border-color: var(--bad-line);
+            }
+            :focus-visible {
+              outline: 2px solid var(--accent);
+              outline-offset: 2px;
+            }
+            .act { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
             pre {
               max-height: 280px;
               overflow: auto;
-              margin: 8px 0 0;
-              padding: 12px;
-              background: #111827;
-              color: #e5e7eb;
-              border-radius: 6px;
+              margin: 10px 0 0;
+              padding: 13px;
+              background: #0b1220;
+              color: #d7e0ee;
+              border: 1px solid var(--line);
+              border-radius: var(--radius-sm);
               font-size: 12px;
+              line-height: 1.55;
               white-space: pre-wrap;
               overflow-wrap: anywhere;
             }
-            footer { padding: 12px 16px; color: var(--muted); font-size: 12px; }
-            @media (max-width: 900px) {
+            footer {
+              max-width: 1280px;
+              margin: 0 auto;
+              padding: 16px 22px 28px;
+              color: var(--muted);
+              font-size: 12px;
+            }
+            footer .mono { color: var(--ink-soft); }
+            @media (max-width: 920px) {
               .grid2 { grid-template-columns: 1fr; }
-              .metrics { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
-              .graph { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
-              .tabs { flex-wrap: wrap; }
+              .metrics { grid-template-columns: repeat(2, 1fr); }
+              .graph { grid-template-columns: repeat(2, 1fr); }
+              .tabs { margin: 0; width: 100%; }
+              header { gap: 12px; }
+              section .content { overflow-x: auto; }
+            }
+            @media (prefers-reduced-motion: reduce) {
+              * { animation: none !important; transition: none !important; }
             }
           </style>
         </head>
         <body>
           <header>
             <div class="brand">
-              <h1>oh-my-field</h1>
-              <span id="updated">loading</span>
+              <span class="logo" aria-hidden="true">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2.1"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="6" cy="6.5" r="2.4"></circle>
+                  <circle cx="18" cy="9" r="2.4"></circle>
+                  <circle cx="9.5" cy="18" r="2.4"></circle>
+                  <path d="M8.1 7.4 15.7 8.2 M7.5 8.5 8.7 15.4"></path>
+                </svg>
+              </span>
+              <div class="brand-text">
+                <h1>oh-my-field</h1>
+                <span class="sub">operating dashboard</span>
+              </div>
             </div>
-            <nav class="tabs" id="tabs">
-              <button class="tab active" data-tab="overview">Overview</button>
+            <nav class="tabs" id="tabs" aria-label="Dashboard sections">
+              <button class="tab active" data-tab="overview"
+                aria-current="page">Overview</button>
               <button class="tab" data-tab="runtimes">Runtimes</button>
-              <button class="tab" data-tab="capabilities">Capabilities</button>
+              <button class="tab" data-tab="capabilities">
+                Capabilities</button>
               <button class="tab" data-tab="workflows">Workflows</button>
             </nav>
+            <div class="header-actions">
+              <span class="updated-wrap" title="Last snapshot">
+                <span class="live-dot" aria-hidden="true"></span>
+                <span id="updated">loading</span>
+              </span>
+              <button id="theme-toggle" class="icon-btn" type="button"
+                onclick="toggleTheme()" aria-label="Toggle color theme">
+                <span id="theme-icon" aria-hidden="true">
+                  <svg width="15" height="15" viewBox="0 0 24 24"
+                    fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z">
+                    </path>
+                  </svg>
+                </span>
+              </button>
+            </div>
           </header>
           <main>
             <div class="panel" data-panel="overview">
@@ -740,7 +1153,7 @@ def dashboard_html(csrf_token: str = "") -> str:
                         <option value="failed">failed</option>
                         <option value="pending_review">pending review</option>
                       </select>
-                      <input id="search" placeholder="filter">
+                      <input id="search" placeholder="Filter runs&hellip;">
                     </div>
                     <table>
                       <thead>
@@ -817,8 +1230,11 @@ def dashboard_html(csrf_token: str = "") -> str:
             </div>
           </main>
           <footer>
-            Local API: /api/snapshot /api/runtimes /api/capabilities
-            /api/learning-patches
+            Local API
+            <span class="mono">/api/snapshot</span>
+            <span class="mono">/api/runtimes</span>
+            <span class="mono">/api/capabilities</span>
+            <span class="mono">/api/learning-patches</span>
           </footer>
           <script>
             const CSRF_TOKEN = "__OMF_CSRF_TOKEN__";
@@ -829,12 +1245,57 @@ def dashboard_html(csrf_token: str = "") -> str:
             const byId = (id) => document.getElementById(id);
             const pct = (value) => `${Math.round(value)}%`;
             const shortId = (value) => value ? value.slice(0, 18) : "";
+            const fmtTime = (value) => String(value == null ? "" : value)
+              .replace("T", " ").replace("Z", " UTC");
             const mark = (ok) => ok
               ? '<span class="pass">&#10003;</span>'
               : '<span class="fail">&#10007;</span>';
             const esc = (value) => String(value == null ? "" : value)
               .replace(/&/g, "&amp;").replace(/</g, "&lt;")
               .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+            const STATUS_KIND = {
+              pass: "ok", completed: "ok", ready: "ok", validated: "ok",
+              approved: "ok", verified: "ok", active: "ok",
+              fail: "bad", failed: "bad", rejected: "bad",
+              needs_adaptation: "bad",
+              running: "info",
+              pending: "warn", pending_review: "warn", partial: "warn",
+              needs_validation: "warn", draft: "warn"
+            };
+            const kindOf = (value) =>
+              STATUS_KIND[String(value == null ? "" : value).toLowerCase()]
+              || "muted";
+            const pill = (value) =>
+              `<span class="pill ${kindOf(value)}">${esc(value)}</span>`;
+            const SVG_OPEN =
+              '<svg width="15" height="15" viewBox="0 0 24 24" fill="none"'
+              + ' stroke="currentColor" stroke-width="2"'
+              + ' stroke-linecap="round" stroke-linejoin="round">';
+            const ICON_MOON = SVG_OPEN
+              + '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z">'
+              + "</path></svg>";
+            const ICON_SUN = SVG_OPEN
+              + '<circle cx="12" cy="12" r="4"></circle>'
+              + '<path d="M12 3v1.5M12 19.5V21M3 12h1.5M19.5 12H21'
+              + 'M5.6 5.6l1 1M17.4 17.4l1 1M18.4 5.6l-1 1M6.6 17.4l-1 1">'
+              + "</path></svg>";
+
+            function applyThemeIcon() {
+              const dark = document.documentElement.dataset.theme === "dark";
+              const icon = byId("theme-icon");
+              const btn = byId("theme-toggle");
+              if (icon) icon.innerHTML = dark ? ICON_SUN : ICON_MOON;
+              if (btn) btn.setAttribute("aria-label", dark
+                ? "Switch to light theme" : "Switch to dark theme");
+            }
+
+            function toggleTheme() {
+              const root = document.documentElement;
+              const next = root.dataset.theme === "dark" ? "light" : "dark";
+              root.dataset.theme = next;
+              try { localStorage.setItem("omf-theme", next); } catch (e) {}
+              applyThemeIcon();
+            }
 
             async function postJson(url, payload) {
               const response = await fetch(url, {
@@ -859,7 +1320,7 @@ def dashboard_html(csrf_token: str = "") -> str:
 
             function render() {
               if (!snapshot) return;
-              byId("updated").textContent = snapshot.generated_at;
+              byId("updated").textContent = fmtTime(snapshot.generated_at);
               renderMetrics();
               renderAttention();
               renderRuntimes();
@@ -875,7 +1336,10 @@ def dashboard_html(csrf_token: str = "") -> str:
             function setTab(name) {
               activeTab = name;
               document.querySelectorAll(".tab").forEach((tab) => {
-                tab.classList.toggle("active", tab.dataset.tab === name);
+                const on = tab.dataset.tab === name;
+                tab.classList.toggle("active", on);
+                if (on) tab.setAttribute("aria-current", "page");
+                else tab.removeAttribute("aria-current");
               });
               document.querySelectorAll(".panel").forEach((panel) => {
                 panel.hidden = panel.dataset.panel !== name;
@@ -908,25 +1372,26 @@ def dashboard_html(csrf_token: str = "") -> str:
               const approvals = snapshot.approvals || [];
               const parts = [];
               approvals.forEach((item) => parts.push(
-                `<div class="event"><strong class="warn">Approval` +
+                `<div class="event warning"><strong class="warn">Approval` +
                 ` required</strong><div>${esc(item.reason)}</div>` +
                 `<code>${esc(item.command)}</code></div>`
               ));
               failed.forEach((run) => parts.push(
-                `<div class="event"><strong class="fail">Workflow` +
+                `<div class="event critical"><strong class="fail">Workflow` +
                 ` failed</strong><div>${esc(run.goal)}</div>` +
                 `<small>${esc(run.failure_reason || "")}</small></div>`
               ));
               byId("attention").innerHTML = parts.length
                 ? parts.join("")
-                : "<p>Nothing needs attention.</p>";
+                : '<div class="empty">Nothing needs attention.</div>';
             }
 
             function renderRuntimes() {
               const rows = snapshot.runtimes || [];
               if (rows.length === 0) {
                 byId("runtime-cards").innerHTML =
-                  "<p>No runtime information available.</p>";
+                  '<div class="empty">No runtime information available.' +
+                  "</div>";
                 return;
               }
               byId("runtime-cards").innerHTML = rows.map((r) =>
@@ -939,13 +1404,17 @@ def dashboard_html(csrf_token: str = "") -> str:
                     &nbsp; MCP ${mark(r.mcp_installed)}</div>
                   <div class="next">${esc(r.next_action)}</div>
                   <div class="act">
-                    <button onclick="runtimeSkill('${esc(r.runtime)}', false)">
+                    <button class="btn ghost"
+                      onclick="runtimeSkill('${esc(r.runtime)}', false)">
                       Preview skill</button>
-                    <button onclick="runtimeSkill('${esc(r.runtime)}', true)">
+                    <button class="btn primary"
+                      onclick="runtimeSkill('${esc(r.runtime)}', true)">
                       Install skill</button>
-                    <button onclick="runtimeMcp('${esc(r.runtime)}', false)">
+                    <button class="btn ghost"
+                      onclick="runtimeMcp('${esc(r.runtime)}', false)">
                       Preview MCP</button>
-                    <button onclick="runtimeMcp('${esc(r.runtime)}', true)">
+                    <button class="btn primary"
+                      onclick="runtimeMcp('${esc(r.runtime)}', true)">
                       Install MCP</button>
                   </div>
                   <pre class="card-out" hidden></pre>
@@ -1031,12 +1500,20 @@ def dashboard_html(csrf_token: str = "") -> str:
                   `${run.id} ${run.goal} ${run.capability_name || ""}`;
                 return okStatus && hay.toLowerCase().includes(query);
               });
+              if (rows.length === 0) {
+                byId("workflow-rows").innerHTML =
+                  '<tr><td colspan="4"><div class="empty">' +
+                  "No matching runs.</div></td></tr>";
+                return;
+              }
               byId("workflow-rows").innerHTML = rows.map((run) =>
-                `<tr data-run="${run.id}" onclick="selectRun('${run.id}')">
-                  <td>${shortId(run.id)}<br>${esc(run.goal)}</td>
-                  <td><span class="tag">${esc(run.status)}</span></td>
+                `<tr data-run="${run.id}" onclick="selectRun('${run.id}')"` +
+                `${run.id === selectedRunId ? ' class="selected"' : ""}>
+                  <td><span class="mono">${shortId(run.id)}</span><br>` +
+                  `${esc(run.goal)}</td>
+                  <td>${pill(run.status)}</td>
                   <td>${esc(run.capability_name || "")}<br>` +
-                  `${esc(run.runtime)}</td>
+                  `<small>${esc(run.runtime)}</small></td>
                   <td>${pct(run.progress_percent)}
                     <div class="progress">
                       <span style="width:${run.progress_percent}%"></span>
@@ -1049,17 +1526,18 @@ def dashboard_html(csrf_token: str = "") -> str:
             function renderGraph() {
               const run = selectedRun();
               if (!run) {
-                byId("selected-run").textContent = "No workflow selected";
+                byId("selected-run").innerHTML =
+                  '<div class="empty">No workflow selected.</div>';
                 byId("graph-nodes").innerHTML = "";
                 return;
               }
-              byId("selected-run").textContent =
-                `${shortId(run.id)} ${run.status} ` +
-                `${pct(run.progress_percent)}`;
+              byId("selected-run").innerHTML =
+                `<span class="mono">${shortId(run.id)}</span> ` +
+                `${pill(run.status)} &middot; ${pct(run.progress_percent)}`;
               byId("graph-nodes").innerHTML = run.nodes.map((node) =>
                 `<div class="node ${node.status}">
-                  <strong>${esc(node.name)}</strong><br>
-                  <span>${esc(node.status)}</span><br>
+                  <strong>${esc(node.name)}</strong>
+                  <span class="nstatus">${esc(node.status)}</span>
                   <small>${esc(node.message || "")}</small>
                 </div>`
               ).join("");
@@ -1068,21 +1546,25 @@ def dashboard_html(csrf_token: str = "") -> str:
             function renderApprovals() {
               const approvals = snapshot.approvals;
               if (approvals.length === 0) {
-                byId("approval-list").innerHTML = "<p>No pending approvals.</p>";
+                byId("approval-list").innerHTML =
+                  '<div class="empty">No pending approvals.</div>';
                 return;
               }
               byId("approval-list").innerHTML = approvals.map((item) =>
-                `<div class="event">
+                `<div class="event warning">
                   <strong>${esc(item.target_type)} ` +
                   `${shortId(item.target_id)}</strong>
                   <div>${esc(item.reason)}</div>
-                  <code>${esc(item.command)}</code><br>
-                  <button onclick="review('${item.target_type}',
+                  <code>${esc(item.command)}</code>
+                  <div class="act">
+                  <button class="btn ok" onclick="review('${item.target_type}',
                     '${item.target_id}', 'approve')">Approve</button>
-                  <button onclick="review('${item.target_type}',
+                  <button class="btn bad" onclick="review('${item.target_type}',
                     '${item.target_id}', 'reject')">Reject</button>
-                  <button onclick="revise('${item.target_type}',
+                  <button class="btn ghost" onclick="revise(` +
+                    `'${item.target_type}',
                     '${item.target_id}')">Revise</button>
+                  </div>
                 </div>`
               ).join("");
             }
@@ -1091,7 +1573,8 @@ def dashboard_html(csrf_token: str = "") -> str:
               const rows = snapshot.capabilities || [];
               if (rows.length === 0) {
                 byId("capability-rows").innerHTML =
-                  "<tr><td colspan='4'>No capabilities.</td></tr>";
+                  '<tr><td colspan="4"><div class="empty">' +
+                  "No capabilities.</div></td></tr>";
                 return;
               }
               byId("capability-rows").innerHTML = rows.map((item) => {
@@ -1104,15 +1587,18 @@ def dashboard_html(csrf_token: str = "") -> str:
                   `${esc(item.portability_validation_status)}`;
                 const rt = esc(item.runtime);
                 return `<tr>
-                  <td>${esc(item.name)}<br>` +
-                  `<span class="tag">${esc(item.status)}</span></td>
-                  <td>${esc(item.integrity_status)}<br>` +
-                  `${pct(item.pass_rate)}</td>
-                  <td>${port}<br><small>${targets}</small></td>
-                  <td><button onclick="exportCapability(` +
+                  <td><strong>${esc(item.name)}</strong><br>` +
+                  `${pill(item.status)}</td>
+                  <td>${pill(item.integrity_status)}<br>` +
+                  `<small>${pct(item.pass_rate)} pass</small></td>
+                  <td><span class="mono">${port}</span>` +
+                  `<br><small>${targets}</small></td>
+                  <td><div class="act">` +
+                  `<button class="btn primary" onclick="exportCapability(` +
                   `'${esc(item.name)}')">Export</button>
-                    <button onclick="validateCapability(` +
-                    `'${esc(item.name)}', '${rt}')">Validate</button></td>
+                    <button class="btn ghost" onclick="validateCapability(` +
+                    `'${esc(item.name)}', '${rt}')">Validate</button>` +
+                  `</div></td>
                 </tr>`;
               }).join("");
             }
@@ -1121,14 +1607,16 @@ def dashboard_html(csrf_token: str = "") -> str:
               const rows = snapshot.learning_patches || [];
               if (rows.length === 0) {
                 byId("learning-patch-rows").innerHTML =
-                  "<tr><td colspan='4'>No learning patches.</td></tr>";
+                  '<tr><td colspan="4"><div class="empty">' +
+                  "No learning patches.</div></td></tr>";
                 return;
               }
               byId("learning-patch-rows").innerHTML = rows.map((item) =>
                 `<tr>
-                  <td>${shortId(item.id)}<br>${esc(item.capability_name)}
+                  <td><span class="mono">${shortId(item.id)}</span><br>` +
+                  `${esc(item.capability_name)}
                     <br><span class="tag">${esc(item.patch_kind)}</span></td>
-                  <td>${esc(item.decision)}</td>
+                  <td>${pill(item.decision)}</td>
                   <td>${esc(item.reviewer || "")}</td>
                   <td>${item.pass_rate_delta ?? ""}</td>
                 </tr>`
@@ -1140,26 +1628,39 @@ def dashboard_html(csrf_token: str = "") -> str:
               document.querySelectorAll("[data-severity]").forEach((input) => {
                 enabled[input.dataset.severity] = input.checked;
               });
-              byId("event-list").innerHTML = snapshot.events
-                .filter((event) => enabled[event.severity])
+              const events = snapshot.events
+                .filter((event) => enabled[event.severity]);
+              if (events.length === 0) {
+                byId("event-list").innerHTML =
+                  '<div class="empty">No events to show.</div>';
+                return;
+              }
+              byId("event-list").innerHTML = events
                 .map((event) =>
                   `<div class="event ${event.severity}">
                     <strong>${esc(event.title)}</strong>
                     <div>${esc(event.message)}</div>
-                    <small>${esc(event.created_at)}</small>
+                    <small>${fmtTime(event.created_at)}</small>
                   </div>`
                 ).join("");
             }
 
             function renderComparisons() {
+              if (snapshot.comparisons.length === 0) {
+                byId("comparison-rows").innerHTML =
+                  '<tr><td colspan="5"><div class="empty">' +
+                  "No execution history.</div></td></tr>";
+                return;
+              }
               byId("comparison-rows").innerHTML =
                 snapshot.comparisons.map((item) =>
                   `<tr>
-                    <td>${esc(item.capability_name)}</td>
+                    <td><strong>${esc(item.capability_name)}</strong></td>
                     <td>${item.run_count}</td>
                     <td>${item.eval_count}</td>
                     <td>${pct(item.pass_rate)}</td>
-                    <td>${esc(item.runtime_profiles.join(", "))}</td>
+                    <td><small>${esc(item.runtime_profiles.join(", "))}` +
+                    `</small></td>
                   </tr>`
                 ).join("");
             }
@@ -1170,6 +1671,7 @@ def dashboard_html(csrf_token: str = "") -> str:
 
             function selectRun(runId) {
               selectedRunId = runId;
+              renderWorkflows();
               renderGraph();
             }
 
@@ -1203,6 +1705,7 @@ def dashboard_html(csrf_token: str = "") -> str:
             document.querySelectorAll("[data-severity]").forEach((input) =>
               input.addEventListener("change", renderEvents)
             );
+            applyThemeIcon();
             refresh();
             setInterval(refresh, 2000);
           </script>
