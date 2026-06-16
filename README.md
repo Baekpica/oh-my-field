@@ -93,8 +93,13 @@ See [docs/concepts.md](docs/concepts.md) for the `Field`, `Evidence`,
 pipx install oh-my-field      # persistent CLI install
 omf --help
 
+pipx install "oh-my-field[web]"  # same, plus the local web UI entry point
 uvx oh-my-field --help        # try without installing
 ```
+
+The `[web]` extra is optional. The local web UI is built on the Python
+standard library, so `omf web` works with a plain `oh-my-field` install too —
+the extra just gives you an explicit, documented install target.
 
 Development install from source:
 
@@ -161,6 +166,33 @@ mirrors the same loop (`omf_start_session`, `omf_record_input`,
 `omf_record_artifact`, `omf_record_validation`, `omf_record_decision`,
 `omf_materialize_session`, `omf_promote_capability`, …). See
 [docs/mcp.md](docs/mcp.md) and [docs/agent-ux.md](docs/agent-ux.md).
+
+## Web UI
+
+```bash
+omf web            # serve the local UI at http://127.0.0.1:8765
+omf web --once     # print the dashboard snapshot as JSON and exit
+```
+
+`omf web` (an alias of `omf dashboard`) serves a local, single-page UI with
+four focused tabs:
+
+- **Overview** -- key metrics and a "needs attention" list (failed
+  workflows, pending approvals).
+- **Runtimes** -- one card per agent runtime (Codex, Claude Code, Hermes, Pi,
+  Odysseus, OpenCode) showing whether the runtime looks installed locally and
+  whether the OMF skill and MCP config are present. Buttons preview a
+  skill/MCP install (dry run) before you apply it.
+- **Capabilities** -- the export / import / validate portability status per
+  capability, with one-click export and record-only validate.
+- **Workflows** -- run monitoring: the node graph, approvals, events, and
+  history.
+
+Actions in the UI respect OMF's safety model: installs preview as a dry run
+first, capability export stays gated behind explicit approval, and validation
+from the UI is record-only (a real target run still goes through the
+risk-gated `omf capability validate --run-command` CLI path). The UI is built
+on the Python standard library; no extra dependency is required.
 
 ## Quickstart A: Track An Agent Session
 
