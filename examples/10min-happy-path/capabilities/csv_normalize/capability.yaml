@@ -44,10 +44,6 @@ field:
     - production-kubeconfig
   quality_bar:
     required_checks:
-    - agent_log_imported
-    - artifacts_readable
-    - artifact_exists:opus_run.log
-    - artifact_exists:validation.txt
     - artifact_exists:output/normalized.json
     - json_parses:output/normalized.json
     - schema_valid
@@ -59,16 +55,11 @@ field:
 normalized_goal: normalize a messy orders csv into strict json
 inputs:
 - goal
-- opus_run.log
-- output/normalized.json
+- input.csv
 context:
   required:
-  - opus_run.log
-  - output/normalized.json
-  optional:
-  - opus_run.log
-  - validation.txt
-  - output/normalized.json
+  - input.csv
+  optional: []
   forbidden:
   - .env
   - secrets/
@@ -107,19 +98,11 @@ harness:
   schema_version: omf.harness.v0.1
   status: pass
   checks:
-  - agent_log_imported
-  - artifacts_readable
-  - artifact_exists:opus_run.log
-  - artifact_exists:validation.txt
   - artifact_exists:output/normalized.json
   - json_parses:output/normalized.json
   - schema_valid
   failures: []
   required_checks:
-  - agent_log_imported
-  - artifacts_readable
-  - artifact_exists:opus_run.log
-  - artifact_exists:validation.txt
   - artifact_exists:output/normalized.json
   - json_parses:output/normalized.json
   - schema_valid
@@ -218,7 +201,7 @@ integrity_chain:
   previous_sha256: null
 - artifact_type: capability
   artifact_id: csv_normalize
-  sha256: 7a83f3b24d0d72b590482a6ef8d2af97d23c46cb299de9d1b5669e524f47aba8
+  sha256: fa693df4d5fd4429b88aea67b649e0122f0879607469106a13ac8969377eb190
   previous_sha256: 62a4beb1a2714f5cf7a4a23ee32d7bfbe70e3b773a3e27964b624f95becd21f2
 artifact_contracts:
 - name: output_normalized_json

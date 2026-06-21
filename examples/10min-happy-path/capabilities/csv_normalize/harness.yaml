@@ -1,18 +1,10 @@
 capability: csv_normalize
 status: pass
 required_checks:
-- agent_log_imported
-- artifacts_readable
-- artifact_exists:opus_run.log
-- artifact_exists:validation.txt
 - artifact_exists:output/normalized.json
 - json_parses:output/normalized.json
 - schema_valid
 observed_checks:
-- agent_log_imported
-- artifacts_readable
-- artifact_exists:opus_run.log
-- artifact_exists:validation.txt
 - artifact_exists:output/normalized.json
 - json_parses:output/normalized.json
 - schema_valid
