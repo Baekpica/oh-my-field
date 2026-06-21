@@ -217,6 +217,18 @@ and scores each result with an objective deep-equal check. Full walkthrough and
 "do it yourself" CLI steps:
 [examples/10min-happy-path/](examples/10min-happy-path/README.md).
 
+Prefer a practical finance workflow? The Codex variant uses a portfolio
+backtest rather than CSV cleanup: a `gpt-5.5` seed capability is carried to
+`gpt-5.4-mini` for rebalance-cost, drawdown, volatility, and Sharpe calculations.
+
+```bash
+# requires uv, python3, and the `codex` CLI (logged in)
+bash examples/10min-codex-backtest/run.sh
+```
+
+Full walkthrough:
+[examples/10min-codex-backtest/](examples/10min-codex-backtest/README.md).
+
 ## Quickstart A: Track An Agent Session
 
 Use this when an agent can call OMF *during* the work.
