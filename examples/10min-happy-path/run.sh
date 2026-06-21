@@ -6,7 +6,7 @@
 # What it does:
 #   [1/3] Rebuild the capability from the recorded Opus run (import-run -> promote)
 #         into a scratch field, show `health`, then overlay the curated
-#         instruction surface -- this is the OMF pipeline + curation.
+#         manifest and instruction surface -- this is the OMF pipeline + curation.
 #   [2/3] Ask Haiku to do the task from the BARE goal             -> expect FAIL.
 #   [3/3] Ask Haiku to do the task WITH the promoted capability   -> expect PASS.
 #
@@ -65,18 +65,19 @@ uv run omf health csv_normalize \
   --capabilities-dir "$FIELD/capabilities" \
   --eval-dir "$FIELD/evals" | python3 -m json.tool
 
-# promote scaffolds a generic instruction surface and an existence-only contract
-# validator; the real workflow is to then curate it (OMF treats capabilities/<name>/
-# as the reviewable source of truth). Overlay the committed curated instructions +
-# contracts + validators onto the freshly promoted package so the [3/3] proof below
-# (which cats instructions.md into the prompt) and any `omf capability validate
-# --run-contract-validator` (which runs the package's on-disk validator) exercise
-# THIS curated package -- not the generic scaffold.
+# promote scaffolds a generic manifest, instruction surface, and existence-only
+# contract validator; the real workflow is to then curate it (OMF treats
+# capabilities/<name>/ as the reviewable source of truth). Overlay the committed
+# curated manifest + harness + instructions + contracts + validators onto the
+# freshly promoted package, then rebind the copied manifest to this run's
+# evidence id. That keeps the [3/3] prompt, `omf capability validate`, and
+# `omf capability export` on THIS curated package -- not the generic scaffold.
 FIELD_CAP="$FIELD/capabilities/csv_normalize"
-echo "curating the promoted package with the reviewed instruction + contract surface"
-cp capabilities/csv_normalize/instructions.md "$FIELD_CAP/instructions.md"
-cp -r capabilities/csv_normalize/contracts "$FIELD_CAP/"
-cp -r capabilities/csv_normalize/validators "$FIELD_CAP/"
+echo "curating the promoted package with the reviewed manifest + contract surface"
+uv run python curate_package.py \
+  --source capabilities/csv_normalize \
+  --target "$FIELD_CAP" \
+  --evidence "$FIELD/evidence/$EVIDENCE_ID.json"
 
 # ---------------------------------------------------------------------------
 hr; echo "[2/3] Haiku with the BARE goal (no capability)"; hr
