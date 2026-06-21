@@ -5,9 +5,10 @@
 #
 # What it does:
 #   [1/3] Rebuild the capability from the recorded Opus run (import-run -> promote)
-#         into a scratch field, and show `health` -- this is the OMF pipeline.
-#   [2/3] Ask Haiku to do the task from the BARE goal       -> expect FAIL.
-#   [3/3] Ask Haiku to do the task WITH the OMF capability  -> expect PASS.
+#         into a scratch field, show `health`, then overlay the curated
+#         instruction surface -- this is the OMF pipeline + curation.
+#   [2/3] Ask Haiku to do the task from the BARE goal             -> expect FAIL.
+#   [3/3] Ask Haiku to do the task WITH the promoted capability   -> expect PASS.
 #
 # Requirements: bash, python3, uv (for `omf`), and the `claude` CLI (logged in).
 # Override the model with HAIKU_MODEL=... if needed.
@@ -61,6 +62,15 @@ uv run omf health csv_normalize \
   --capabilities-dir "$FIELD/capabilities" \
   --eval-dir "$FIELD/evals" | python3 -m json.tool
 
+# promote scaffolds a generic instruction surface; the real workflow is to then
+# curate it (OMF treats capabilities/<name>/ as the reviewable source of truth).
+# Overlay the committed curated instructions + contracts onto the freshly promoted
+# package so the [3/3] proof below validates THIS pipeline-produced package.
+FIELD_CAP="$FIELD/capabilities/csv_normalize"
+echo "curating the promoted package with the reviewed instruction surface"
+cp capabilities/csv_normalize/instructions.md "$FIELD_CAP/instructions.md"
+cp -r capabilities/csv_normalize/contracts "$FIELD_CAP/"
+
 # ---------------------------------------------------------------------------
 hr; echo "[2/3] Haiku with the BARE goal (no capability)"; hr
 BARE_PROMPT="Normalize the messy orders CSV into a clean JSON document.
@@ -72,8 +82,8 @@ BARE_RC=$?
 set -e
 
 # ---------------------------------------------------------------------------
-hr; echo "[3/3] Haiku WITH the OMF capability (distilled from the Opus run)"; hr
-CAP_PROMPT="$(cat capabilities/csv_normalize/instructions.md)
+hr; echo "[3/3] Haiku WITH the OMF capability (the package promoted above)"; hr
+CAP_PROMPT="$(cat "$FIELD_CAP/instructions.md")
 
 ---
 $OUTPUT_DIRECTIVE"
@@ -90,10 +100,26 @@ cap_label=$([ $CAP_RC -eq 0 ] && echo "PASS" || echo "FAIL")
 echo "  bare goal           -> $bare_label   (output: $OUT/bare_run/output/normalized.json)"
 echo "  with OMF capability -> $cap_label   (output: $OUT/cap_run/output/normalized.json)"
 echo
-if [ $BARE_RC -ne 0 ] && [ $CAP_RC -eq 0 ]; then
-  echo "Same model, same input. The only difference is the capability OMF carried"
-  echo "over from the Opus run -- and that is what made Haiku succeed."
+
+# The capability run is the contract: it must PASS. Anything else (a real
+# regression, a missing/unauthenticated `claude`, a bad model name -> no output
+# file) is a failure the caller must be able to detect.
+if [ $CAP_RC -ne 0 ]; then
+  echo "FAILURE: the capability run did not produce the expected output."
+  if [ ! -s "$OUT/cap_run/output/normalized.json" ]; then
+    echo "No output file was written. Check that \`claude\` is installed and"
+    echo "logged in, and that HAIKU_MODEL ('$HAIKU_MODEL') is a valid model."
+    echo "Agent stderr: $OUT/cap_run/agent.stderr"
+  fi
+  exit 1
+fi
+
+if [ $BARE_RC -eq 0 ]; then
+  echo "Heads up: the bare run also passed this time (model outputs vary)."
+  echo "Re-run to see the typical FAIL -> PASS contrast."
   exit 0
 fi
-echo "Note: model outputs vary run-to-run; re-run to see the typical FAIL -> PASS."
+
+echo "Same model, same input. The only difference is the capability OMF carried"
+echo "over from the Opus run -- and that is what made Haiku succeed."
 exit 0
