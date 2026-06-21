@@ -1,15 +1,27 @@
 # Quickstart
 
-> **First time here?** Run the 10-minute happy path first:
-> `bash examples/10min-happy-path/run.sh`. It shows a task a bare Haiku gets
-> wrong becoming reproducible once Haiku is handed an OMF capability distilled
-> from an Opus run — the shortest path to a success experience. See
-> [examples/10min-happy-path/](../examples/10min-happy-path/README.md).
->
-> For a finance-focused Codex variant, run
-> `bash examples/10min-codex-backtest/run.sh`. It carries a `gpt-5.5` portfolio
-> backtest capability to `gpt-5.4-mini`. See
-> [examples/10min-codex-backtest/](../examples/10min-codex-backtest/README.md).
+## 10-Minute Examples
+
+First time here? Run the thinnest successful OMF loop first:
+
+```bash
+bash examples/10min-happy-path/run.sh
+```
+
+The Claude example shows a task a bare Haiku gets wrong becoming reproducible
+once Haiku is handed an OMF capability distilled from an Opus run. See
+[examples/10min-happy-path/](../examples/10min-happy-path/README.md).
+
+For a finance-focused Codex variant, run:
+
+```bash
+bash examples/10min-codex-backtest/run.sh
+```
+
+The Codex example carries a `gpt-5.5` portfolio backtest capability to
+`gpt-5.4-mini` and validates rebalance-cost, drawdown, volatility, and Sharpe
+metrics with a Markdown contract checker. See
+[examples/10min-codex-backtest/](../examples/10min-codex-backtest/README.md).
 
 OMF has three entry paths. Path A is the intended agent-assisted loop; Path B is
 the fallback when you only have run artifacts after the fact; Path C moves a

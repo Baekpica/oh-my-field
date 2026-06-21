@@ -58,3 +58,7 @@ can perform the task in the target project.
 
 Run Codex with the generated skill installed, then import the resulting log with
 `omf import-run codex --outcome success|failure|unknown`.
+
+For a complete Codex-to-Codex portability walkthrough, see the 10-minute
+portfolio backtest example:
+`examples/10min-codex-backtest/README.md`.

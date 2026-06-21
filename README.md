@@ -194,7 +194,7 @@ from the UI is record-only (a real target run still goes through the
 risk-gated `omf capability validate --run-command` CLI path). The UI is built
 on the Python standard library; no extra dependency is required.
 
-## Quickstart: See It Work In 10 Minutes (Opus → Haiku)
+## Quickstart: See It Work In 10 Minutes (Claude Opus → Haiku)
 
 New here? Start with the thinnest possible success. This demo shows a task that a
 **bare Haiku gets wrong** become reproducible the moment Haiku is handed the OMF
@@ -217,16 +217,26 @@ and scores each result with an objective deep-equal check. Full walkthrough and
 "do it yourself" CLI steps:
 [examples/10min-happy-path/](examples/10min-happy-path/README.md).
 
-Prefer a practical finance workflow? The Codex variant uses a portfolio
-backtest rather than CSV cleanup: a `gpt-5.5` seed capability is carried to
-`gpt-5.4-mini` for rebalance-cost, drawdown, volatility, and Sharpe calculations.
+## Quickstart: Practical Finance Backtest (Codex gpt-5.5 → gpt-5.4-mini)
+
+Prefer a finance workflow instead of data cleanup? This demo carries a
+portfolio backtest capability distilled from a `gpt-5.5` Codex run to
+`gpt-5.4-mini`, then checks whether the smaller model can reproduce
+rebalance-cost, drawdown, volatility, and Sharpe calculations.
 
 ```bash
 # requires uv, python3, and the `codex` CLI (logged in)
 bash examples/10min-codex-backtest/run.sh
 ```
 
-Full walkthrough:
+```
+  bare goal           -> FAIL   (missing or conflicting portfolio metrics)
+  with OMF capability -> PASS   (matches the required backtest contract)
+```
+
+It runs the same OMF loop (`import-run` → `promote` → `health`), then compares a
+bare Codex target run with the capability-assisted target run using an objective
+Markdown contract checker. Full walkthrough and "do it yourself" CLI steps:
 [examples/10min-codex-backtest/](examples/10min-codex-backtest/README.md).
 
 ## Quickstart A: Track An Agent Session
@@ -494,7 +504,8 @@ dependency direction and per-concept layout.
 
 - Full product and feature reference: [oh-my-field.md](oh-my-field.md)
 - Install guide: [docs/install.md](docs/install.md)
-- Quickstart (session / import / portability paths): [docs/quickstart.md](docs/quickstart.md)
+- Quickstart (10-minute demos, session / import / portability paths):
+  [docs/quickstart.md](docs/quickstart.md)
 - Agent UX and activation: [docs/agent-ux.md](docs/agent-ux.md)
 - MCP surface: [docs/mcp.md](docs/mcp.md)
 - Concepts: [docs/concepts.md](docs/concepts.md)
