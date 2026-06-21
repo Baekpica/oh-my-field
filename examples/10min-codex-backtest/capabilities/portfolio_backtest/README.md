@@ -22,4 +22,3 @@ calculation, and annualized risk metrics.
   - `artifact_exists:output/backtest_report.md`
   - `markdown_contains:portfolio_backtest_results`
   - `values_match:expected_backtest_report`
-

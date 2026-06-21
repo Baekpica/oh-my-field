@@ -42,4 +42,3 @@ The report must include:
 - best and worst month,
 - a monthly table with month, net return, ending value, drawdown, and rebalance
   cost.
-

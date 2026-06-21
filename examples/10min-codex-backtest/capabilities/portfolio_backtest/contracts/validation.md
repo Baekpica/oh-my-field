@@ -29,4 +29,3 @@ artifacts.
 - It enforces the required Markdown result lines and the exact calculated
   metrics, including the 2026-04 transaction cost.
 - If the target runtime cannot run Python, manually apply the same checks.
-

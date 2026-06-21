@@ -9,4 +9,3 @@ validation_checks:
 - markdown_contains:portfolio_backtest_results
 - values_match:expected_backtest_report
 mock_outputs_allowed: false
-

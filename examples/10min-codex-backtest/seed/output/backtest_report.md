@@ -33,4 +33,3 @@
   multiplied by sqrt(12).
 - Sharpe ratio uses arithmetic mean monthly excess return annualized over the
   annualized volatility, with a 0.00% risk-free rate.
-

@@ -12,4 +12,3 @@ The reusable capability should teach a smaller Codex model to:
 - calculate max drawdown from month-end high-water marks,
 - annualize return and sample volatility consistently,
 - write the final answer as a Markdown investment committee report.
-

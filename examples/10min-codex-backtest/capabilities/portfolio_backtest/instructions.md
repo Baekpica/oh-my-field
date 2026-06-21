@@ -68,4 +68,3 @@ Use these anchors to catch mistakes:
 Run the harness checks (`harness.yaml`) and the contract (`contracts/`) before
 declaring done. Do not emit mock, placeholder, or canned data; derive the report
 from `input.md` and the rules above.
-
