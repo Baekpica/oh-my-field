@@ -62,14 +62,17 @@ uv run omf health csv_normalize \
   --capabilities-dir "$FIELD/capabilities" \
   --eval-dir "$FIELD/evals" | python3 -m json.tool
 
-# promote scaffolds a generic instruction surface; the real workflow is to then
-# curate it (OMF treats capabilities/<name>/ as the reviewable source of truth).
-# Overlay the committed curated instructions + contracts onto the freshly promoted
-# package so the [3/3] proof below validates THIS pipeline-produced package.
+# promote scaffolds a generic instruction surface and an existence-only contract
+# validator; the real workflow is to then curate it (OMF treats capabilities/<name>/
+# as the reviewable source of truth). Overlay the committed curated instructions +
+# contracts + validators onto the freshly promoted package so the [3/3] proof below
+# (and any `omf capability export`/`validate --run-contract-validator`) exercises THIS
+# pipeline-produced, curated package -- not the generic scaffold.
 FIELD_CAP="$FIELD/capabilities/csv_normalize"
-echo "curating the promoted package with the reviewed instruction surface"
+echo "curating the promoted package with the reviewed instruction + contract surface"
 cp capabilities/csv_normalize/instructions.md "$FIELD_CAP/instructions.md"
 cp -r capabilities/csv_normalize/contracts "$FIELD_CAP/"
+cp -r capabilities/csv_normalize/validators "$FIELD_CAP/"
 
 # ---------------------------------------------------------------------------
 hr; echo "[2/3] Haiku with the BARE goal (no capability)"; hr

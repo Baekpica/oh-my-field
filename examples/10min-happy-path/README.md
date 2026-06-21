@@ -84,13 +84,25 @@ uv run omf promote <evidence_id> \
 # 3. See its health / portability status.
 uv run omf health csv_normalize --capabilities-dir "$FIELD/capabilities"
 
-# 4. (Portability) export the capability for another runtime.
+# 4. Curate the promoted scaffold. `promote` renders a generic instruction
+#    surface and an existence-only contract validator, so overlay the reviewed
+#    instructions + contracts + validators (capabilities/<name>/ is the
+#    human-reviewable source of truth). This is the same curation run.sh performs
+#    before the Haiku run -- without it, export/validate below carries the
+#    generic scaffold instead of the rules that make the PASS reproducible.
+DIY_CAP="$FIELD/capabilities/csv_normalize"
+cp examples/10min-happy-path/capabilities/csv_normalize/instructions.md "$DIY_CAP/instructions.md"
+cp -r examples/10min-happy-path/capabilities/csv_normalize/contracts \
+      examples/10min-happy-path/capabilities/csv_normalize/validators "$DIY_CAP/"
+
+# 5. (Portability) export the curated capability for another runtime.
 uv run omf capability export csv_normalize \
   --target claude_code --target-model claude-haiku-4-5 \
   --capabilities-dir "$FIELD/capabilities" \
   --out "$FIELD/exports/csv_normalize-haiku"
 ```
 
-The committed `capabilities/csv_normalize/instructions.md` was curated from the
-promoted scaffold — `capabilities/<name>/` is the human-reviewable source of
-truth, so refining the instruction surface after `promote` is the intended flow.
+The committed `capabilities/csv_normalize/` (instructions + contracts + validators)
+was curated from the promoted scaffold — `capabilities/<name>/` is the
+human-reviewable source of truth, so refining it after `promote` (step 4 above) is
+the intended flow, and exporting/validating only makes sense once it is applied.
