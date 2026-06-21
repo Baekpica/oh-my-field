@@ -8,17 +8,10 @@ steps:
 - run_validation_contract
 - record_target_failures_as_evidence
 required_inputs:
-- opus_run.log
-- output/normalized.json
+- input.csv
 expected_artifacts:
-- opus_run.log
-- validation.txt
 - output/normalized.json
 validation_checks:
-- agent_log_imported
-- artifacts_readable
-- artifact_exists:opus_run.log
-- artifact_exists:validation.txt
 - artifact_exists:output/normalized.json
 - json_parses:output/normalized.json
 - schema_valid
