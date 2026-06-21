@@ -1,0 +1,19 @@
+schema_version: omf.replay_plan.v0.1
+capability: portfolio_backtest
+goal: produce a portfolio backtest report for the six-month model portfolio case
+steps:
+- load_required_context
+- apply_task_contract
+- calculate_monthly_positions_and_metrics
+- produce_expected_artifacts
+- run_validation_contract
+- record_target_failures_as_evidence
+required_inputs:
+- input.md
+expected_artifacts:
+- output/backtest_report.md
+validation_checks:
+- artifact_exists:output/backtest_report.md
+- markdown_contains:portfolio_backtest_results
+- values_match:expected_backtest_report
+

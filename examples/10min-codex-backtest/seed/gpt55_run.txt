@@ -1,0 +1,20 @@
+[codex:gpt-5.5] goal: produce a portfolio backtest report for the six-month model portfolio case.
+[codex:gpt-5.5] read task/backtest_case.md and identified the key traps:
+       rebalance only on 2026-01-01 and 2026-04-01, no cost on the initial
+       allocation, 10 bps cost only on traded notional, and cost deducted before
+       April returns.
+[codex:gpt-5.5] initialized positions at 60/30/10 on USD 1,000,000.00.
+[codex:gpt-5.5] carried positions month by month using total returns, without
+       rebalancing in February, March, May, or June.
+[codex:gpt-5.5] at 2026-04-01, computed traded notional from drifted March-end
+       positions back to 60/30/10 target, charged USD 5.78, deducted the cost,
+       then applied April returns.
+[codex:gpt-5.5] calculated monthly net returns from beginning value to ending
+       value after any cost, max drawdown from month-end high-water marks, sample
+       monthly volatility annualized by sqrt(12), and Sharpe with zero risk-free.
+[codex:gpt-5.5] wrote output/backtest_report.md with the summary metrics and
+       month-by-month table.
+[codex:gpt-5.5] self-check: ending value USD 1,018,749.79, total return 1.87%,
+       annualized volatility 7.58%, Sharpe 0.52, max drawdown -3.14%, total
+       transaction cost USD 5.78.
+[codex:gpt-5.5] outcome: success

@@ -1,0 +1,14 @@
+schema_version: omf.artifact_contracts.v0.1
+capability: portfolio_backtest
+artifacts:
+- name: output_backtest_report_md
+  artifact_path: output/backtest_report.md
+  artifact_kind: markdown
+  role: final
+  required: true
+  description: Investment committee portfolio backtest report.
+  validation_checks:
+  - artifact_exists:output/backtest_report.md
+  - markdown_contains:portfolio_backtest_results
+  - values_match:expected_backtest_report
+

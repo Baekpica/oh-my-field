@@ -1,0 +1,29 @@
+capability: portfolio_backtest
+status: pass
+required_checks:
+- artifact_exists:output/backtest_report.md
+- markdown_contains:portfolio_backtest_results
+- values_match:expected_backtest_report
+observed_checks:
+- artifact_exists:output/backtest_report.md
+- markdown_contains:portfolio_backtest_results
+- values_match:expected_backtest_report
+failures: []
+human_review_required: true
+workflow_control:
+  safe_execution_mode: true
+  network_policy: disabled
+  approval_required_actions:
+  - write
+  - destructive
+  - external_call
+  - credential_access
+  - production_write
+  - paid_operation
+  - privilege_escalation
+  allowed_tools:
+  - external_agent_log
+  - importer:codex
+  - file_system
+  disallowed_tools: []
+
