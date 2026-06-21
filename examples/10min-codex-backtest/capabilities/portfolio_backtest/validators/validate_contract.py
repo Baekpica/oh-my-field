@@ -11,6 +11,8 @@ ARTIFACT = Path("output/backtest_report.md")
 
 REQUIRED_LINES = (
     "# Portfolio Backtest Report",
+    "- Period: 2026-01 through 2026-06",
+    "- Strategy: 60.00% US Equity / 30.00% Core Bonds / 10.00% Gold",
     "- Ending value: $1,018,749.79",
     "- Total return: 1.87%",
     "- Annualized return: 3.79%",

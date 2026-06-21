@@ -27,5 +27,6 @@ artifacts.
 - Run `python /path/to/package/validators/validate_contract.py` from the target
   artifact root when available.
 - It enforces the required Markdown result lines and the exact calculated
-  metrics, including the 2026-04 transaction cost.
+  metrics, including the reporting period, strategy line, and 2026-04
+  transaction cost.
 - If the target runtime cannot run Python, manually apply the same checks.

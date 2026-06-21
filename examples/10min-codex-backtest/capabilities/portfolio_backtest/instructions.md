@@ -20,6 +20,9 @@ Read the user's backtest case from `input.md` and write the completed report to
   - `## Summary`
   - `## Monthly Results`
   - `## Notes`
+- In `## Summary`, include these exact lines:
+  - `- Period: 2026-01 through 2026-06`
+  - `- Strategy: 60.00% US Equity / 30.00% Core Bonds / 10.00% Gold`
 
 ## Backtest rules
 

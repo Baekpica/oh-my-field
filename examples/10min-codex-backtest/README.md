@@ -31,11 +31,12 @@ Defaults:
 
 - source model recorded in the seed import: `gpt-5.5`
 - target model used for the live runs: `gpt-5.4-mini`
+- target reasoning effort: `medium`
 
 Override them if your Codex installation uses different model ids:
 
 ```bash
-SOURCE_MODEL=gpt-5.5 TARGET_MODEL=gpt-5.4-mini \
+SOURCE_MODEL=gpt-5.5 TARGET_MODEL=gpt-5.4-mini TARGET_REASONING=medium \
   bash examples/10min-codex-backtest/run.sh
 ```
 
@@ -98,7 +99,6 @@ uv run omf capability export portfolio_backtest \
 uv run omf capability import "$FIELD/exports/portfolio_backtest-codex.omfcap.tar.gz" \
   --runtime codex \
   --model gpt-5.4-mini \
-  --project "$FIELD/target-project" \
   --validate \
   --capabilities-dir "$FIELD/imported-capabilities" \
   --import-dir "$FIELD/imports" \

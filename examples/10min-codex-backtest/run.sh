@@ -12,13 +12,15 @@
 #   [3/3] Ask gpt-5.4-mini to do the task WITH the capability -> expect PASS.
 #
 # Requirements: bash, python3, uv, and the `codex` CLI (logged in).
-# Override with SOURCE_MODEL=... or TARGET_MODEL=... if needed.
+# Override with SOURCE_MODEL=..., TARGET_MODEL=..., or TARGET_REASONING=...
+# if needed.
 set -euo pipefail
 
 cd "$(dirname "$0")"
 HERE="$(pwd)"
 SOURCE_MODEL="${SOURCE_MODEL:-gpt-5.5}"
 TARGET_MODEL="${TARGET_MODEL:-gpt-5.4-mini}"
+TARGET_REASONING="${TARGET_REASONING:-medium}"
 OUT="$HERE/.omf-demo-out"
 FIELD="$OUT/field"
 rm -rf "$OUT"
@@ -39,7 +41,8 @@ run_codex() {
       --skip-git-repo-check \
       --ephemeral \
       --sandbox workspace-write \
-      --ask-for-approval never \
+      -c 'approval_policy="never"' \
+      -c "model_reasoning_effort=\"$TARGET_REASONING\"" \
       --model "$TARGET_MODEL" \
       "$prompt" >agent.stdout 2>agent.stderr
   ) || true
@@ -95,7 +98,7 @@ python3 check.py "$OUT/cap_run/output/backtest_report.md"
 CAP_RC=$?
 set -e
 
-hr; echo "RESULT (source: $SOURCE_MODEL, target: $TARGET_MODEL)"; hr
+hr; echo "RESULT (source: $SOURCE_MODEL, target: $TARGET_MODEL, reasoning: $TARGET_REASONING)"; hr
 bare_label=$([ $BARE_RC -eq 0 ] && echo "PASS" || echo "FAIL")
 cap_label=$([ $CAP_RC -eq 0 ] && echo "PASS" || echo "FAIL")
 echo "  bare goal           -> $bare_label   (output: $OUT/bare_run/output/backtest_report.md)"
