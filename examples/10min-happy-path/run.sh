@@ -41,9 +41,12 @@ run_haiku() {
 hr; echo "[1/3] OMF pipeline: import the recorded Opus run, then promote it"; hr
 # import-run resolves artifact paths relative to the log's directory, so we run
 # it from seed/ (uv still finds the project from any subdir).
+# --model records the source (Opus) model so the capability's runtime.model is
+# set and the portability path scores this as an Opus -> Haiku downgrade.
 EVIDENCE_JSON="$(cd seed && uv run omf import-run claude_code \
   --log opus_run.log \
   --goal "normalize a messy orders CSV into strict JSON" \
+  --model claude-opus-4-1 \
   --artifact output/normalized.json \
   --test-result validation.txt \
   --outcome success \
@@ -66,8 +69,9 @@ uv run omf health csv_normalize \
 # validator; the real workflow is to then curate it (OMF treats capabilities/<name>/
 # as the reviewable source of truth). Overlay the committed curated instructions +
 # contracts + validators onto the freshly promoted package so the [3/3] proof below
-# (and any `omf capability export`/`validate --run-contract-validator`) exercises THIS
-# pipeline-produced, curated package -- not the generic scaffold.
+# (which cats instructions.md into the prompt) and any `omf capability validate
+# --run-contract-validator` (which runs the package's on-disk validator) exercise
+# THIS curated package -- not the generic scaffold.
 FIELD_CAP="$FIELD/capabilities/csv_normalize"
 echo "curating the promoted package with the reviewed instruction + contract surface"
 cp capabilities/csv_normalize/instructions.md "$FIELD_CAP/instructions.md"

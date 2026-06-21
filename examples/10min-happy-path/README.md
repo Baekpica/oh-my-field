@@ -65,10 +65,12 @@ whitespace / key order / `2000` vs `2000.0` do not).
 FIELD="$(pwd)/.omf-quickstart"
 
 # 1. Import the recorded Opus run as evidence (run from seed/ so artifact
-#    paths resolve relative to the log's directory).
+#    paths resolve relative to the log's directory). Pass --model so the
+#    capability records the source model and the transfer scores as Opus -> Haiku.
 ( cd examples/10min-happy-path/seed && uv run omf import-run claude_code \
   --log opus_run.log \
   --goal "normalize a messy orders CSV into strict JSON" \
+  --model claude-opus-4-1 \
   --artifact output/normalized.json \
   --test-result validation.txt \
   --outcome success \
@@ -87,15 +89,20 @@ uv run omf health csv_normalize --capabilities-dir "$FIELD/capabilities"
 # 4. Curate the promoted scaffold. `promote` renders a generic instruction
 #    surface and an existence-only contract validator, so overlay the reviewed
 #    instructions + contracts + validators (capabilities/<name>/ is the
-#    human-reviewable source of truth). This is the same curation run.sh performs
-#    before the Haiku run -- without it, export/validate below carries the
-#    generic scaffold instead of the rules that make the PASS reproducible.
+#    human-reviewable source of truth). This curated package is what run.sh
+#    feeds to Haiku directly, and what `omf capability validate
+#    --run-contract-validator` runs (it executes the package's on-disk validator).
 DIY_CAP="$FIELD/capabilities/csv_normalize"
 cp examples/10min-happy-path/capabilities/csv_normalize/instructions.md "$DIY_CAP/instructions.md"
 cp -r examples/10min-happy-path/capabilities/csv_normalize/contracts \
       examples/10min-happy-path/capabilities/csv_normalize/validators "$DIY_CAP/"
 
-# 5. (Portability) export the curated capability for another runtime.
+# 5. (Portability) export a runtime bundle. NOTE: `omf capability export`
+#    regenerates the bundle from capability.yaml (the manifest) -- a deliberately
+#    generic projection of goal + context + contract + checks. It does NOT
+#    package the curated prose rules from step 4; those distilled CSV rules live
+#    in instructions.md and are consumed directly (as run.sh does). Treat the
+#    export as the portable contract/skeleton, not the rule carrier.
 uv run omf capability export csv_normalize \
   --target claude_code --target-model claude-haiku-4-5 \
   --capabilities-dir "$FIELD/capabilities" \
@@ -104,5 +111,9 @@ uv run omf capability export csv_normalize \
 
 The committed `capabilities/csv_normalize/` (instructions + contracts + validators)
 was curated from the promoted scaffold — `capabilities/<name>/` is the
-human-reviewable source of truth, so refining it after `promote` (step 4 above) is
-the intended flow, and exporting/validating only makes sense once it is applied.
+human-reviewable source of truth. The demo carries the distilled rules by feeding
+that curated `instructions.md` to the agent directly (what `run.sh` does); `omf
+capability validate --run-contract-validator` enforces the package's contract via
+its on-disk validator. `omf capability export` is a separate, manifest-driven
+projection — useful for the portable contract surface, but it does not re-package
+the curated prose.
