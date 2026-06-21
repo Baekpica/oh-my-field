@@ -94,6 +94,15 @@ uv run omf capability export portfolio_backtest \
   --capabilities-dir "$FIELD/capabilities" \
   --evidence-dir "$FIELD/evidence" \
   --out "$FIELD/exports/portfolio_backtest-codex"
+
+uv run omf capability import "$FIELD/exports/portfolio_backtest-codex.omfcap.tar.gz" \
+  --runtime codex \
+  --model gpt-5.4-mini \
+  --project "$FIELD/target-project" \
+  --validate \
+  --capabilities-dir "$FIELD/imported-capabilities" \
+  --import-dir "$FIELD/imports" \
+  --evidence-dir "$FIELD/evidence"
 ```
 
 The curated manifest keeps the fresh target surface narrow: `input.md` is the
