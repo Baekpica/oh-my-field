@@ -113,6 +113,7 @@ harness:
   - artifact_exists:validation.txt
   - artifact_exists:output/normalized.json
   - json_parses:output/normalized.json
+  - schema_valid
   failures: []
   required_checks:
   - agent_log_imported
@@ -125,7 +126,7 @@ harness:
   human_review_required: true
 runtime:
   name: claude_code
-  model: null
+  model: claude-opus-4-1
   preferred_models: []
   tools:
   - external_agent_log
@@ -217,7 +218,7 @@ integrity_chain:
   previous_sha256: null
 - artifact_type: capability
   artifact_id: csv_normalize
-  sha256: 2e4a06d6f5aa2f22049aa1b421ba69ae5128ea2be315c5f094e28bc58c1c796e
+  sha256: 7a83f3b24d0d72b590482a6ef8d2af97d23c46cb299de9d1b5669e524f47aba8
   previous_sha256: 62a4beb1a2714f5cf7a4a23ee32d7bfbe70e3b773a3e27964b624f95becd21f2
 artifact_contracts:
 - name: output_normalized_json

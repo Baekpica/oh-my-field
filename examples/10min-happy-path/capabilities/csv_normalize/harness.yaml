@@ -15,6 +15,7 @@ observed_checks:
 - artifact_exists:validation.txt
 - artifact_exists:output/normalized.json
 - json_parses:output/normalized.json
+- schema_valid
 failures: []
 human_review_required: true
 workflow_control:
