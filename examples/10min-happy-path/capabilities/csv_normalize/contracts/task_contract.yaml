@@ -1,0 +1,11 @@
+schema_version: omf.task_contract.v0.1
+goal: normalize a messy orders csv into strict json
+required_inputs:
+- input.csv
+expected_artifacts:
+- output/normalized.json
+validation_checks:
+- artifact_exists:output/normalized.json
+- json_parses:output/normalized.json
+- schema_valid:output/normalized.json
+mock_outputs_allowed: false

@@ -1,0 +1,6 @@
+# scratch output produced by run.sh
+.omf-demo-out/
+
+# the recorded Opus run log is part of the demo seed; keep it tracked
+# (the repo-root .gitignore excludes *.log)
+!seed/opus_run.log

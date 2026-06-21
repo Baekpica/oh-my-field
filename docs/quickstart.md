@@ -1,5 +1,11 @@
 # Quickstart
 
+> **First time here?** Run the 10-minute happy path first:
+> `bash examples/10min-happy-path/run.sh`. It shows a task a bare Haiku gets
+> wrong becoming reproducible once Haiku is handed an OMF capability distilled
+> from an Opus run — the shortest path to a success experience. See
+> [examples/10min-happy-path/](../examples/10min-happy-path/README.md).
+
 OMF has three entry paths. Path A is the intended agent-assisted loop; Path B is
 the fallback when you only have run artifacts after the fact; Path C moves a
 capability to another runtime.

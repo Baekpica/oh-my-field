@@ -1,0 +1,15 @@
+[opus] goal: normalize a messy orders CSV into strict JSON
+[opus] read task/messy_orders.csv (8 data rows, deliberately messy)
+[opus] observed issues: mixed date formats (12/31/2025, "Jan 5, 2026", ISO),
+       currency strings ("$1,200.50", "2,000"), string booleans (Yes/y/TRUE),
+       a blank row, a duplicate order_id (1001), a row missing email (1005),
+       a row missing order_id, mixed-case emails with stray whitespace.
+[opus] decided on a strict output contract:
+       - {"records": [...]} sorted by order_id ascending (int)
+       - keys: order_id:int, customer:str(trim), email:str(lower+trim),
+         amount_usd:number($ and , stripped, 2dp), ordered_on:YYYY-MM-DD, fulfilled:bool
+       - drop blank rows; drop rows with no order_id or no email; dedupe order_id keep-first
+[opus] applied rules, wrote output/normalized.json (4 records: 1001..1004)
+[opus] self-check: 4 records, sorted, no duplicate order_id, all dates ISO,
+       all amounts numeric, all fulfilled boolean -> looks reusable
+[opus] outcome: success

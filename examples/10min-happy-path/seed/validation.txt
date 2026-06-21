@@ -1,0 +1,6 @@
+contract validation passed
+- 4 records, sorted by order_id ascending
+- no duplicate order_id
+- all dates ISO YYYY-MM-DD
+- all amounts numeric
+- all fulfilled boolean

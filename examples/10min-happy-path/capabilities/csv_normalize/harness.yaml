@@ -1,0 +1,28 @@
+capability: csv_normalize
+status: pass
+required_checks:
+- artifact_exists:output/normalized.json
+- json_parses:output/normalized.json
+- schema_valid
+observed_checks:
+- artifact_exists:output/normalized.json
+- json_parses:output/normalized.json
+- schema_valid
+failures: []
+human_review_required: true
+workflow_control:
+  safe_execution_mode: true
+  network_policy: disabled
+  approval_required_actions:
+  - write
+  - destructive
+  - external_call
+  - credential_access
+  - production_write
+  - paid_operation
+  - privilege_escalation
+  allowed_tools:
+  - external_agent_log
+  - importer:claude_code
+  - file_system
+  disallowed_tools: []

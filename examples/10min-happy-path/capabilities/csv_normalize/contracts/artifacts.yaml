@@ -1,0 +1,13 @@
+schema_version: omf.artifact_contracts.v0.1
+capability: csv_normalize
+artifacts:
+- name: output_normalized_json
+  artifact_path: output/normalized.json
+  artifact_kind: json
+  role: final
+  required: true
+  description: null
+  validation_checks:
+  - artifact_exists:output/normalized.json
+  - json_parses:output/normalized.json
+  - schema_valid:output/normalized.json

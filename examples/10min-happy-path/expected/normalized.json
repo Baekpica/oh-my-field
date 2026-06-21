@@ -1,0 +1,36 @@
+{
+  "records": [
+    {
+      "order_id": 1001,
+      "customer": "Bob Lee",
+      "email": "bob@foo.io",
+      "amount_usd": 99.9,
+      "ordered_on": "2025-01-05",
+      "fulfilled": false
+    },
+    {
+      "order_id": 1002,
+      "customer": "Carol Diaz",
+      "email": "carol@bar.com",
+      "amount_usd": 2000.0,
+      "ordered_on": "2026-01-05",
+      "fulfilled": true
+    },
+    {
+      "order_id": 1003,
+      "customer": "Alice Park",
+      "email": "alice.park@example.com",
+      "amount_usd": 1200.5,
+      "ordered_on": "2025-12-31",
+      "fulfilled": true
+    },
+    {
+      "order_id": 1004,
+      "customer": "Frank Wu",
+      "email": "frank.wu@mail.com",
+      "amount_usd": 1200.0,
+      "ordered_on": "2026-02-20",
+      "fulfilled": false
+    }
+  ]
+}
