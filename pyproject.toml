@@ -86,6 +86,9 @@ reportUnusedVariable = "error"
 target-version = "py312"
 line-length = 88
 src = ["src", "tests"]
+# Generated/vendored example artifacts (promoted capability packages) are not
+# hand-written source and should not be linted.
+extend-exclude = ["examples/*/capabilities"]
 
 [tool.ruff.lint]
 select = ["ALL"]
@@ -119,6 +122,13 @@ unfixable = []
     "SLF001",
 ]
 "src/oh_my_field/cli/commands/*.py" = ["PLR0913"]
+"examples/**/*.py" = [
+    "C901",
+    "D",
+    "PLR0911",
+    "PLR2004",
+    "T201",
+]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

@@ -194,6 +194,29 @@ from the UI is record-only (a real target run still goes through the
 risk-gated `omf capability validate --run-command` CLI path). The UI is built
 on the Python standard library; no extra dependency is required.
 
+## Quickstart: See It Work In 10 Minutes (Opus → Haiku)
+
+New here? Start with the thinnest possible success. This demo shows a task that a
+**bare Haiku gets wrong** become reproducible the moment Haiku is handed the OMF
+capability **distilled from an Opus run** — same model, same input, the capability
+is the only difference.
+
+```bash
+# requires uv, python3, and the `claude` CLI (logged in)
+bash examples/10min-happy-path/run.sh
+```
+
+```
+  bare goal           -> FAIL   (top-level array, wrong keys, rows not dropped…)
+  with OMF capability -> PASS   (matches the golden output exactly)
+```
+
+It runs the real pipeline (`import-run` → `promote` → `health`), then has Haiku
+normalize a messy CSV both ways (as an agent writing `output/normalized.json`)
+and scores each result with an objective deep-equal check. Full walkthrough and
+"do it yourself" CLI steps:
+[examples/10min-happy-path/](examples/10min-happy-path/README.md).
+
 ## Quickstart A: Track An Agent Session
 
 Use this when an agent can call OMF *during* the work.

@@ -1,0 +1,15 @@
+schema_version: omf.task_contract.v0.1
+goal: normalize a messy orders csv into strict json
+required_inputs:
+- opus_run.log
+- output/normalized.json
+expected_artifacts:
+- opus_run.log
+- validation.txt
+- output/normalized.json
+validation_checks:
+- artifact_exists:opus_run.log
+- artifact_exists:validation.txt
+- artifact_exists:output/normalized.json
+- json_parses:output/normalized.json
+mock_outputs_allowed: false

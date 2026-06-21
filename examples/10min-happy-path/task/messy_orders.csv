@@ -1,0 +1,9 @@
+order_id,customer,email,amount,ordered_on,fulfilled
+ 1003 , Alice Park ,Alice.Park@Example.COM ,"$1,200.50",12/31/2025,Yes
+1001,Bob Lee,bob@foo.io ,$99.9,2025-01-05,no
+
+1002, Carol Diaz,carol@bar.com,"2,000","Jan 5, 2026",TRUE
+1001,Bob Lee (resubmit),bob2@foo.io,$5.00,2025-02-02,y
+1005,Dan,,$10.00,03-15-2026,1
+,Eve,eve@baz.com,$50,2026-04-01,0
+1004, Frank Wu , FRANK.WU@MAIL.com ,1200,2026-02-20,

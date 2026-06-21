@@ -1,0 +1,24 @@
+schema_version: omf.replay_plan.v0.1
+capability: csv_normalize
+goal: normalize a messy orders csv into strict json
+steps:
+- load_required_context
+- apply_task_contract
+- produce_expected_artifacts
+- run_validation_contract
+- record_target_failures_as_evidence
+required_inputs:
+- opus_run.log
+- output/normalized.json
+expected_artifacts:
+- opus_run.log
+- validation.txt
+- output/normalized.json
+validation_checks:
+- agent_log_imported
+- artifacts_readable
+- artifact_exists:opus_run.log
+- artifact_exists:validation.txt
+- artifact_exists:output/normalized.json
+- json_parses:output/normalized.json
+- schema_valid

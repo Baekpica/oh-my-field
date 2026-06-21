@@ -1,0 +1,267 @@
+schema_version: omf.capability.v0.1
+name: csv_normalize
+version: 0.1.0
+description: Normalize a messy orders CSV into strict, schema-checked JSON
+status: candidate
+owner: null
+dependencies: []
+runtime_compatibility:
+- runtime:claude_code
+- tool:external_agent_log
+- tool:importer:claude_code
+- tool:file_system
+evaluation_results: []
+source_evidence_id: 20260621T071814Z-934d7d40
+source_evidence_ids:
+- 20260621T071814Z-934d7d40
+field:
+  name: local
+  description: Field policy inferred from evidence field 'local'.
+  sources:
+  - name: source_evidence_1
+    type: evidence
+    location: 20260621T071814Z-934d7d40
+    freshness: captured
+    priority: 1
+  - name: input_context
+    type: docs
+    location: opus_run.log,output/normalized.json
+    freshness: captured
+    priority: 10
+  policies:
+    network: disabled
+    require_approval:
+    - write
+    - destructive
+    - external_call
+    - credential_access
+    - production_write
+    - paid_operation
+    - privilege_escalation
+    forbidden_context:
+    - .env
+    - secrets/
+    - production-kubeconfig
+  quality_bar:
+    required_checks:
+    - agent_log_imported
+    - artifacts_readable
+    - artifact_exists:opus_run.log
+    - artifact_exists:validation.txt
+    - artifact_exists:output/normalized.json
+    - json_parses:output/normalized.json
+    - schema_valid
+    human_review_required: true
+  preferences: []
+  failure_history:
+    recall_strategy: prefer_recent_regressions
+    cases: []
+normalized_goal: normalize a messy orders csv into strict json
+inputs:
+- goal
+- opus_run.log
+- output/normalized.json
+context:
+  required:
+  - opus_run.log
+  - output/normalized.json
+  optional:
+  - opus_run.log
+  - validation.txt
+  - output/normalized.json
+  forbidden:
+  - .env
+  - secrets/
+  - production-kubeconfig
+  sources:
+  - name: source_evidence_1
+    type: evidence
+    location: 20260621T071814Z-934d7d40
+    freshness: captured
+    priority: 1
+  - name: input_context
+    type: docs
+    location: opus_run.log,output/normalized.json
+    freshness: captured
+    priority: 10
+  retrieval_query_template: null
+  summarization_rule: null
+  compression_rule: null
+  freshness_rule: null
+  source_priority:
+  - evidence
+  - repository
+  - user_feedback
+  maximum_token_budget: null
+  evidence_recall_strategy: prefer prior successful evidence, then failures
+workflow:
+  graph: langgraph
+  nodes:
+  - import_evidence
+  - pack_context
+  - run_verification
+  - record_review
+  - export_runtime_assets
+  - apply_learning_patch
+harness:
+  schema_version: omf.harness.v0.1
+  status: pass
+  checks:
+  - agent_log_imported
+  - artifacts_readable
+  - artifact_exists:opus_run.log
+  - artifact_exists:validation.txt
+  - artifact_exists:output/normalized.json
+  - json_parses:output/normalized.json
+  failures: []
+  required_checks:
+  - agent_log_imported
+  - artifacts_readable
+  - artifact_exists:opus_run.log
+  - artifact_exists:validation.txt
+  - artifact_exists:output/normalized.json
+  - json_parses:output/normalized.json
+  - schema_valid
+  human_review_required: true
+runtime:
+  name: claude_code
+  model: null
+  preferred_models: []
+  tools:
+  - external_agent_log
+  - importer:claude_code
+  - file_system
+evidence:
+  store:
+  - prompts
+  - tool_calls
+  - generated_commands
+  - generated_scripts
+  - execution_outputs
+  - errors
+  - retries
+  - user_interventions
+  - final_artifacts
+  - harness_results
+  - cost_metrics
+  - latency_metrics
+  - success_or_failure_label
+  - improvement_notes
+workflow_control:
+  max_iterations: null
+  max_runtime_seconds: null
+  max_cost_usd: null
+  allowed_tools:
+  - external_agent_log
+  - importer:claude_code
+  - file_system
+  disallowed_tools: []
+  require_approval_before_write: true
+  require_approval_before_external_call: true
+  require_approval_before_destructive_action: true
+  approval_required_actions:
+  - write
+  - destructive
+  - external_call
+  - credential_access
+  - production_write
+  - paid_operation
+  - privilege_escalation
+  safe_execution_mode: true
+  credential_scope: null
+  network_policy: disabled
+  rollback_policy: manual checkpoint restore
+  checkpoint_interval: 1
+  rollback_strategy: null
+  resume_from_checkpoint: null
+human_review:
+  status: pending
+  reviewer: null
+  notes: []
+  revision_request: null
+  added_context: []
+  changed_goal: null
+  changed_constraint: null
+  reusable: null
+  unsafe: null
+  regression_case: null
+  reviewed_at: null
+promotion_criteria:
+  min_success_runs: 3
+  max_human_intervention_rate: 0.3
+  required_harness_pass_rate: 0.9
+  min_runtime_profiles:
+  - runtime:claude_code
+promotion_metrics:
+  evidence_count: 1
+  successful_evidence_count: 1
+  failed_evidence_count: 0
+  harness_pass_rate: 1.0
+  human_intervention_rate: 0.0
+  retry_rate: 0.0
+  eval_count: 0
+  eval_pass_rate: 0.0
+  runtime_profiles:
+  - runtime:claude_code
+  criteria_met: false
+  eval_gate_met: true
+  recommended_version_bump: patch
+patches:
+  prompt: []
+  context: []
+  harness: []
+integrity_chain:
+- artifact_type: evidence
+  artifact_id: 20260621T071814Z-934d7d40
+  sha256: 62a4beb1a2714f5cf7a4a23ee32d7bfbe70e3b773a3e27964b624f95becd21f2
+  previous_sha256: null
+- artifact_type: capability
+  artifact_id: csv_normalize
+  sha256: ab8fd4fc68b4ac9c190255334e85baa39e8c3b7cb9cf5d32d071087ef6370f00
+  previous_sha256: 62a4beb1a2714f5cf7a4a23ee32d7bfbe70e3b773a3e27964b624f95becd21f2
+artifact_contracts:
+- name: opus_run_log
+  artifact_path: opus_run.log
+  artifact_kind: text
+  role: final
+  required: true
+  description: null
+  validation_checks:
+  - artifact_exists:opus_run.log
+- name: validation_txt
+  artifact_path: validation.txt
+  artifact_kind: text
+  role: final
+  required: true
+  description: null
+  validation_checks:
+  - artifact_exists:validation.txt
+- name: output_normalized_json
+  artifact_path: output/normalized.json
+  artifact_kind: json
+  role: final
+  required: true
+  description: null
+  validation_checks:
+  - artifact_exists:output/normalized.json
+  - json_parses:output/normalized.json
+task_contract:
+  goal: normalize a messy orders csv into strict json
+  required_inputs:
+  - opus_run.log
+  - output/normalized.json
+  expected_artifacts:
+  - opus_run.log
+  - validation.txt
+  - output/normalized.json
+  validation_checks:
+  - artifact_exists:opus_run.log
+  - artifact_exists:validation.txt
+  - artifact_exists:output/normalized.json
+  - json_parses:output/normalized.json
+  mock_outputs_allowed: false
+record_quality:
+  score: 1.0
+  warnings: []
+  missing_sections: []
+  strict_ready: true
