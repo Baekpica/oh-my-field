@@ -217,25 +217,9 @@ integrity_chain:
   previous_sha256: null
 - artifact_type: capability
   artifact_id: csv_normalize
-  sha256: ab8fd4fc68b4ac9c190255334e85baa39e8c3b7cb9cf5d32d071087ef6370f00
+  sha256: 2e4a06d6f5aa2f22049aa1b421ba69ae5128ea2be315c5f094e28bc58c1c796e
   previous_sha256: 62a4beb1a2714f5cf7a4a23ee32d7bfbe70e3b773a3e27964b624f95becd21f2
 artifact_contracts:
-- name: opus_run_log
-  artifact_path: opus_run.log
-  artifact_kind: text
-  role: final
-  required: true
-  description: null
-  validation_checks:
-  - artifact_exists:opus_run.log
-- name: validation_txt
-  artifact_path: validation.txt
-  artifact_kind: text
-  role: final
-  required: true
-  description: null
-  validation_checks:
-  - artifact_exists:validation.txt
 - name: output_normalized_json
   artifact_path: output/normalized.json
   artifact_kind: json
@@ -245,20 +229,17 @@ artifact_contracts:
   validation_checks:
   - artifact_exists:output/normalized.json
   - json_parses:output/normalized.json
+  - schema_valid:output/normalized.json
 task_contract:
   goal: normalize a messy orders csv into strict json
   required_inputs:
-  - opus_run.log
-  - output/normalized.json
+  - input.csv
   expected_artifacts:
-  - opus_run.log
-  - validation.txt
   - output/normalized.json
   validation_checks:
-  - artifact_exists:opus_run.log
-  - artifact_exists:validation.txt
   - artifact_exists:output/normalized.json
   - json_parses:output/normalized.json
+  - schema_valid:output/normalized.json
   mock_outputs_allowed: false
 record_quality:
   score: 1.0

@@ -1,22 +1,6 @@
 schema_version: omf.artifact_contracts.v0.1
 capability: csv_normalize
 artifacts:
-- name: opus_run_log
-  artifact_path: opus_run.log
-  artifact_kind: text
-  role: final
-  required: true
-  description: null
-  validation_checks:
-  - artifact_exists:opus_run.log
-- name: validation_txt
-  artifact_path: validation.txt
-  artifact_kind: text
-  role: final
-  required: true
-  description: null
-  validation_checks:
-  - artifact_exists:validation.txt
 - name: output_normalized_json
   artifact_path: output/normalized.json
   artifact_kind: json
@@ -26,3 +10,4 @@ artifacts:
   validation_checks:
   - artifact_exists:output/normalized.json
   - json_parses:output/normalized.json
+  - schema_valid:output/normalized.json
