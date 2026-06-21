@@ -1,0 +1,2 @@
+contract validation passed
+golden check passed: output/backtest_report.md matched expected/backtest_report.md

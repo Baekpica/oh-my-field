@@ -1,0 +1,232 @@
+schema_version: omf.capability.v0.1
+name: portfolio_backtest
+version: 0.1.0
+description: Produce a deterministic portfolio backtest report with rebalance costs and risk metrics
+status: candidate
+owner: null
+dependencies: []
+runtime_compatibility:
+- runtime:codex
+- tool:external_agent_log
+- tool:importer:codex
+- tool:file_system
+evaluation_results: []
+source_evidence_id: 20260621T162725Z-53d2f9c9
+source_evidence_ids:
+- 20260621T162725Z-53d2f9c9
+field:
+  name: local
+  description: Field policy inferred from evidence field 'local'.
+  sources:
+  - name: source_evidence_1
+    type: evidence
+    location: 20260621T162725Z-53d2f9c9
+    freshness: captured
+    priority: 1
+  - name: input_context
+    type: docs
+    location: gpt55_run.txt,output/backtest_report.md
+    freshness: captured
+    priority: 10
+  policies:
+    network: disabled
+    require_approval:
+    - write
+    - destructive
+    - external_call
+    - credential_access
+    - production_write
+    - paid_operation
+    - privilege_escalation
+    forbidden_context:
+    - .env
+    - secrets/
+    - production-kubeconfig
+  quality_bar:
+    required_checks:
+    - artifact_exists:output/backtest_report.md
+    - markdown_contains:portfolio_backtest_results
+    - values_match:expected_backtest_report
+    human_review_required: true
+  preferences: []
+  failure_history:
+    recall_strategy: prefer_recent_regressions
+    cases: []
+normalized_goal: produce a portfolio backtest report for the six-month model portfolio case
+inputs:
+- goal
+- input.md
+context:
+  required:
+  - input.md
+  optional: []
+  forbidden:
+  - .env
+  - secrets/
+  - production-kubeconfig
+  sources:
+  - name: source_evidence_1
+    type: evidence
+    location: 20260621T162725Z-53d2f9c9
+    freshness: captured
+    priority: 1
+  - name: input_context
+    type: docs
+    location: gpt55_run.txt,output/backtest_report.md
+    freshness: captured
+    priority: 10
+  retrieval_query_template: null
+  summarization_rule: null
+  compression_rule: null
+  freshness_rule: null
+  source_priority:
+  - evidence
+  - repository
+  - user_feedback
+  maximum_token_budget: null
+  evidence_recall_strategy: prefer prior successful evidence, then failures
+workflow:
+  graph: langgraph
+  nodes:
+  - import_evidence
+  - pack_context
+  - run_verification
+  - record_review
+  - export_runtime_assets
+  - apply_learning_patch
+harness:
+  schema_version: omf.harness.v0.1
+  status: pass
+  checks:
+  - artifact_exists:output/backtest_report.md
+  - markdown_contains:portfolio_backtest_results
+  - values_match:expected_backtest_report
+  failures: []
+  required_checks:
+  - artifact_exists:output/backtest_report.md
+  - markdown_contains:portfolio_backtest_results
+  - values_match:expected_backtest_report
+  human_review_required: true
+runtime:
+  name: codex
+  model: gpt-5.5
+  preferred_models: []
+  tools:
+  - external_agent_log
+  - importer:codex
+  - file_system
+evidence:
+  store:
+  - prompts
+  - tool_calls
+  - generated_commands
+  - generated_scripts
+  - execution_outputs
+  - errors
+  - retries
+  - user_interventions
+  - final_artifacts
+  - harness_results
+  - cost_metrics
+  - latency_metrics
+  - success_or_failure_label
+  - improvement_notes
+workflow_control:
+  max_iterations: null
+  max_runtime_seconds: null
+  max_cost_usd: null
+  allowed_tools:
+  - external_agent_log
+  - importer:codex
+  - file_system
+  disallowed_tools: []
+  require_approval_before_write: true
+  require_approval_before_external_call: true
+  require_approval_before_destructive_action: true
+  approval_required_actions:
+  - write
+  - destructive
+  - external_call
+  - credential_access
+  - production_write
+  - paid_operation
+  - privilege_escalation
+  safe_execution_mode: true
+  credential_scope: null
+  network_policy: disabled
+  rollback_policy: manual checkpoint restore
+  checkpoint_interval: 1
+  rollback_strategy: null
+  resume_from_checkpoint: null
+human_review:
+  status: pending
+  reviewer: null
+  notes: []
+  revision_request: null
+  added_context: []
+  changed_goal: null
+  changed_constraint: null
+  reusable: null
+  unsafe: null
+  regression_case: null
+  reviewed_at: null
+promotion_criteria:
+  min_success_runs: 3
+  max_human_intervention_rate: 0.3
+  required_harness_pass_rate: 0.9
+  min_runtime_profiles:
+  - runtime:codex
+promotion_metrics:
+  evidence_count: 1
+  successful_evidence_count: 1
+  failed_evidence_count: 0
+  harness_pass_rate: 1.0
+  human_intervention_rate: 0.0
+  retry_rate: 0.0
+  eval_count: 0
+  eval_pass_rate: 0.0
+  runtime_profiles:
+  - runtime:codex
+  criteria_met: false
+  eval_gate_met: true
+  recommended_version_bump: patch
+patches:
+  prompt: []
+  context: []
+  harness: []
+integrity_chain:
+- artifact_type: evidence
+  artifact_id: 20260621T162725Z-53d2f9c9
+  sha256: 040ee6e5eabc6ddca034a373d4d81f8338151720b1077764409266d0abf3b445
+  previous_sha256: null
+- artifact_type: capability
+  artifact_id: portfolio_backtest
+  sha256: 9a2e27bc9ddcd5d77c192c8db387fa38cf1164e91c8c632794fc608b03c54c91
+  previous_sha256: 040ee6e5eabc6ddca034a373d4d81f8338151720b1077764409266d0abf3b445
+artifact_contracts:
+- name: output_backtest_report_md
+  artifact_path: output/backtest_report.md
+  artifact_kind: markdown
+  role: final
+  required: true
+  description: Investment committee portfolio backtest report.
+  validation_checks:
+  - artifact_exists:output/backtest_report.md
+  - markdown_contains:portfolio_backtest_results
+  - values_match:expected_backtest_report
+task_contract:
+  goal: produce a portfolio backtest report for the six-month model portfolio case
+  required_inputs:
+  - input.md
+  expected_artifacts:
+  - output/backtest_report.md
+  validation_checks:
+  - artifact_exists:output/backtest_report.md
+  - markdown_contains:portfolio_backtest_results
+  - values_match:expected_backtest_report
+  mock_outputs_allowed: false
+record_quality:
+  score: 1.0
+  warnings: []
+  missing_sections: []
+  strict_ready: true

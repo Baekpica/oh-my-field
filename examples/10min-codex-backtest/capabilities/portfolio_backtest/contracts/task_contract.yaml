@@ -1,0 +1,11 @@
+schema_version: omf.task_contract.v0.1
+goal: produce a portfolio backtest report for the six-month model portfolio case
+required_inputs:
+- input.md
+expected_artifacts:
+- output/backtest_report.md
+validation_checks:
+- artifact_exists:output/backtest_report.md
+- markdown_contains:portfolio_backtest_results
+- values_match:expected_backtest_report
+mock_outputs_allowed: false
