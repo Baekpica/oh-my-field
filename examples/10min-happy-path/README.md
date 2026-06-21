@@ -60,29 +60,35 @@ whitespace / key order / `2000` vs `2000.0` do not).
 ## Do it yourself (the CLI behind the script)
 
 ```bash
+# Use one shared field directory so import and promote agree on where evidence
+# lives (import-run defaults --evidence-dir to .omf/evidence under its cwd).
+FIELD="$(pwd)/.omf-quickstart"
+
 # 1. Import the recorded Opus run as evidence (run from seed/ so artifact
 #    paths resolve relative to the log's directory).
-cd examples/10min-happy-path/seed
-uv run omf import-run claude_code \
+( cd examples/10min-happy-path/seed && uv run omf import-run claude_code \
   --log opus_run.log \
   --goal "normalize a messy orders CSV into strict JSON" \
   --artifact output/normalized.json \
   --test-result validation.txt \
-  --outcome success
-cd -
+  --outcome success \
+  --evidence-dir "$FIELD/evidence" )
 
 # 2. Promote the evidence into a capability (copy the evidence_id from step 1).
 uv run omf promote <evidence_id> \
   --name csv_normalize \
-  --description "Normalize a messy orders CSV into strict, schema-checked JSON"
+  --description "Normalize a messy orders CSV into strict, schema-checked JSON" \
+  --evidence-dir "$FIELD/evidence" \
+  --capabilities-dir "$FIELD/capabilities"
 
 # 3. See its health / portability status.
-uv run omf health csv_normalize
+uv run omf health csv_normalize --capabilities-dir "$FIELD/capabilities"
 
 # 4. (Portability) export the capability for another runtime.
 uv run omf capability export csv_normalize \
   --target claude_code --target-model claude-haiku-4-5 \
-  --out .omf/exports/csv_normalize-haiku
+  --capabilities-dir "$FIELD/capabilities" \
+  --out "$FIELD/exports/csv_normalize-haiku"
 ```
 
 The committed `capabilities/csv_normalize/instructions.md` was curated from the

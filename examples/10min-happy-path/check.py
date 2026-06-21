@@ -51,9 +51,13 @@ def _load(path: Path) -> object:
 
 def _first_diff(produced: object, golden: object, trail: str = "") -> str | None:
     """Return a short human-readable description of the first mismatch."""
-    both_numbers = isinstance(produced, (int, float)) and isinstance(
-        golden, (int, float)
-    )
+
+    # bool is a subclass of int, but `1`/`0` must NOT count as `true`/`false`:
+    # the schema check has to enforce real JSON booleans for `fulfilled`.
+    def _is_number(value: object) -> bool:
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+    both_numbers = _is_number(produced) and _is_number(golden)
     if type(produced) is not type(golden) and not both_numbers:
         p_type, g_type = type(produced).__name__, type(golden).__name__
         return f"{trail or '<root>'}: type {p_type} != {g_type}"
