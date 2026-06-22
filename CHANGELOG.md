@@ -4,6 +4,30 @@ All notable changes to this project will be documented here.
 
 ## Unreleased
 
+## 0.3.3 - 2026-06-22
+
+### Added
+
+- Added 10-minute happy path examples for CSV normalization and Codex portfolio
+  backtesting, including packaged capability fixtures, validators, replay
+  assets, and integrity coverage.
+
+### Changed
+
+- Redesigned the local web dashboard UI/UX.
+- Removed the LangGraph workflow dependency from the core workflow layer and
+  trimmed the related type stubs and lockfile entries.
+- Updated runtime, development, quickstart, and agent-facing documentation for
+  the current workflow and example surfaces.
+- Disabled the API-backed PR review workflow while preserving the checked-in
+  workflow placeholder.
+
+### Fixed
+
+- Restored runtime adapter spec export behavior.
+- Refreshed example capability integrity hashes and tightened example
+  validators for the CSV normalization and Codex backtest happy paths.
+
 ## 0.3.2 - 2026-06-16
 
 ### Added
