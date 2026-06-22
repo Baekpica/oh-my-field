@@ -91,8 +91,9 @@ uv run omf health csv_normalize --capabilities-dir "$FIELD/capabilities"
 #    instruction surface, and existence-only contract validator, so overlay the
 #    reviewed manifest + harness + instructions + contracts + validators
 #    (capabilities/<name>/ is the human-reviewable source of truth). The helper
-#    also rebinds capability.yaml to this run's evidence id, so validate/export
-#    load the curated manifest instead of the generic scaffold.
+#    also rebinds capability.yaml to this run's evidence id and recomputes its
+#    integrity links, so validate/export load the curated manifest instead of
+#    the generic scaffold.
 DIY_CAP="$FIELD/capabilities/csv_normalize"
 uv run python examples/10min-happy-path/curate_package.py \
   --source examples/10min-happy-path/capabilities/csv_normalize \

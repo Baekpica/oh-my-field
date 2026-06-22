@@ -98,7 +98,9 @@ or dashboard/server code.
 - **Integrity.** Artifacts carry an `integrity_chain` of sha256 links
   (`infrastructure/fs/hashing.py`). `model_sha256` hashes a model's canonical
   JSON excluding `integrity_chain` itself; the `verify` command walks the chain
-  to detect tampering.
+  to detect tampering. If you edit a committed artifact that already has an
+  integrity link, recompute the artifact's own link in the same change and add
+  or update a regression check so stale hashes do not ship.
 
 ## Schema Contracts
 
