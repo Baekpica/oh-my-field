@@ -12,7 +12,7 @@ This project uses `uv` (Python `>=3.12`). All commands run through `uv run`.
 uv sync                      # install deps (including dev group)
 uv run omf --help            # run the CLI (entry point: oh_my_field.cli:app)
 
-uv run pytest                # full test suite (266 tests)
+uv run pytest                # full test suite (295 tests)
 uv run pytest tests/test_cli.py::test_help_lists_cli_name_when_invoked  # single test
 uv run pytest -k orchestrate # subset by keyword
 
@@ -25,7 +25,7 @@ uv build                     # packaging smoke
 These three checks gate the work and are unusually strict — expect to satisfy all of them:
 
 - **pytest** runs with `filterwarnings = ["error"]`: any warning (e.g. a deprecation) **fails the test**. `--strict-config` and `--strict-markers` are on.
-- **pyright** runs in `strict` mode with extra `reportUnknown*`/`reportUnusedVariable` promoted to errors. `langgraph` is not fully typed, so this repo ships **hand-written stubs in `typings/langgraph/`**. If you use a LangGraph API surface not covered by those stubs, extend the stub rather than suppressing the error.
+- **pyright** runs in `strict` mode with extra `reportUnknown*`/`reportUnusedVariable` promoted to errors. There are no third-party stubs to maintain — the workflows are plain Python (no LangGraph), so prefer fixing the type rather than suppressing the error.
 - **ruff** selects `ALL` rules (see `pyproject.toml` for the ignore list). `tests/**` and `cli/commands/*.py` have relaxed per-file ignores.
 
 ## What OMF is (and is not)
@@ -54,20 +54,22 @@ So when locating a stage's real implementation: open the flat module; if it's a 
 
 Every model inherits `StrictModel` = `BaseModel(extra="forbid", frozen=True)`. So all domain objects are **immutable and reject unknown fields**; "mutation" is always `model.model_copy(update={...})`. Literal type aliases (e.g. `CommandRiskCategory`, `AgentImporterName`, `CapabilityStatus`) define the closed vocabularies used across the system. Capability/eval names must match `CAPABILITY_NAME_PATTERN` (`^[a-z][a-z0-9_]*$`). `domain/base.py` re-surfaces `StrictModel` plus the cross-cutting schema-version / id / hash constants.
 
-### Per-stage workflows are LangGraph graphs (`application/<stage>/workflow.py`)
+### Per-stage workflows are plain step pipelines (`application/<stage>/workflow.py`)
 
-Nearly every pipeline stage is now an `application/<stage>/` package (`capture`, `promote`, `replay`, `eval`, `eval_set`, `eval_support`, `health`, `context`, `export`, `learn`, `learning_patch`, `reflect`, `review`, `verify`, `registry`, `inspection`, `import_run`, `conformance`, `runtimes`, `dataset_export`, …); the few real flat modules above (`orchestrate`, `rollback`) keep the same shape inline. The shape is:
+Nearly every pipeline stage is now an `application/<stage>/` package (`capture`, `promote`, `replay`, `eval`, `eval_set`, `eval_support`, `health`, `context`, `export`, `learn`, `learning_patch`, `reflect`, `review`, `verify`, `registry`, `inspection`, `import_run`, `conformance`, `runtimes`, `dataset_export`, `diff_artifacts`, `explain_artifacts`, `init_field`, `session`, …); the few real flat modules above (`orchestrate`, `rollback`) keep the same shape inline. A couple of packages keep several variant-named workflow files instead of a single `workflow.py` (`install/` → `skill_workflow.py` + `mcp_workflow.py`; `portability/` → `import_workflow.py`, `validate_workflow.py`, `adapt_workflow.py`, `remap_workflow.py`, `export_workflow.py`). The shape is:
 
 - an `XxxRequest(StrictModel)` input,
 - a `run_xxx_workflow(request, dependencies=None)` entry point,
-- a private `_build_xxx_graph()` that wires a `StateGraph` over a `TypedDict` state, `add_node`/`add_edge` from `START` to `END`, then `.compile()`,
-- the compiled graph is `.invoke()`d with an initial state dict.
+- an `XxxState(TypedDict, total=False)` that holds the in-flight state,
+- a sequence of private `_step(state)` functions, each returning a partial state that the entry point merges via `state.update(_step(state))`.
 
-For time and ID generation, each workflow defines its **own** frozen dependencies dataclass (e.g. `CaptureDependencies` holding a `clock` and `token_factory`) and falls back to `_default_dependencies()` when none is passed — this is how determinism is injected in tests. Not every stage needs it: `run_promote_workflow(request)` takes no dependencies. Follow this pattern when adding a stage. (`import-run` is the exception to the `run_*_workflow` shape: `application/import_run/` dispatches through the `adapters` runtime registry via `import_agent_run`.)
+This is just an imperative pipeline of pure-ish step functions — **there is no graph object** (no `StateGraph`/`add_node`/`.compile()`/`.invoke()`; LangGraph was removed). See `application/capture/workflow.py` for the canonical example (`run_capture_workflow` threads a `CaptureState` through `_collect_files → _execute_commands → _build_evidence → _harden_record → _validate_harness → _persist_evidence → _summarize`).
+
+For time and ID generation, each workflow defines its **own** frozen dependencies dataclass (e.g. `CaptureDependencies` holding a `clock` and `token_factory`) and falls back to `_default_dependencies()` when none is passed — this is how determinism is injected in tests. Not every stage needs it: `run_promote_workflow(request)` takes no dependencies. Follow this pattern when adding a stage. (`import-run` is the exception to the `run_*_workflow` shape: `application/import_run/` dispatches through the `adapters` runtime registry via `import_agent_run`.) Note: the `WorkflowGraph = Literal["sequence", "langgraph"]` alias in `domain/models.py` is *capability metadata* describing an imported run's declared style — not an OMF runtime dependency, so don't read that surviving `"langgraph"` token as a reintroduced graph engine.
 
 ### `orchestrate.py` is the top-level resumable chain
 
-`run` drives the fixed node sequence `import_evidence → promote_capability → pack_context → run_verification → evaluate_capability → record_learning_patch` (older node names are remapped via `NODE_ALIASES`). Each node's result is checkpointed into a `WorkflowRunRecord` on disk, so `resume`, `rollback`, and `status` can pick up a partially-completed run. This is a layer *above* the per-stage LangGraph workflows, not the same graph.
+`run` drives the fixed node sequence `import_evidence → promote_capability → pack_context → run_verification → evaluate_capability → record_learning_patch` (older node names are remapped via `NODE_ALIASES`). Each node's result is checkpointed into a `WorkflowRunRecord` on disk, so `resume`, `rollback`, and `status` can pick up a partially-completed run. This is a layer *above* the per-stage workflows, not part of them.
 
 ### Storage — YAML files, not a database (`infrastructure/fs/storage.py`)
 
@@ -122,6 +124,6 @@ Commands group into: ingest (`import-run`, `capture`, `init`), build (`promote`,
 
 ## Conventions
 
-- Match the existing module shape (Request model + `run_*_workflow` + `_build_*_graph`) when adding pipeline functionality, and place new stages under the layer that fits (`domain` / `application` / `infrastructure` / `adapters`). Don't "fix" the flat shim imports — they are intentional.
+- Match the existing module shape (Request model + `run_*_workflow` threading a `TypedDict` state through `_step` functions) when adding pipeline functionality, and place new stages under the layer that fits (`domain` / `application` / `infrastructure` / `adapters`). Don't "fix" the flat shim imports — they are intentional.
 - Keep new I/O behind the storage helpers (`infrastructure/fs/storage.py`) and new time/ID needs behind an injected per-workflow dependencies dataclass so tests stay deterministic.
 - Tests live in `tests/test_<area>_cli.py` and exercise the CLI via `typer.testing.CliRunner` or call `run_*_workflow` directly with stub dependencies. See `AGENTS.md` for the project's behavioral guidelines (simplicity-first, surgical changes, goal-driven verification).
