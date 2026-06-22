@@ -201,7 +201,7 @@ integrity_chain:
   previous_sha256: null
 - artifact_type: capability
   artifact_id: csv_normalize
-  sha256: fa693df4d5fd4429b88aea67b649e0122f0879607469106a13ac8969377eb190
+  sha256: 17d1f9a040293336995055691d104ed52d2322cb12b7d3dfe68202a6fba0fae8
   previous_sha256: 62a4beb1a2714f5cf7a4a23ee32d7bfbe70e3b773a3e27964b624f95becd21f2
 artifact_contracts:
 - name: output_normalized_json
