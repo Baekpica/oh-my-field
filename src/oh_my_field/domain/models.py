@@ -149,7 +149,7 @@ class AgentImporterSpec(StrictModel):
 
 
 class RuntimeAdapterSpec(AgentImporterSpec):
-    pass
+    """Deprecated compatibility name for external runtime adapter plugins."""
 
 
 class ToolCallRecord(StrictModel):

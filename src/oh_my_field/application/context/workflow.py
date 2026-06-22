@@ -26,14 +26,6 @@ from oh_my_field.models import (
 )
 from oh_my_field.storage import load_evidence, load_manifest, write_context_bundle
 
-CONTEXT_NODES: Final = (
-    "load_manifest",
-    "load_source_evidence",
-    "select_context",
-    "validate_context",
-    "write_context",
-    "summarize",
-)
 SUMMARY_MAX_CHARS: Final = 120
 
 type Clock = Callable[[], datetime]

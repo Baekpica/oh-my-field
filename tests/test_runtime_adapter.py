@@ -14,9 +14,10 @@ from oh_my_field.adapters import (
     builtin_adapter_registry,
     register_runtime_adapter,
 )
+from oh_my_field.domain.runtime import RuntimeAdapterSpec as RuntimeSpecFromRuntime
 from oh_my_field.domain.runtime.adapter import UnknownRuntimeError
 from oh_my_field.domain.runtime.registry import AdapterRegistry
-from oh_my_field.models import AgentImporterSpec
+from oh_my_field.models import AgentImporterSpec, RuntimeAdapterSpec
 
 
 def test_builtin_registry_exposes_known_runtimes() -> None:
@@ -56,6 +57,13 @@ def test_importer_adapter_satisfies_protocol() -> None:
     assert isinstance(adapter, ImporterAdapter)
     assert hasattr(adapter, "import_run")
     assert adapter.spec.display_name == "Hermes"
+
+
+def test_runtime_adapter_spec_compat_exports_remain_available() -> None:
+    spec = RuntimeAdapterSpec(name="acme", display_name="Acme Runtime")
+
+    assert isinstance(spec, AgentImporterSpec)
+    assert RuntimeSpecFromRuntime is RuntimeAdapterSpec
 
 
 def test_import_request_accepts_external_runtime_adapter_names() -> None:

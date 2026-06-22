@@ -4,7 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Final, TypedDict
+from typing import TypedDict
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
@@ -29,16 +29,6 @@ from oh_my_field.models import (
     SuccessLabel,
 )
 from oh_my_field.storage import write_evidence
-
-CAPTURE_NODES: Final = (
-    "collect_files",
-    "execute_commands",
-    "build_evidence",
-    "harden_record",
-    "validate_harness",
-    "persist_evidence",
-    "summarize",
-)
 
 type Clock = Callable[[], datetime]
 type TokenFactory = Callable[[], str]
