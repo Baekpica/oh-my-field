@@ -86,7 +86,7 @@ context:
   maximum_token_budget: null
   evidence_recall_strategy: prefer prior successful evidence, then failures
 workflow:
-  graph: langgraph
+  graph: sequence
   nodes:
   - import_evidence
   - pack_context
@@ -201,7 +201,7 @@ integrity_chain:
   previous_sha256: null
 - artifact_type: capability
   artifact_id: portfolio_backtest
-  sha256: 9a2e27bc9ddcd5d77c192c8db387fa38cf1164e91c8c632794fc608b03c54c91
+  sha256: 2641775a3ca0bd7a64277f4c53add1f15319aa562a69c33ba6a2add8f1a914ce
   previous_sha256: 040ee6e5eabc6ddca034a373d4d81f8338151720b1077764409266d0abf3b445
 artifact_contracts:
 - name: output_backtest_report_md

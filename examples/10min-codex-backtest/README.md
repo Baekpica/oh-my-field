@@ -90,6 +90,9 @@ uv run python examples/10min-codex-backtest/curate_package.py \
   --target "$DIY_CAP" \
   --evidence "$FIELD/evidence/$EVIDENCE_ID.json"
 
+# The helper rebinds capability.yaml to this run's evidence id and recomputes
+# its integrity links before export/import use the curated manifest.
+
 uv run omf capability export portfolio_backtest \
   --target codex --target-model gpt-5.4-mini \
   --capabilities-dir "$FIELD/capabilities" \

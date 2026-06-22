@@ -32,10 +32,8 @@ What "strict" means here:
   deprecation) **fails the test**. `--strict-config` and `--strict-markers` are
   on.
 - **pyright** runs in `strict` mode with `reportUnknown*` and
-  `reportUnusedVariable` promoted to errors. `langgraph` is not fully typed, so
-  the repo ships hand-written stubs in `typings/langgraph/`. If you touch a
-  LangGraph API surface the stubs do not cover, extend the stub rather than
-  suppressing the error.
+  `reportUnusedVariable` promoted to errors. Keep new code typed instead of
+  suppressing strict-mode diagnostics.
 - **ruff** selects `ALL` rules (see `pyproject.toml` for the ignore list).
   `tests/**` and `src/oh_my_field/cli/commands/*.py` have relaxed per-file
   ignores.
@@ -83,11 +81,10 @@ or dashboard/server code.
 ## Conventions
 
 - **Module shape.** A pipeline stage is an `XxxRequest(StrictModel)` input, a
-  `run_xxx_workflow(request, dependencies=None)` entry point, and a private
-  `_build_xxx_graph()` that wires a LangGraph `StateGraph` over a `TypedDict`
-  state from `START` to `END`, then `.compile()`. The compiled graph is
-  `.invoke()`d with an initial state dict. Match this shape and place new code in
-  the layer that fits.
+  `run_xxx_workflow(request, dependencies=None)` entry point, private step
+  functions that return partial `TypedDict` state, and an explicit straight-line
+  sequence in the entry point. Match this shape and place new code in the layer
+  that fits.
 - **Immutability.** Every model inherits `StrictModel`
   (`BaseModel(extra="forbid", frozen=True)`): domain objects are immutable and
   reject unknown fields. "Mutation" is `model.model_copy(update={...})`.
@@ -101,7 +98,9 @@ or dashboard/server code.
 - **Integrity.** Artifacts carry an `integrity_chain` of sha256 links
   (`infrastructure/fs/hashing.py`). `model_sha256` hashes a model's canonical
   JSON excluding `integrity_chain` itself; the `verify` command walks the chain
-  to detect tampering.
+  to detect tampering. If you edit a committed artifact that already has an
+  integrity link, recompute the artifact's own link in the same change and add
+  or update a regression check so stale hashes do not ship.
 
 ## Schema Contracts
 

@@ -5,8 +5,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final, TypedDict
 
-from langgraph.graph import END, START, StateGraph
-from langgraph.graph.state import CompiledStateGraph
 from pydantic import Field
 
 from oh_my_field.execution import (
@@ -108,13 +106,18 @@ def run_replay_workflow(
     request: ReplayRequest,
     dependencies: ReplayDependencies | None = None,
 ) -> ReplaySummary:
-    graph = _build_replay_graph()
-    initial_state = ReplayState(
+    state = ReplayState(
         request=request,
         dependencies=dependencies or _default_dependencies(),
     )
-    final_state = graph.invoke(initial_state)
-    return _state_summary(final_state)
+    state.update(_load_manifest(state))
+    state.update(_load_source_evidence(state))
+    state.update(_execute_commands(state))
+    state.update(_build_replay(state))
+    state.update(_validate_replay(state))
+    state.update(_write_replay(state))
+    state.update(_summarize(state))
+    return _state_summary(state)
 
 
 def _default_dependencies() -> ReplayDependencies:
@@ -127,33 +130,6 @@ def _now_utc() -> datetime:
 
 def _token_suffix() -> str:
     return secrets.token_hex(4)
-
-
-def _build_replay_graph() -> CompiledStateGraph[
-    ReplayState,
-    None,
-    ReplayState,
-    ReplayState,
-]:
-    builder: StateGraph[ReplayState, None, ReplayState, ReplayState] = StateGraph(
-        ReplayState,
-    )
-    builder.add_node("load_manifest", _load_manifest)
-    builder.add_node("load_source_evidence", _load_source_evidence)
-    builder.add_node("execute_commands", _execute_commands)
-    builder.add_node("build_replay", _build_replay)
-    builder.add_node("validate_replay", _validate_replay)
-    builder.add_node("write_replay", _write_replay)
-    builder.add_node("summarize", _summarize)
-    builder.add_edge(START, "load_manifest")
-    builder.add_edge("load_manifest", "load_source_evidence")
-    builder.add_edge("load_source_evidence", "execute_commands")
-    builder.add_edge("execute_commands", "build_replay")
-    builder.add_edge("build_replay", "validate_replay")
-    builder.add_edge("validate_replay", "write_replay")
-    builder.add_edge("write_replay", "summarize")
-    builder.add_edge("summarize", END)
-    return builder.compile()
 
 
 def _load_manifest(state: ReplayState) -> ReplayState:
@@ -214,7 +190,7 @@ def _build_replay(state: ReplayState) -> ReplayState:
         capability_name=manifest.name,
         source_evidence_id=source_evidence.id,
         source_goal=source_evidence.goal,
-        workflow=WorkflowManifest(graph="langgraph", nodes=REPLAY_NODES),
+        workflow=WorkflowManifest(graph="sequence", nodes=REPLAY_NODES),
         harness=harness,
         runtime=_replay_runtime(source_evidence.runtime, request.runtime_profile),
         runtime_profile=request.runtime_profile,

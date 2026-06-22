@@ -5,8 +5,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TypedDict
 
-from langgraph.graph import END, START, StateGraph
-from langgraph.graph.state import CompiledStateGraph
 from pydantic import Field
 
 from oh_my_field.models import (
@@ -92,40 +90,18 @@ def run_reflect_workflow(
     request: ReflectRequest,
     dependencies: ReflectDependencies | None = None,
 ) -> ReflectSummary:
-    graph = _build_reflect_graph()
-    initial_state = ReflectState(
+    state = ReflectState(
         request=request,
         dependencies=dependencies or _default_dependencies(),
     )
-    final_state = graph.invoke(initial_state)
-    return _state_summary(final_state)
-
-
-def _build_reflect_graph() -> CompiledStateGraph[
-    ReflectState,
-    None,
-    ReflectState,
-    ReflectState,
-]:
-    builder: StateGraph[ReflectState, None, ReflectState, ReflectState] = StateGraph(
-        ReflectState,
-    )
-    builder.add_node("load_manifest", _load_manifest)
-    builder.add_node("load_source_evidence", _load_source_evidence)
-    builder.add_node("load_eval", _load_eval)
-    builder.add_node("build_reflection", _build_reflection)
-    builder.add_node("validate_reflection", _validate_reflection)
-    builder.add_node("write_reflection", _write_reflection)
-    builder.add_node("summarize", _summarize)
-    builder.add_edge(START, "load_manifest")
-    builder.add_edge("load_manifest", "load_source_evidence")
-    builder.add_edge("load_source_evidence", "load_eval")
-    builder.add_edge("load_eval", "build_reflection")
-    builder.add_edge("build_reflection", "validate_reflection")
-    builder.add_edge("validate_reflection", "write_reflection")
-    builder.add_edge("write_reflection", "summarize")
-    builder.add_edge("summarize", END)
-    return builder.compile()
+    state.update(_load_manifest(state))
+    state.update(_load_source_evidence(state))
+    state.update(_load_eval(state))
+    state.update(_build_reflection(state))
+    state.update(_validate_reflection(state))
+    state.update(_write_reflection(state))
+    state.update(_summarize(state))
+    return _state_summary(state)
 
 
 def _default_dependencies() -> ReflectDependencies:

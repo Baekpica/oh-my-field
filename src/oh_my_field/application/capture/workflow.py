@@ -6,8 +6,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TypedDict
 
-from langgraph.graph import END, START, StateGraph
-from langgraph.graph.state import CompiledStateGraph
 from pydantic import Field
 
 from oh_my_field.application.record_builder import harden_evidence_record
@@ -107,13 +105,18 @@ def run_capture_workflow(
     request: CaptureRequest,
     dependencies: CaptureDependencies | None = None,
 ) -> CaptureSummary:
-    graph = _build_capture_graph()
-    initial_state = CaptureState(
+    state = CaptureState(
         request=request,
         dependencies=dependencies or _default_dependencies(),
     )
-    final_state = graph.invoke(initial_state)
-    return _state_summary(final_state)
+    state.update(_collect_files(state))
+    state.update(_execute_commands(state))
+    state.update(_build_evidence(state))
+    state.update(_harden_record(state))
+    state.update(_validate_harness(state))
+    state.update(_persist_evidence(state))
+    state.update(_summarize(state))
+    return _state_summary(state)
 
 
 def _default_dependencies() -> CaptureDependencies:
@@ -126,33 +129,6 @@ def _now_utc() -> datetime:
 
 def _token_suffix() -> str:
     return secrets.token_hex(4)
-
-
-def _build_capture_graph() -> CompiledStateGraph[
-    CaptureState,
-    None,
-    CaptureState,
-    CaptureState,
-]:
-    builder: StateGraph[CaptureState, None, CaptureState, CaptureState] = StateGraph(
-        CaptureState,
-    )
-    builder.add_node("collect_files", _collect_files)
-    builder.add_node("execute_commands", _execute_commands)
-    builder.add_node("build_evidence", _build_evidence)
-    builder.add_node("harden_record", _harden_record)
-    builder.add_node("validate_harness", _validate_harness)
-    builder.add_node("persist_evidence", _persist_evidence)
-    builder.add_node("summarize", _summarize)
-    builder.add_edge(START, "collect_files")
-    builder.add_edge("collect_files", "execute_commands")
-    builder.add_edge("execute_commands", "build_evidence")
-    builder.add_edge("build_evidence", "harden_record")
-    builder.add_edge("harden_record", "validate_harness")
-    builder.add_edge("validate_harness", "persist_evidence")
-    builder.add_edge("persist_evidence", "summarize")
-    builder.add_edge("summarize", END)
-    return builder.compile()
 
 
 def _collect_files(state: CaptureState) -> CaptureState:

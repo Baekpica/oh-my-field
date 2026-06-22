@@ -5,8 +5,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TypedDict
 
-from langgraph.graph import END, START, StateGraph
-from langgraph.graph.state import CompiledStateGraph
 from pydantic import Field
 
 from oh_my_field.models import (
@@ -102,13 +100,18 @@ def run_export_workflow(
     request: ExportRequest,
     dependencies: ExportDependencies | None = None,
 ) -> ExportSummary:
-    graph = _build_export_graph()
-    initial_state = ExportState(
+    state = ExportState(
         request=request,
         dependencies=dependencies or _default_dependencies(),
     )
-    final_state = graph.invoke(initial_state)
-    return _state_summary(final_state)
+    state.update(_check_approval(state))
+    state.update(_load_manifest(state))
+    state.update(_load_source_evidence(state))
+    state.update(_collect_related_artifacts(state))
+    state.update(_build_bundle(state))
+    state.update(_write_bundle(state))
+    state.update(_summarize(state))
+    return _state_summary(state)
 
 
 def _default_dependencies() -> ExportDependencies:
@@ -121,33 +124,6 @@ def _now_utc() -> datetime:
 
 def _token_suffix() -> str:
     return secrets.token_hex(4)
-
-
-def _build_export_graph() -> CompiledStateGraph[
-    ExportState,
-    None,
-    ExportState,
-    ExportState,
-]:
-    builder: StateGraph[ExportState, None, ExportState, ExportState] = StateGraph(
-        ExportState,
-    )
-    builder.add_node("check_approval", _check_approval)
-    builder.add_node("load_manifest", _load_manifest)
-    builder.add_node("load_source_evidence", _load_source_evidence)
-    builder.add_node("collect_related_artifacts", _collect_related_artifacts)
-    builder.add_node("build_bundle", _build_bundle)
-    builder.add_node("write_bundle", _write_bundle)
-    builder.add_node("summarize", _summarize)
-    builder.add_edge(START, "check_approval")
-    builder.add_edge("check_approval", "load_manifest")
-    builder.add_edge("load_manifest", "load_source_evidence")
-    builder.add_edge("load_source_evidence", "collect_related_artifacts")
-    builder.add_edge("collect_related_artifacts", "build_bundle")
-    builder.add_edge("build_bundle", "write_bundle")
-    builder.add_edge("write_bundle", "summarize")
-    builder.add_edge("summarize", END)
-    return builder.compile()
 
 
 def _check_approval(state: ExportState) -> ExportState:

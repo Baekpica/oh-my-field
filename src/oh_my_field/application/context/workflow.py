@@ -6,8 +6,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final, TypedDict
 
-from langgraph.graph import END, START, StateGraph
-from langgraph.graph.state import CompiledStateGraph
 from pydantic import Field
 
 from oh_my_field.integrity import append_integrity_link, integrity_link
@@ -82,38 +80,17 @@ def run_context_workflow(
     request: ContextRequest,
     dependencies: ContextDependencies | None = None,
 ) -> ContextSummary:
-    graph = _build_context_graph()
-    initial_state = ContextState(
+    state = ContextState(
         request=request,
         dependencies=dependencies or _default_dependencies(),
     )
-    final_state = graph.invoke(initial_state)
-    return _state_summary(final_state)
-
-
-def _build_context_graph() -> CompiledStateGraph[
-    ContextState,
-    None,
-    ContextState,
-    ContextState,
-]:
-    builder: StateGraph[ContextState, None, ContextState, ContextState] = StateGraph(
-        ContextState,
-    )
-    builder.add_node("load_manifest", _load_manifest)
-    builder.add_node("load_source_evidence", _load_source_evidence)
-    builder.add_node("select_context", _select_context)
-    builder.add_node("validate_context", _validate_context)
-    builder.add_node("write_context", _write_context)
-    builder.add_node("summarize", _summarize)
-    builder.add_edge(START, "load_manifest")
-    builder.add_edge("load_manifest", "load_source_evidence")
-    builder.add_edge("load_source_evidence", "select_context")
-    builder.add_edge("select_context", "validate_context")
-    builder.add_edge("validate_context", "write_context")
-    builder.add_edge("write_context", "summarize")
-    builder.add_edge("summarize", END)
-    return builder.compile()
+    state.update(_load_manifest(state))
+    state.update(_load_source_evidence(state))
+    state.update(_select_context(state))
+    state.update(_validate_context(state))
+    state.update(_write_context(state))
+    state.update(_summarize(state))
+    return _state_summary(state)
 
 
 def _default_dependencies() -> ContextDependencies:

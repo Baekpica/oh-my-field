@@ -161,11 +161,11 @@
 - 누적 evidence를 기반으로 prompt optimization, context packing, retrieval policy 개선
 - 필요 시 fine-tuning dataset, preference dataset, eval set으로 전환
 
-# LangGraph-based Artifact Pipeline Design
+# Artifact Pipeline Design
 
-- omf의 LangGraph는 agent가 일을 수행하는 graph가 아니라, agent가 만든 run artifact를 capture, structure, verify, promote, learn 하는 artifact processing pipeline graph
-- 각 pipeline은 evidence와 capability package 상태를 가진 graph로 표현
-- node는 명확한 artifact 처리 책임 단위로 분리하며, edge는 성공·실패·보류·사용자 승인 등 상태 전이를 표현
+- omf의 pipeline은 agent가 일을 수행하는 loop가 아니라, agent가 만든 run artifact를 capture, structure, verify, promote, learn 하는 artifact processing sequence
+- 각 pipeline은 evidence와 capability package 상태를 명시적으로 전달
+- step은 명확한 artifact 처리 책임 단위로 분리하며, 성공·실패·보류·사용자 승인 상태는 artifact와 policy로 표현
 
 ## 주요 node 예시
 
@@ -489,7 +489,7 @@ context:
     - owner_preferences
 
 workflow:
-  graph: langgraph
+  graph: sequence
   nodes:
     - import_evidence
     - pack_context
@@ -707,7 +707,7 @@ promotion_criteria:
 
 ## Artifact Pipeline Orchestrator
 
-- LangGraph 기반 artifact processing node orchestration 담당
+- artifact processing step orchestration 담당
 - capture, structure, verify, promote, learn 단계의 상태 전이, 중단, 승인, checkpoint, resume 처리
 
 ## Capability Registry
@@ -818,7 +818,7 @@ promotion_criteria:
 - evidence store 기본 구현
 - capability registry 기본 구현
 - shell/git/test 기반 harness 실행
-- LangGraph 기반 artifact pipeline prototype
+- explicit artifact pipeline prototype
 
 # Product Positioning
 
@@ -862,9 +862,9 @@ promotion_criteria:
 
 # Artifact Pipeline Orchestration
 
-- LangGraph 기반 artifact pipeline 구성을 우선 고려
-- 각 pipeline은 명확한 node와 state transition으로 표현
-- node는 다음과 같은 책임 단위로 분리 가능
+- artifact pipeline은 명확한 step과 state transition으로 표현
+- 현재 구현은 이식성을 위해 외부 graph runtime 없이 명시적인 sequence로 실행
+- step은 다음과 같은 책임 단위로 분리 가능
   - evidence import
   - context packaging
   - harness building
