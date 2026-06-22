@@ -5,8 +5,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TypedDict
 
-from langgraph.graph import END, START, StateGraph
-from langgraph.graph.state import CompiledStateGraph
 from pydantic import Field
 
 from oh_my_field.integrity import append_integrity_link, integrity_link
@@ -70,38 +68,17 @@ def run_learn_workflow(
     request: LearnRequest,
     dependencies: LearnDependencies | None = None,
 ) -> LearnSummary:
-    graph = _build_learn_graph()
-    initial_state = LearnState(
+    state = LearnState(
         request=request,
         dependencies=dependencies or _default_dependencies(),
     )
-    final_state = graph.invoke(initial_state)
-    return _state_summary(final_state)
-
-
-def _build_learn_graph() -> CompiledStateGraph[
-    LearnState,
-    None,
-    LearnState,
-    LearnState,
-]:
-    builder: StateGraph[LearnState, None, LearnState, LearnState] = StateGraph(
-        LearnState,
-    )
-    builder.add_node("load_manifest", _load_manifest)
-    builder.add_node("load_source_evidence", _load_source_evidence)
-    builder.add_node("build_learning_export", _build_learning_export)
-    builder.add_node("validate_learning_export", _validate_learning_export)
-    builder.add_node("write_learning_export", _write_learning_export)
-    builder.add_node("summarize", _summarize)
-    builder.add_edge(START, "load_manifest")
-    builder.add_edge("load_manifest", "load_source_evidence")
-    builder.add_edge("load_source_evidence", "build_learning_export")
-    builder.add_edge("build_learning_export", "validate_learning_export")
-    builder.add_edge("validate_learning_export", "write_learning_export")
-    builder.add_edge("write_learning_export", "summarize")
-    builder.add_edge("summarize", END)
-    return builder.compile()
+    state.update(_load_manifest(state))
+    state.update(_load_source_evidence(state))
+    state.update(_build_learning_export(state))
+    state.update(_validate_learning_export(state))
+    state.update(_write_learning_export(state))
+    state.update(_summarize(state))
+    return _state_summary(state)
 
 
 def _default_dependencies() -> LearnDependencies:

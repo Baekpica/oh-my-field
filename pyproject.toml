@@ -26,7 +26,6 @@ classifiers = [
     "Topic :: Software Development :: Testing",
 ]
 dependencies = [
-    "langgraph",
     "pydantic",
     "pyyaml",
     "typer",

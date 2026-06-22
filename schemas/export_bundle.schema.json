@@ -2816,7 +2816,10 @@
       "type": "object"
     },
     "WorkflowGraph": {
-      "const": "langgraph",
+      "enum": [
+        "sequence",
+        "langgraph"
+      ],
       "type": "string"
     },
     "WorkflowManifest": {

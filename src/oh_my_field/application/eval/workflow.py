@@ -1,8 +1,5 @@
 from datetime import UTC
 
-from langgraph.graph import END, START, StateGraph
-from langgraph.graph.state import CompiledStateGraph
-
 from oh_my_field.application.eval_support import (
     CapabilityNameMismatchError,
     EvalDependencies,
@@ -52,42 +49,20 @@ def run_eval_workflow(
     request: EvalRequest,
     dependencies: EvalDependencies | None = None,
 ) -> EvalSummary:
-    graph = _build_eval_graph()
-    initial_state = EvalState(
+    state = EvalState(
         request=request,
         dependencies=dependencies or default_dependencies(),
     )
-    final_state = graph.invoke(initial_state)
-    return state_summary(final_state)
-
-
-def _build_eval_graph() -> CompiledStateGraph[
-    EvalState,
-    None,
-    EvalState,
-    EvalState,
-]:
-    builder: StateGraph[EvalState, None, EvalState, EvalState] = StateGraph(EvalState)
-    builder.add_node("load_manifest", _load_manifest)
-    builder.add_node("load_source_evidence", _load_source_evidence)
-    builder.add_node("load_replay", _load_replay)
-    builder.add_node("load_eval_set", _load_eval_set)
-    builder.add_node("execute_harness", _execute_harness)
-    builder.add_node("build_eval", _build_eval)
-    builder.add_node("validate_eval", _validate_eval)
-    builder.add_node("write_eval", _write_eval)
-    builder.add_node("summarize", _summarize)
-    builder.add_edge(START, "load_manifest")
-    builder.add_edge("load_manifest", "load_source_evidence")
-    builder.add_edge("load_source_evidence", "load_replay")
-    builder.add_edge("load_replay", "load_eval_set")
-    builder.add_edge("load_eval_set", "execute_harness")
-    builder.add_edge("execute_harness", "build_eval")
-    builder.add_edge("build_eval", "validate_eval")
-    builder.add_edge("validate_eval", "write_eval")
-    builder.add_edge("write_eval", "summarize")
-    builder.add_edge("summarize", END)
-    return builder.compile()
+    state.update(_load_manifest(state))
+    state.update(_load_source_evidence(state))
+    state.update(_load_replay(state))
+    state.update(_load_eval_set(state))
+    state.update(_execute_harness(state))
+    state.update(_build_eval(state))
+    state.update(_validate_eval(state))
+    state.update(_write_eval(state))
+    state.update(_summarize(state))
+    return state_summary(state)
 
 
 def _load_manifest(state: EvalState) -> EvalState:

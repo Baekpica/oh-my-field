@@ -71,7 +71,7 @@ context:
   maximum_token_budget: 8000
   evidence_recall_strategy: prefer prior successful evidence, then failures
 workflow:
-  graph: langgraph
+  graph: sequence
   nodes:
     - import_evidence
     - pack_context

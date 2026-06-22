@@ -3,8 +3,6 @@ from pathlib import Path
 from typing import Final, TypedDict, cast
 
 import yaml
-from langgraph.graph import END, START, StateGraph
-from langgraph.graph.state import CompiledStateGraph
 from pydantic import Field
 
 from oh_my_field.domain.layout import DEFAULT_EVAL_DIR
@@ -138,32 +136,13 @@ class PromoteState(TypedDict, total=False):
 
 
 def run_promote_workflow(request: PromoteRequest) -> PromoteSummary:
-    graph = _build_promote_graph()
-    final_state = graph.invoke(PromoteState(request=request))
-    return _state_summary(final_state)
-
-
-def _build_promote_graph() -> CompiledStateGraph[
-    PromoteState,
-    None,
-    PromoteState,
-    PromoteState,
-]:
-    builder: StateGraph[PromoteState, None, PromoteState, PromoteState] = StateGraph(
-        PromoteState,
-    )
-    builder.add_node("load_evidence", _load_evidence)
-    builder.add_node("build_manifest", _build_manifest)
-    builder.add_node("validate_manifest", _validate_manifest)
-    builder.add_node("write_capability", _write_capability)
-    builder.add_node("summarize", _summarize)
-    builder.add_edge(START, "load_evidence")
-    builder.add_edge("load_evidence", "build_manifest")
-    builder.add_edge("build_manifest", "validate_manifest")
-    builder.add_edge("validate_manifest", "write_capability")
-    builder.add_edge("write_capability", "summarize")
-    builder.add_edge("summarize", END)
-    return builder.compile()
+    state = PromoteState(request=request)
+    state.update(_load_evidence(state))
+    state.update(_build_manifest(state))
+    state.update(_validate_manifest(state))
+    state.update(_write_capability(state))
+    state.update(_summarize(state))
+    return _state_summary(state)
 
 
 def _load_evidence(state: PromoteState) -> PromoteState:
@@ -219,7 +198,7 @@ def _build_manifest(state: PromoteState) -> PromoteState:
             source_priority=("evidence", "repository", "user_feedback"),
             evidence_recall_strategy="prefer prior successful evidence, then failures",
         ),
-        workflow=WorkflowManifest(graph="langgraph", nodes=CAPABILITY_WORKFLOW_NODES),
+        workflow=WorkflowManifest(graph="sequence", nodes=CAPABILITY_WORKFLOW_NODES),
         harness=_harness_result(evidence_records),
         runtime=RuntimeInfo(
             name=evidence.runtime.name,

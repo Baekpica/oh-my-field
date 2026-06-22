@@ -123,6 +123,7 @@ def test_promote_creates_capability_manifest_from_evidence(tmp_path: Path) -> No
     assert f"source_evidence_id: {evidence.id}" in manifest_text
     assert f"- {evidence.id}" in manifest_text
     manifest = load_manifest("repo_issue_triage", capabilities_dir)
+    assert manifest.workflow.graph == "sequence"
     assert manifest.source_evidence_ids == (evidence.id,)
     assert manifest.promotion_metrics is not None
     assert manifest.promotion_metrics.evidence_count == 1

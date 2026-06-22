@@ -127,6 +127,7 @@ def test_replay_creates_replay_record_from_manifest_and_evidence(
     assert replay.capability_name == manifest.name
     assert replay.source_evidence_id == evidence.id
     assert replay.source_goal == evidence.goal
+    assert replay.workflow.graph == "sequence"
     assert replay.harness.status == output.harness_status
     assert replay.harness == evidence.harness
     assert replay.runtime == evidence.runtime
