@@ -148,6 +148,10 @@ class AgentImporterSpec(StrictModel):
     artifact_roles: tuple[CapturedFileRole, ...] = ()
 
 
+class RuntimeAdapterSpec(AgentImporterSpec):
+    """Deprecated compatibility name for external runtime adapter plugins."""
+
+
 class ToolCallRecord(StrictModel):
     tool: str = Field(min_length=1)
     input: str = ""
