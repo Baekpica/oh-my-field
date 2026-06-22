@@ -3,7 +3,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Final, TypedDict
+from typing import TypedDict
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
@@ -20,15 +20,6 @@ from oh_my_field.models import (
     StrictModel,
 )
 from oh_my_field.storage import load_evidence, load_manifest, write_learning_export
-
-LEARN_NODES: Final = (
-    "load_manifest",
-    "load_source_evidence",
-    "build_learning_export",
-    "validate_learning_export",
-    "write_learning_export",
-    "summarize",
-)
 
 type Clock = Callable[[], datetime]
 type TokenFactory = Callable[[], str]

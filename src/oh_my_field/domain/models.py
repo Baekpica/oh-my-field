@@ -148,10 +148,6 @@ class AgentImporterSpec(StrictModel):
     artifact_roles: tuple[CapturedFileRole, ...] = ()
 
 
-class RuntimeAdapterSpec(AgentImporterSpec):
-    pass
-
-
 class ToolCallRecord(StrictModel):
     tool: str = Field(min_length=1)
     input: str = ""

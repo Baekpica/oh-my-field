@@ -160,17 +160,9 @@ def _absolute_path(path_value: str, root: Path) -> Path | None:
     root_path = root.resolve(strict=False)
     candidate = path if path.is_absolute() else root_path / path
     resolved = candidate.resolve(strict=False)
-    if not _is_relative_to(resolved, root_path):
+    if not resolved.is_relative_to(root_path):
         return None
     return resolved
-
-
-def _is_relative_to(path: Path, root: Path) -> bool:
-    try:
-        path.relative_to(root)
-    except ValueError:
-        return False
-    return True
 
 
 def _snapshot_directory(
@@ -184,7 +176,7 @@ def _snapshot_directory(
     digest = hashlib.sha256()
     for child in sorted(item for item in directory.rglob("*") if item.is_file()):
         resolved_child = child.resolve(strict=False)
-        if not _is_relative_to(resolved_child, root):
+        if not resolved_child.is_relative_to(root):
             skipped_outside_project += 1
             continue
         relative = child.relative_to(directory).as_posix()

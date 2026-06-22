@@ -40,13 +40,6 @@ from oh_my_field.storage import (
     write_capability_package,
 )
 
-PROMOTE_NODES: Final = (
-    "load_evidence",
-    "build_manifest",
-    "validate_manifest",
-    "write_capability",
-    "summarize",
-)
 CAPABILITY_WORKFLOW_NODES: Final = (
     "import_evidence",
     "pack_context",

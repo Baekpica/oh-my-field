@@ -10,7 +10,6 @@ from oh_my_field.domain.models import (
     AgentImporterSpec,
     AgentRunSource,
     RuntimeAdapterName,
-    RuntimeAdapterSpec,
     RuntimeInfo,
     RuntimeRunSource,
 )
@@ -20,7 +19,6 @@ __all__ = [
     "AgentImporterSpec",
     "AgentRunSource",
     "RuntimeAdapterName",
-    "RuntimeAdapterSpec",
     "RuntimeInfo",
     "RuntimeRunSource",
 ]

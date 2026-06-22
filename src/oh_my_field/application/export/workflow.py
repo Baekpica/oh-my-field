@@ -3,7 +3,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Final, TypedDict
+from typing import TypedDict
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
@@ -28,16 +28,6 @@ from oh_my_field.storage import (
     load_evidence,
     load_manifest,
     write_export_bundle,
-)
-
-EXPORT_NODES: Final = (
-    "check_approval",
-    "load_manifest",
-    "load_source_evidence",
-    "collect_related_artifacts",
-    "build_bundle",
-    "write_bundle",
-    "summarize",
 )
 
 type Clock = Callable[[], datetime]

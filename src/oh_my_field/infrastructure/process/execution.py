@@ -114,7 +114,7 @@ def execute_shell_command(request: CommandExecutionRequest) -> CommandExecution:
     environment = _command_environment(request.allow_env)
     cwd = request.cwd.resolve()
     project_root = (request.project_root or Path.cwd()).resolve()
-    cwd_inside_project = _is_relative_to(cwd, project_root)
+    cwd_inside_project = cwd.is_relative_to(project_root)
     use_shell = request.argv is None
     if request.require_cwd_inside_project and not cwd_inside_project:
         return _contained_execution(
@@ -295,10 +295,6 @@ def _is_dangerous_env_name(name: str) -> bool:
 
 def _normalize_env_names(names: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(name for name in names if name))
-
-
-def _is_relative_to(path: Path, root: Path) -> bool:
-    return path == root or root in path.parents
 
 
 _PRIVILEGE_FLAGS_WITH_VALUE: Final = frozenset({"--group", "--user", "-g", "-u"})
